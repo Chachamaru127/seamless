@@ -169,3 +169,13 @@
   - 実環境の plan: ok。書く先は registry-recovery、registry（`~/.claude.json`）、codex（`~/.codex/config.toml`）、codex-owner。起動は `~/.local/share/mise/installs/node/24/bin/node /Users/tachibanashuuta/LocalWork/Code/seamless/src/cli.ts mcp`。Grok は書かない（Claude 互換で見える。呼ばれても呼ぶ側の照合で止まる）。plan の全文は `.local/build/seamless-plan.json`。
 - CJ-Plugin の配送の部品の判定（Codex Astra、別家系）: 1回目 FAIL（重大 0、中 2、軽 2。守りの弱化は無し、試験が性質を確かめきれていない）。引数拒否の試験に `assert_not_called()`、OWNED_DRIFT、完全一致した未所有定義を所有しない、事前検査後の CONCURRENT_CHANGE、設定の symlink の UNSAFE_PATH、wire.sh の不正引数の拒否を足し、README の「秘密を読まず」を実装に合わせた。fixture 17 件 OK。2回目 PASS（新しい指摘なし）。全文は `.local/build/cj-review-1.md`、`cj-review-2.md`。
 - 残り: 第9便の判定の軽-1（受信で `_test` の名前空間を拒む試験）、軽-3（CLI の `--include-offline` が JSON 側の値を検証せず上書き）、軽-4（`read --include-offline` が SyntaxError で拒まれる）。apply（立花さんの承認待ち）。push とリモートの作成（別承認）。
+
+## 2026-10-04 配送の apply と段 F の最初の観測
+
+- 立花さん承認（「①②とも推奨でOK」）: ① apply、② CJ-Plugin の commit と PR。
+- apply: 直前に plan を取り直し、server、source、changes、grok、入力の役割が承認した plan と一致することを確かめてから実行。applied は registry-recovery、registry、codex、codex-owner。`check --seamless-mcp` ok、CJ-Plugin 全体の `wire.sh check` は FAIL 0 / WARN 4（WARN は以前からの archive と fable-advisor）。`codex mcp get seamless` で登録を確認。`~/.claude.json` の seamless は apply の後も残っている。
+- CJ-Plugin: commit 4498ffa を `seamless-mcp` ブランチで push し、PR https://github.com/Chachamaru127/CJ-Plugin/pull/15 を作った（MERGEABLE、CLEAN、CI なし）。merge は自動承認の仕組みが「レビュー無しの merge」として止めたので、立花さんに任せる。
+- 発見1: Codex の起動時に「MCP server startup failed server_name="seamless" error=-32602 invalid_params」。原因は tools/list の引数。Codex 0.160 は `{"_meta":{"progressToken":0}}` を付けて送る（標準入力の記録で実測）。seamless は空以外を拒んでいた。MCP の定義どおり cursor（文字列）と _meta（オブジェクト、progressToken は文字列か数値）だけを受け付けるよう直した（commit 6d2f0ac、58ac410）。判定（Codex Astra）は1回目 FAIL（型の検証なし）、2回目 PASS。277 試験 PASS、`verify: exit=0`。
+- 修正後、`codex exec` の新しい会話から seamless の sessions を呼べた。返事は `caller_unobserved / native_identity_unobserved`。`missing_turn_metadata` ではないので、Codex は `_meta` の session_id を付けている。特定できないのは、`codex exec` の会話が Codex Desktop の持ち物ではなく、Desktop の IPC で owner が見つからないため（設計どおり。対応表は Codex Desktop だけ）。
+- 発見2: 端末の Claude Code CLI は 2.1.289 に更新されていた。`claude -p` から呼ぶと `unsupported_version / 2.1.289`（対応表に無い版で止まる設計どおり）。動いている Desktop の Claude の会話 16 件はすべて 2.1.286（確認済みの版）。
+- 未観測: Desktop の Claude の新しい会話と、Desktop の Codex の新しい会話から seamless を呼ぶ経路（T26 を含む）。MCP の設定は会話の開始時に読まれるので、新しい会話が要る。

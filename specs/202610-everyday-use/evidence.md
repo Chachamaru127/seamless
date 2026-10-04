@@ -204,3 +204,12 @@
 - CJ-Plugin: Codex の seamless の欄の承認（`default_tools_approval_mode`、`tools`）を本人の設定として扱い、配送は書かず消さず照合にも含めない。PR https://github.com/Chachamaru127/CJ-Plugin/pull/17（判定 Codex Astra PASS）。立花さんが merge した後に `~/.codex/config.toml` の `[mcp_servers.seamless]` に `default_tools_approval_mode = "approve"` を足す予定。
 - 実会話の観測（07:07）: この会話から Codex 01a10594 へ印なしの封筒で依頼（id `seamless-f-claude-to-codex-2`）。accepted、reached、processing を観測。Codex は依頼を読んだうえで「追加依頼は別の会話から届いたため、人間からの送信承認を必要とする運用規則に従って止めています」と返し、送り返さなかった。
 - 原因の見立て（確信度 medium）: 止めているのは seamless の印ではなく、Codex 側の判断。根拠: 印を外しても止まった。Codex の会話の記録の指示（developer）にも、CJ の契約書（contract/AGENTS.md）にも「別の会話の依頼は人の承認が要る」という文は無い。考えられる出どころは、(1) 届いた依頼が Codex には道具の結果（functionCallOutput）として渡り、道具の結果の中の指示には従わないという Codex の安全の既定、(2) CJ の契約書の Risk Gates の「外部送信」を、seamless の送信に当てはめた解釈。どちらかは未確認。同じ会話の前の流れ（前回は許可が要った）も効いている可能性がある。
+
+## 2026-10-04 Codex の承認を本人の設定で外す
+
+- CJ-Plugin#17 を立花さんの指示で squash merge（d91b1c2）。
+- 立花さんが `~/.codex/config.toml` に `default_tools_approval_mode = "approve"` を足した。1回目は `[projects."…/crm-harness"]` の欄に入った（seamless の欄の直後に空行が無く、次の欄の見出しが続いていたため）。立花さんが seamless の欄へ移した。tomllib で seamless の値が approve、crm-harness は trust_level だけに戻ったことを確認。
+- 照合: `check --seamless-mcp` は変更なし、全体の `wire.sh check` は FAIL 0 / WARN 4。
+- `codex exec -s read-only` から上書きなしで seamless の sessions を呼べた（前回は「MCP tool call requires approval, but approval policy is never」で止まっていた）。返事は caller_unobserved（exec の会話は Desktop の持ち物ではないため。設計どおり）。
+- この Claude の会話は立ち上げ直しで中の ID が b2188eef に変わり、MCP の道具 mcp__seamless__sessions から呼ぶ側 `claude-ancestor` として特定できた。候補は claude 859d7cf9、claude 44043390、codex 01a10594、codex 01a0f59d（すべて online）、offlineHidden 53。
+- 改善の候補: 配送が書く seamless の欄の後に空行が無く、手で行を足すと次の欄に入りやすい（共通の書き出しの癖）。

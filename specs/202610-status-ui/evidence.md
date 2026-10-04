@@ -61,3 +61,4 @@
 - 設定を書かない確認: `codex -c 'marketplaces.seamless-local.source_type="local"' -c 'marketplaces.seamless-local.source="<repo>/codex-plugin"' plugin list` で `seamless-status@seamless-local  not installed` と出た。`~/.codex/config.toml` の更新時刻は変わっていない（00:20 のまま）。
 - 起動の確認: `mcp --panel-only` に initialize、tools/list、resources/list を送り、道具は status_panel だけ、資源は ui://seamless/status だけが返った。
 - 残り（承認待ち）: 導入。CJ-Plugin の wire.sh には Codex のプラグインを配る経路がまだ無い。
+- 判定（Codex Astra、別家系）PASS（重大、中なし。b5f3352）。軽: .mcp.json の絶対パスはこの Mac の配置に依存し、導入後もリポジトリの最新のコードを動かす（手元の利用には合う。移設や版の固定には直しが要る）。

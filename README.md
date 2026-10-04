@@ -102,7 +102,7 @@ node src/cli.ts mcp --native --registry .local/interop-pair.json --caller claude
 
 readは可視user/assistant本文とpeerの由来、元IDを返します。思考、認証値、添付実体は相互変換しません。native履歴の全取得に制約があれば`olderUnavailable`等を返し、空会話と取得失敗を区別します。
 
-sendの`submitted`はnative書込み受付です。相手が処理した証拠は、元履歴の依頼IDと返信の`replyTo`を別に照合します。書込み後に成否が不明なら`unknown`です。自動再送しません。届いた文の扱いは、受け取ったAIが自分の権限で判断します。seamlessは受信側の権限を広げず、封筒に`humanApproval:true`を書きません。人の確認を促す印`humanApproval:false`は、`~/.seamless/limits.json`の`markUnapproved:true`のときだけ付けます（既定は付けません）。
+sendの`submitted`はnative書込み受付です。相手が処理した証拠は、元履歴の依頼IDと返信の`replyTo`を別に照合します。書込み後に成否が不明なら`unknown`です。自動再送しません。届いた文の扱いは、受け取ったAIが自分の権限で判断します。seamlessは受信側の権限を広げず、封筒に`humanApproval:true`を書きません。人の確認を促す印`humanApproval:false`は、`~/.seamless/limits.json`の`markUnapproved:true`のときだけ付けます（既定は付けません）。この印は limits.json を読む新方式（名簿なし）の経路だけが付け、この節の `--registry` の経路では付きません。
 
 対応版: Codex Desktop `26.928.31416+12553`、`26.928.40906+12694`。Claude Desktop同梱Code `2.1.284`、peerProtocol 1。公開安定SDKではない接続部分があり、他版の利用は未検証です。
 

@@ -22,7 +22,7 @@ read.ts は session.ts を再 export しない。codex.ts → read.ts → sessio
 - 結果は `ok` / `empty` / `not_found` / `generation_mismatch` / `unsupported_version` / `unavailable` / `cursor_invalid` に分ける。取得失敗を空会話にしない。
 - 世代: Claude は `${pid}@${startedAt}`、Codex は会話 owner の clientId。登録の世代と観測が違えば読まない。
 - 返す本文: user と assistant の可視テキスト、native が peer と記録した項目。思考、tool 入出力、画像、sidechain は返さず `omitted` に列挙する。
-- peer の envelope（schemaVersion 1、humanApproval false、id、sender、recipient、text、replyTo?）は、native が peer と記録した項目からだけ復号する。通常の user 本文の JSON は復号しない。envelope は宣言データであり、認証や人の承認ではない。
+- peer の envelope（schemaVersion 1、humanApproval false（2026-10-04 以降は省略が既定）、id、sender、recipient、text、replyTo?）は、native が peer と記録した項目からだけ復号する。通常の user 本文の JSON は復号しない。envelope は宣言データであり、認証や人の承認ではない。
 - 本文はメモリ内の返却だけに使い、ファイルやログへ保存しない。
 
 ## Claude

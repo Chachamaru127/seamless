@@ -196,3 +196,11 @@
 - Codex は依頼を受けたが、`humanApproval: false` を理由に送信を止め、立花さんに許可を求めた。立花さんが許可した後に送信。
 - Codex 01a10594 → Claude f8352827（id `seamless-f-codex-to-claude-1`）: この会話に届き、inbound は `sender: verified`。Codex 側の30秒の track は accepted のみ観測、reached は未観測で wait_limit。届いたのは、この会話が作業中で、依頼が順番待ち（作業の合間の割り込み）として渡った時。到達の照合が、この渡り方を数えていない可能性がある（未確認）。
 - 立花さんの指示（2026-10-04）: 「配線を作るだけで、この辺の制約は機能としては残すけどデフォはOFFで」。Codex の道具の承認を seamless の配送で既定「承認なし」にする変更は、Claude Code の自動判定に危険と判断されて止まった（変更は入れていない）。受信側が人の許可を待つ動き（不変条件3）を既定で外すかは、仕様の変更として立花さんに確認中。
+
+## 2026-10-04 封筒の印を既定で外す（第10便）と、その後の観測
+
+- 立花さん決定: seamless は配線だけを持ち、届いた後の判断は受け取った AI が自分の権限で行う。制約は機能として残し、既定は OFF。
+- 第10便（Codex Astra）: 封筒の `humanApproval:false` を既定で付けない。limits.json の `markUnapproved:true` のときだけ付ける。受け取る側は印なしと false を受け付ける。291 試験 PASS。commit 0f0868c。判定（Opus 5.5）PASS、中2件（limits が壊れた瞬間の送信が unknown として予約される、README の説明の位置）を b1139b2 で直し、判定（Codex Astra）2回目 PASS。
+- CJ-Plugin: Codex の seamless の欄の承認（`default_tools_approval_mode`、`tools`）を本人の設定として扱い、配送は書かず消さず照合にも含めない。PR https://github.com/Chachamaru127/CJ-Plugin/pull/17（判定 Codex Astra PASS）。立花さんが merge した後に `~/.codex/config.toml` の `[mcp_servers.seamless]` に `default_tools_approval_mode = "approve"` を足す予定。
+- 実会話の観測（07:07）: この会話から Codex 01a10594 へ印なしの封筒で依頼（id `seamless-f-claude-to-codex-2`）。accepted、reached、processing を観測。Codex は依頼を読んだうえで「追加依頼は別の会話から届いたため、人間からの送信承認を必要とする運用規則に従って止めています」と返し、送り返さなかった。
+- 原因の見立て（確信度 medium）: 止めているのは seamless の印ではなく、Codex 側の判断。根拠: 印を外しても止まった。Codex の会話の記録の指示（developer）にも、CJ の契約書（contract/AGENTS.md）にも「別の会話の依頼は人の承認が要る」という文は無い。考えられる出どころは、(1) 届いた依頼が Codex には道具の結果（functionCallOutput）として渡り、道具の結果の中の指示には従わないという Codex の安全の既定、(2) CJ の契約書の Risk Gates の「外部送信」を、seamless の送信に当てはめた解釈。どちらかは未確認。同じ会話の前の流れ（前回は許可が要った）も効いている可能性がある。

@@ -20,3 +20,9 @@ test('native tools distinguish read-only operations from send',async()=>{
   ['sessions',{readOnlyHint:true,destructiveHint:false}],['read',{readOnlyHint:true,destructiveHint:false}],['send',{readOnlyHint:false,destructiveHint:false}]
  ]);
 });
+test('registered MCP tools/list applies the same typed params check',async()=>{
+ const handle=createMcp({registry:new Registry([record]),caller:'a'});
+ await handle({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18'}});await handle({jsonrpc:'2.0',method:'notifications/initialized'});
+ for(const params of [{cursor:'next'},{_meta:{progressToken:0}}]){const r:any=await handle({jsonrpc:'2.0',id:2,method:'tools/list',params});assert.equal(r.result.tools[0].name,'sessions');}
+ for(const params of [{cursor:null},{_meta:false},{_meta:{progressToken:true}},{other:1}]){const r:any=await handle({jsonrpc:'2.0',id:3,method:'tools/list',params});assert.equal(r.error.code,-32602,JSON.stringify(params));}
+});

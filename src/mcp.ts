@@ -5,6 +5,15 @@ import { Discovery } from './discovery.ts';
 import { Registry } from './registry.ts';
 import { ContractError, object } from './protocol.ts';
 const schema={type:'object',properties:{operation:{type:'string',enum:['read','send']},scope:{type:'string',enum:['current_work','same_repository','any_registered']},role:{type:'string'},target:{type:'string'}},required:['operation'],additionalProperties:false};
+// MCP 2025-06-18 PaginatedRequest: cursor is a string, _meta an object whose progressToken is a string or number.
+function listParams(value:unknown):void{
+ const p=object(value,['cursor','_meta']);
+ if(p.cursor!==undefined&&typeof p.cursor!=='string')throw new ContractError();
+ if(p._meta===undefined)return;
+ if(!p._meta||typeof p._meta!=='object'||Array.isArray(p._meta))throw new ContractError();
+ const token=(p._meta as Record<string,unknown>).progressToken;
+ if(token!==undefined&&typeof token!=='string'&&typeof token!=='number')throw new ContractError();
+}
 export function createMcp(options:{registry?:Registry;caller?:string;refresh?:()=>Promise<void>;adapter?:NativeAdapter;automatic?:Automatic;autoOptions?:AutomaticOptions}={}){
  const legacy=options.registry&&options.caller;const automatic=legacy?null:options.automatic??createAutomatic(options.autoOptions);
  const discovery=legacy?new Discovery(options.registry!,options.caller!,{refresh:options.refresh}):null;const delivery=legacy&&options.adapter?new Delivery(options.registry!,options.caller!,options.adapter,{refresh:options.refresh}):null;let initialized=false,ready=false;
@@ -23,8 +32,8 @@ export function createMcp(options:{registry?:Registry;caller?:string;refresh?:()
     initialized=true;ready=false;result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'seamless',version:'0.1.0'}};
    }else if(!ready)return error(-32000,'not_initialized');
    else if(r.method==='ping')result={};
-   else if(r.method==='tools/list'&&automatic){if(r.params!==undefined)object(r.params,['cursor','_meta']);result={tools:automaticTools};}
-   else if(r.method==='tools/list'){if(r.params!==undefined)object(r.params,['cursor','_meta']);result={tools:[{name:'sessions',annotations:{readOnlyHint:true,destructiveHint:false},description:'List explicitly registered and mutually permitted sessions. Selection reflects registered native observations and mutual permissions.',inputSchema:schema},...(delivery?['read','send'].map(name=>({name,annotations:{readOnlyHint:name==='read',destructiveHint:false},description:name==='read'?'Read permitted native visible conversation.':'Send peer-origin request to the selected existing conversation.',inputSchema:{type:'object',properties:{target:{type:'string'},scope:{type:'string',enum:['current_work','same_repository','any_registered']},...(name==='read'?{cursor:{type:'string'},limit:{type:'integer',minimum:1,maximum:100}}:{id:{type:'string'},text:{type:'string'},replyTo:{type:'string'}})},required:name==='send'?['id','text']:[],additionalProperties:false}})):[])]};}
+   else if(r.method==='tools/list'&&automatic){if(r.params!==undefined)listParams(r.params);result={tools:automaticTools};}
+   else if(r.method==='tools/list'){if(r.params!==undefined)listParams(r.params);result={tools:[{name:'sessions',annotations:{readOnlyHint:true,destructiveHint:false},description:'List explicitly registered and mutually permitted sessions. Selection reflects registered native observations and mutual permissions.',inputSchema:schema},...(delivery?['read','send'].map(name=>({name,annotations:{readOnlyHint:name==='read',destructiveHint:false},description:name==='read'?'Read permitted native visible conversation.':'Send peer-origin request to the selected existing conversation.',inputSchema:{type:'object',properties:{target:{type:'string'},scope:{type:'string',enum:['current_work','same_repository','any_registered']},...(name==='read'?{cursor:{type:'string'},limit:{type:'integer',minimum:1,maximum:100}}:{id:{type:'string'},text:{type:'string'},replyTo:{type:'string'}})},required:name==='send'?['id','text']:[],additionalProperties:false}})):[])]};}
    else if(r.method==='tools/call'){
     const p=object(r.params,['name','arguments','_meta']);if(automatic){if(!['sessions','read','send','limits'].includes(p.name as string))return error(-32602,'unknown_tool');const value=await automatic(p.name as string,p.arguments,{kind:'mcp',meta:p._meta});result={content:[{type:'text',text:JSON.stringify(value)}],isError:!['ok','absent','empty','submitted'].includes(value.status)};}else if(p.name==='sessions'){const sessions=await discovery!.sessions(p.arguments);result={content:[{type:'text',text:JSON.stringify(sessions)}],isError:sessions.status!=='ok'};}else if(delivery&&(p.name==='read'||p.name==='send')){const value=p.name==='read'?await delivery.read(p.arguments):await delivery.send(p.arguments);const status=(value as {status?:string})?.status;result={content:[{type:'text',text:JSON.stringify(value)}],isError:!['ok','empty','submitted'].includes(status??'')};}else return error(-32602,'unknown_tool');
    }else return error(-32601,'unknown_method');

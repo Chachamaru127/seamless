@@ -226,7 +226,8 @@ test('delivery persists payload hash and restarted track reads it without plaint
  const payloadSha256=createHash('sha256').update(payload).digest('hex');
  const options={...f.options,inspect:async()=>target,adapter:{...f.options.adapter,send:async()=>({status:'submitted' as const,payloadSha256})}};
  const auto=createAutomatic(options);
- await auto('send',{ticket:issueTicket(target),id:'request',text:'PRIVATE BODY'});
+ const sent=await auto('send',{ticket:issueTicket(target),id:'request',text:'PRIVATE BODY'});
+ assert.deepEqual(sent,{status:'submitted'});
  const stored=await requests(join(f.home,'.seamless','reservations'));
  assert.equal(stored[0].payloadSha256,payloadSha256);assert.ok(!JSON.stringify(stored).includes('PRIVATE BODY'));
  f.setDestination(projectClaudeStructure([JSON.stringify({type:'queue-operation',operation:'enqueue',sessionId:'b',timestamp:'2026-10-04T06:26:03.542Z',content:payload})],'b'));

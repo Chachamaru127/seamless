@@ -1,0 +1,112 @@
+# Independent Review: Session Discovery P1 Spec
+
+**Review Scope:** spec.md, Plans.md, acceptance-matrix.md  
+**Focus Areas:** Symmetric discovery, authorization, scope ranking, trustworthy observations, binding revalidation, CLI process lifetime  
+**Status:** Read-only review of approved P1 scope
+
+---
+
+## PASS (with P2 prerequisites noted)
+
+The three documents are internally consistent and well-bounded. No contradictions found within P1 scope.
+
+### Strengths by Review Focus
+
+**Symmetric Discovery**
+- spec.md D3 (line 48) explicitly requires: "両製品を入れ替えても選択結果の条件が変わらない"
+- acceptance-matrix D3 (line 37 additional case) tests both directions: "callerとtargetを実際に逆転し、Codex→ClaudeとClaude→Codexの選択理由、曖昧性、世代照合が対称"
+- Plans.md separates git-context.ts (read-only) and discovery.ts (candidate logic), enabling pluggable bidirectionality
+- ✓ Symmetry is architected, not assumed
+
+**Authorization**
+- Dual-direction requirement (spec line 30): "送信元と受信先の双方の登録規則で照合する"
+- No one-way exceptions (spec line 19): "片方向だけの特例を作らない"
+- Explicit target does NOT bypass auth (spec line 22): "明示の宛先指定は…認可…を省略しない"
+- Existence opacity (acceptance-matrix D1): "未認可IDを明示しても、存在を漏らさず"
+- ✓ Authorization model is airtight
+
+**Scope Ranking**
+- Three tiers clearly defined (spec line 38): workspace+worktree (1) → same repo other context (2) → different repo (3)
+- Explicit guard: "branch名だけで順位を上げない" (line 38)
+- Same-tier ambiguity blocks auto-select: "同順位が複数ならambiguous"
+- acceptance-matrix D2 (lines 10–14) tests all combinations
+- ✓ Tier system is defensive; branch name alone cannot promote
+
+**Trustworthy Observations**
+- Observation staleness clearly handled (spec line 32): missing / future-dated / >60s / retrieval-failed all excluded
+- TTL centralized (Plans line 20): "60,000ms定数" in protocol.ts (single source of truth)
+- Bootstrap ≠ live observation (Plans line 20–21): "登録者の申告であり、live observationではない"
+- No adapter = `unknown`, selectable false (Plans line 23): "製品用アダプター未接続なのでunknownが正常な結果"
+- Test injection locked to test code (Plans line 23): "CLI / MCPの入力から有効化できない"
+- acceptance-matrix D6 (line 30): "bootstrapにonlineと新しい時刻を記入 | 稼働証拠にはしない。unknownのまま"
+- ✓ Observation staleness and adapter-gap handling is robust
+
+**Binding Revalidation**
+- State machine defined (Plans line 42–43): issued → consumed/expired/superseded/invalid
+- One-time consumption enforced: revalidate success → consumed (no reuse)
+- Superseding on new binding (same caller-target): old binding → superseded
+- Revalidation failure → invalid (no retry)
+- Both caller and target checked for changes (spec line 33): ID/generation/workspace fixation; revocation/swap/caller-workspace-change all trigger rejection
+- acceptance-matrix D5 (lines 23–26, +39) tests lifecycle with target stop, generation change, workspace change, binding expiry, and new binding superseding
+- ✓ Binding lifecycle is clearly specified and guarded
+
+**CLI Process Lifetime**
+- select/revalidate provided **only** in serve mode (Plans line 14): "単発select / revalidateは提供しない"
+- Binding in-memory, no inter-process restoration (Plans line 25): "別プロセスに渡して復元しない"
+- Binding TTL 60s (Plans line 25): "別callerのbinding…invalidとして使い回さない"
+- acceptance-matrix D6 (line 31): "serveへselect、revalidateを連続入力 | 同一プロセスのbindingで照合。終了後の別プロセスでは復元できない"
+- ✓ Process-scoped binding is enforced by API design, not runtime checks alone
+
+---
+
+### P1 Scope Boundaries (correctly drawn)
+
+**In P1:**
+- Registration manifest structure
+- Symmetric discovery and candidate ranking
+- Selection (returns binding) + immediate revalidation
+- Registry read, discovery logic, binding state machine
+
+**Deferred to P2 (noted in acceptance-matrix line 34, 41):**
+- Atomicity guarantee between revalidation and native send
+- Native observation adapter (product runtime status)
+- Actually sending (native send adapter)
+- P2 must verify: if version/workspace/registration changes after revalidation succeeds, send must detect and reject
+
+**Correctly excluded from P1:**
+- Read history (spec line 11)
+- Native messaging (spec line 9)
+- Desktop adoption (spec line 9)
+- External repo write (spec line 11)
+- Config deployment (spec line 11)
+
+---
+
+### Verification Structure
+
+- `bash scripts/verify.sh` maps to D1–D6 acceptance criteria (spec line 36)
+- Real Git fixtures in temp OS directory (Plans line 29)
+- Contract tests before implementation
+- No commits to product/parent repo; no file deletion from worktree
+
+✓ Verification strategy is sound
+
+---
+
+### Minor Notes (Non-blocking)
+
+1. **Attestation gap for P2 handoff:** acceptance-matrix line 34 states revalidation ≠ atomic with send, correctly pushing atomicity to P2. Plans.md should note this explicitly in "Human gates" section when P2 spec arrives, so P2 team verifies the contract (check fixed native ID/generation atomically during send).
+
+2. **Adapter pluggability:** Plans references "신뢰한 관측 어댑터" (trusted observation adapters) but doesn't list initial adapters or their registration. This is correct for P1 (no adapter needed, `unknown` is correct result), but P2 must clarify adapter pluggability. Not blocking P1.
+
+---
+
+## Verdict
+
+**REQUEST_CHANGES: No** — Spec, Plans, and acceptance matrix align on all six review focus areas.
+
+**PASS** ✓
+
+All P1 scope boundaries are respected. Symmetric discovery is architected. Authorization is dual-direction with no one-way exceptions. Scope ranking is three-tier with ambiguity handling. Observations are separated (bootstrap vs live) with staleness checks and failed reads as `unknown`. Binding lifecycle is defined with one-time consumption. CLI process lifetime is enforce by API design (serve-only select/revalidate).
+
+P2 atomicity prerequisite is clearly noted in acceptance-matrix. Ready for implementation phase.

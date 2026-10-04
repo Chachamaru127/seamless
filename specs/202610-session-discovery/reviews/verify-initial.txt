@@ -1,0 +1,311 @@
+TAP version 13
+# Subtest: both providers and actual caller reversal use the same selection conditions
+ok 1 - both providers and actual caller reversal use the same selection conditions
+  ---
+  duration_ms: 2.438916
+  type: 'test'
+  ...
+# Subtest: authorized projection has no grants, credentials, transcript or extra observation fields
+ok 2 - authorized projection has no grants, credentials, transcript or extra observation fields
+  ---
+  duration_ms: 0.261375
+  type: 'test'
+  ...
+# Subtest: one outbound grant is insufficient, and unauthorized targets equal missing targets
+ok 3 - one outbound grant is insufficient, and unauthorized targets equal missing targets
+  ---
+  duration_ms: 0.604375
+  type: 'test'
+  ...
+# Subtest: one-way complete grant exposes send only in its permitted direction
+ok 4 - one-way complete grant exposes send only in its permitted direction
+  ---
+  duration_ms: 0.37575
+  type: 'test'
+  ...
+# Subtest: equal rank ambiguity does not issue a binding
+ok 5 - equal rank ambiguity does not issue a binding
+  ---
+  duration_ms: 0.247542
+  type: 'test'
+  ...
+# Subtest: role exact filter ignores unknown different-role candidates
+ok 6 - role exact filter ignores unknown different-role candidates
+  ---
+  duration_ms: 0.193542
+  type: 'test'
+  ...
+# Subtest: same repository other worktree is visible but outside default scope
+ok 7 - same repository other worktree is visible but outside default scope
+  ---
+  duration_ms: 0.383625
+  type: 'test'
+  ...
+# Subtest: different clone or repository requires any_registered scope
+ok 8 - different clone or repository requires any_registered scope
+  ---
+  duration_ms: 0.242
+  type: 'test'
+  ...
+# Subtest: logical workspaces sharing parent git root stay distinct
+ok 9 - logical workspaces sharing parent git root stay distinct
+  ---
+  duration_ms: 0.426916
+  type: 'test'
+  ...
+# Subtest: same worktree with mismatched branch or HEAD is not current_work
+ok 10 - same worktree with mismatched branch or HEAD is not current_work
+  ---
+  duration_ms: 0.701625
+  type: 'test'
+  ...
+# Subtest: absent observation prevents selecting
+ok 11 - absent observation prevents selecting
+  ---
+  duration_ms: 0.401125
+  type: 'test'
+  ...
+# Subtest: stale observation prevents selecting
+ok 12 - stale observation prevents selecting
+  ---
+  duration_ms: 0.176791
+  type: 'test'
+  ...
+# Subtest: future observation prevents selecting
+ok 13 - future observation prevents selecting
+  ---
+  duration_ms: 0.084875
+  type: 'test'
+  ...
+# Subtest: failure observation prevents selecting
+ok 14 - failure observation prevents selecting
+  ---
+  duration_ms: 0.060375
+  type: 'test'
+  ...
+# Subtest: generation observation prevents selecting
+ok 15 - generation observation prevents selecting
+  ---
+  duration_ms: 0.080375
+  type: 'test'
+  ...
+# Subtest: offline observation prevents selecting
+ok 16 - offline observation prevents selecting
+  ---
+  duration_ms: 0.066917
+  type: 'test'
+  ...
+# Subtest: stale outside-scope candidate blocks fallback to fresh best candidate
+ok 17 - stale outside-scope candidate blocks fallback to fresh best candidate
+  ---
+  duration_ms: 0.13275
+  type: 'test'
+  ...
+# Subtest: native observed workspace outranks declaration and display-name instructions are inert
+ok 18 - native observed workspace outranks declaration and display-name instructions are inert
+  ---
+  duration_ms: 0.159125
+  type: 'test'
+  ...
+# Subtest: self target is rejected
+ok 19 - self target is rejected
+  ---
+  duration_ms: 0.060792
+  type: 'test'
+  ...
+# Subtest: binding rejects offline change
+ok 20 - binding rejects offline change
+  ---
+  duration_ms: 0.316959
+  type: 'test'
+  ...
+# Subtest: binding rejects generation change
+ok 21 - binding rejects generation change
+  ---
+  duration_ms: 0.178792
+  type: 'test'
+  ...
+# Subtest: binding rejects branch change
+ok 22 - binding rejects branch change
+  ---
+  duration_ms: 0.464459
+  type: 'test'
+  ...
+# Subtest: binding rejects head change
+ok 23 - binding rejects head change
+  ---
+  duration_ms: 0.35875
+  type: 'test'
+  ...
+# Subtest: binding rejects workspace change
+ok 24 - binding rejects workspace change
+  ---
+  duration_ms: 1.191834
+  type: 'test'
+  ...
+# Subtest: binding rejects caller change
+ok 25 - binding rejects caller change
+  ---
+  duration_ms: 0.478084
+  type: 'test'
+  ...
+# Subtest: binding rejects revocation change
+ok 26 - binding rejects revocation change
+  ---
+  duration_ms: 0.183709
+  type: 'test'
+  ...
+# Subtest: binding rejects nativeId change
+ok 27 - binding rejects nativeId change
+  ---
+  duration_ms: 0.373333
+  type: 'test'
+  ...
+# Subtest: binding expiry, consumption and supersession are enforced
+ok 28 - binding expiry, consumption and supersession are enforced
+  ---
+  duration_ms: 0.629208
+  type: 'test'
+  ...
+# Subtest: unknown binding is rejected and dirty changes do not invalidate identity
+ok 29 - unknown binding is rejected and dirty changes do not invalidate identity
+  ---
+  duration_ms: 0.37025
+  type: 'test'
+  ...
+# Subtest: parallel revalidation succeeds once
+ok 30 - parallel revalidation succeeds once
+  ---
+  duration_ms: 0.293875
+  type: 'test'
+  ...
+# Subtest: expiration during observer await is checked again
+ok 31 - expiration during observer await is checked again
+  ---
+  duration_ms: 0.6415
+  type: 'test'
+  ...
+# Subtest: production registry has no live observer
+ok 32 - production registry has no live observer
+  ---
+  duration_ms: 0.364334
+  type: 'test'
+  ...
+# Subtest: query and bootstrap reject spoofing, secrets, fake online, identity duplicates and self grants
+ok 33 - query and bootstrap reject spoofing, secrets, fake online, identity duplicates and self grants
+  ---
+  duration_ms: 0.901
+  type: 'test'
+  ...
+# Preparing worktree (checking out 'main')
+# Subtest: actual worktrees, clones, detached, unborn and no Git remain distinct
+ok 34 - actual worktrees, clones, detached, unborn and no Git remain distinct
+  ---
+  duration_ms: 1581.615584
+  type: 'test'
+  ...
+# Subtest: configured fsmonitor and clean/process filters are never executed
+ok 35 - configured fsmonitor and clean/process filters are never executed
+  ---
+  duration_ms: 293.878333
+  type: 'test'
+  ...
+# Subtest: missing cwd and failing or timed out runner are unknown
+ok 36 - missing cwd and failing or timed out runner are unknown
+  ---
+  duration_ms: 0.83975
+  type: 'test'
+  ...
+# Subtest: default subprocess timeout kills a slow Git executable
+ok 37 - default subprocess timeout kills a slow Git executable
+  ---
+  duration_ms: 5003.509833
+  type: 'test'
+  ...
+# Subtest: production CLI and MCP sessions share output and ignore environment online injection
+ok 38 - production CLI and MCP sessions share output and ignore environment online injection
+  ---
+  duration_ms: 159.581208
+  type: 'test'
+  ...
+# Subtest: serve rejects sender spoof and unsupported operation; consumes binding once
+ok 39 - serve rejects sender spoof and unsupported operation; consumes binding once
+  ---
+  duration_ms: 144.974375
+  type: 'test'
+  ...
+# Subtest: persistent process refuses revoked registry on next request
+ok 40 - persistent process refuses revoked registry on next request
+  ---
+  duration_ms: 120.827333
+  type: 'test'
+  ...
+# Subtest: persistent process refuses invalid registry on next request
+ok 41 - persistent process refuses invalid registry on next request
+  ---
+  duration_ms: 65.999208
+  type: 'test'
+  ...
+# Subtest: persistent process refuses caller-replaced registry on next request
+ok 42 - persistent process refuses caller-replaced registry on next request
+  ---
+  duration_ms: 57.953459
+  type: 'test'
+  ...
+# Subtest: oversized and malformed lines are sanitized and subsequent request works
+ok 43 - oversized and malformed lines are sanitized and subsequent request works
+  ---
+  duration_ms: 56.482875
+  type: 'test'
+  ...
+# Subtest: CLI rejects online bootstrap without echoing values
+ok 44 - CLI rejects online bootstrap without echoing values
+  ---
+  duration_ms: 57.064875
+  type: 'test'
+  ...
+# Subtest: CLI rejects self-grant bootstrap without echoing values
+ok 45 - CLI rejects self-grant bootstrap without echoing values
+  ---
+  duration_ms: 54.412292
+  type: 'test'
+  ...
+# Subtest: CLI rejects duplicate bootstrap without echoing values
+ok 46 - CLI rejects duplicate bootstrap without echoing values
+  ---
+  duration_ms: 60.002
+  type: 'test'
+  ...
+# Subtest: CLI rejects mode bootstrap without echoing values
+ok 47 - CLI rejects mode bootstrap without echoing values
+  ---
+  duration_ms: 59.196458
+  type: 'test'
+  ...
+# Subtest: CLI rejects symlink bootstrap without echoing values
+ok 48 - CLI rejects symlink bootstrap without echoing values
+  ---
+  duration_ms: 66.556292
+  type: 'test'
+  ...
+# Subtest: CLI rejects json-secret bootstrap without echoing values
+ok 49 - CLI rejects json-secret bootstrap without echoing values
+  ---
+  duration_ms: 66.460583
+  type: 'test'
+  ...
+# Subtest: MCP rejects spoof arguments and unknown read/send tools
+ok 50 - MCP rejects spoof arguments and unknown read/send tools
+  ---
+  duration_ms: 63.712
+  type: 'test'
+  ...
+1..50
+# tests 50
+# suites 0
+# pass 50
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6967.35975

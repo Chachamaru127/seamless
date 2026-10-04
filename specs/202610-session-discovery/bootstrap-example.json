@@ -1,0 +1,76 @@
+{
+  "sessions": [
+    {
+      "id": "codex-example",
+      "provider": "codex",
+      "nativeId": "replace-with-registered-native-session-id",
+      "generation": "replace-with-observed-runtime-generation",
+      "host": "local",
+      "displayName": "探索側",
+      "role": "implementation",
+      "workspace": "/Users/tachibanashuuta/LocalWork/Code/claudex",
+      "operations": [
+        "read",
+        "send"
+      ],
+      "grants": [
+        {
+          "peer": "claude-example",
+          "operation": "read",
+          "direction": "outbound"
+        },
+        {
+          "peer": "claude-example",
+          "operation": "read",
+          "direction": "inbound"
+        },
+        {
+          "peer": "claude-example",
+          "operation": "send",
+          "direction": "outbound"
+        },
+        {
+          "peer": "claude-example",
+          "operation": "send",
+          "direction": "inbound"
+        }
+      ]
+    },
+    {
+      "id": "claude-example",
+      "provider": "claude",
+      "nativeId": "replace-with-registered-native-session-id",
+      "generation": "replace-with-observed-runtime-generation",
+      "host": "local",
+      "displayName": "検査側",
+      "role": "review",
+      "workspace": "/Users/tachibanashuuta/LocalWork/Code/claudex",
+      "operations": [
+        "read",
+        "send"
+      ],
+      "grants": [
+        {
+          "peer": "codex-example",
+          "operation": "read",
+          "direction": "outbound"
+        },
+        {
+          "peer": "codex-example",
+          "operation": "read",
+          "direction": "inbound"
+        },
+        {
+          "peer": "codex-example",
+          "operation": "send",
+          "direction": "outbound"
+        },
+        {
+          "peer": "codex-example",
+          "operation": "send",
+          "direction": "inbound"
+        }
+      ]
+    }
+  ]
+}

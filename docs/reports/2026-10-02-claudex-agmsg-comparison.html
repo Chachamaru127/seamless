@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>claudex と agmsg の比較 | 2026-10-02</title>
+  <style>
+    :root {
+      --ink: #17212b;
+      --muted: #596875;
+      --paper: #f4f6f8;
+      --panel: #fff;
+      --line: #d7dfe5;
+      --navy: #182433;
+      --blue: #315e83;
+      --blue-pale: #eaf2f8;
+      --green: #236345;
+      --green-pale: #eaf5ef;
+      --amber: #805800;
+      --amber-pale: #fbf3dc;
+      --red: #8a3836;
+      --red-pale: #f9eceb;
+      --shadow: 0 12px 32px rgb(23 33 43 / 7%);
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; line-height: 1.65; }
+    button, select { font: inherit; }
+    a { color: #174f7b; text-underline-offset: .16em; }
+    :focus-visible { outline: 3px solid #e29a23; outline-offset: 3px; }
+    .hero {
+      color: #f8fbff;
+      background: linear-gradient(118deg, #182433, #29445d 72%, #3c617c);
+      padding: clamp(1.5rem, 5vw, 3.5rem) max(1rem, calc((100vw - 1180px) / 2));
+    }
+    .hero-inner { max-width: 1180px; margin: auto; }
+    .eyebrow { margin: 0 0 .7rem; color: #c6d7e4; font-size: .78rem; font-weight: 700; letter-spacing: .13em; }
+    h1 { max-width: 850px; margin: 0; font-size: clamp(1.8rem, 4vw, 3rem); line-height: 1.2; letter-spacing: -.035em; }
+    .dek { max-width: 800px; margin: 1rem 0 0; color: #e1eaf1; font-size: 1.05rem; }
+    .thesis { max-width: 900px; margin: 1.3rem 0 0; padding: .75rem 1rem; border-left: 4px solid #9bc2df; background: rgb(255 255 255 / 8%); font-weight: 700; }
+    .meta { display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; margin-top: 1.2rem; color: #cfdae3; font-size: .83rem; }
+    main { width: min(1180px, calc(100% - 2rem)); margin: 1.4rem auto 4rem; }
+    section { margin: 1.2rem 0; }
+    .panel { padding: clamp(1rem, 2.4vw, 1.6rem); border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow); }
+    h2 { margin: 0 0 .8rem; font-size: clamp(1.2rem, 2.2vw, 1.55rem); line-height: 1.3; }
+    h3 { margin: 0 0 .4rem; font-size: 1rem; }
+    p { margin: .45rem 0; }
+    .plain { font-size: 1.02rem; }
+    .scope-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; margin-top: 1rem; }
+    .scope-grid.progress-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .scope-item { min-width: 0; padding: .9rem; border-radius: 12px; background: #f2f5f7; border: 1px solid #e2e8ed; }
+    .scope-item strong { display: block; margin-bottom: .3rem; font-size: .86rem; }
+    .scope-item span { color: var(--muted); font-size: .9rem; }
+    .status { display: inline-flex; align-items: center; gap: .4rem; padding: .24rem .62rem; border: 1px solid currentColor; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+    .status.pending { color: var(--amber); background: var(--amber-pale); }
+    .controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; margin: 1rem 0; }
+    .control { display: grid; gap: .35rem; }
+    .control label { font-size: .84rem; font-weight: 700; }
+    select { width: 100%; min-height: 46px; padding: .55rem .75rem; color: var(--ink); border: 1px solid #9baab5; border-radius: 9px; background: white; }
+    .view-panel[hidden], .scenario-panel[hidden] { display: none !important; }
+    .view-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+    .score-placeholder { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .75rem; margin: 1rem 0; padding: 1rem; border: 1px dashed #b2bec7; border-radius: 12px; background: #f8fafb; }
+    .score-placeholder strong { font-size: 1.15rem; }
+    .score-na { min-width: 72px; padding: .35rem .6rem; text-align: center; font-weight: 800; border: 1px solid #8a969e; border-radius: 8px; background: #fff; }
+    .axes { width: 100%; border-collapse: collapse; }
+    .axes th, .axes td { padding: .7rem .55rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .axes th { font-size: .82rem; color: var(--muted); }
+    .axes td:last-child { white-space: nowrap; font-weight: 700; }
+    .score-axis tr.hit { background: var(--green-pale); }
+    .score-axis tr.gap { background: var(--red-pale); }
+    .caveat { margin-top: .9rem; padding: .8rem 1rem; border-left: 4px solid #c18a22; border-radius: 0 10px 10px 0; background: var(--amber-pale); }
+    .scenario-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem; margin-top: .8rem; }
+    .scenario-card { padding: 1rem; border: 1px solid var(--line); border-radius: 12px; background: #fafcfd; }
+    .scenario-card.native { border-top: 4px solid var(--blue); }
+    .scenario-card.inbox { border-top: 4px solid var(--green); }
+    .path { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin: .75rem 0; font-size: .9rem; font-weight: 700; }
+    .path span { padding: .28rem .5rem; border: 1px solid #c8d3db; border-radius: 7px; background: white; }
+    .path b { color: var(--muted); }
+    .pending-copy { padding: .7rem; border-radius: 8px; background: #f0f3f5; color: var(--muted); }
+    details { margin-top: .75rem; border-top: 1px solid var(--line); padding-top: .65rem; }
+    summary { cursor: pointer; font-weight: 700; }
+    .evidence-list { padding-left: 1.2rem; }
+    .evidence-list li { margin: .45rem 0; overflow-wrap: anywhere; }
+    footer { color: var(--muted); font-size: .86rem; }
+    .footer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    @media (max-width: 760px) {
+      .scope-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .scope-grid.progress-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .scenario-grid, .controls, .footer-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 560px) {
+      main { width: calc(100% - 1rem); }
+      .hero { padding-inline: 1rem; }
+      .scope-grid { grid-template-columns: 1fr; }
+      .panel { border-radius: 12px; }
+      .axes { display: block; border-collapse: separate; }
+      .axes thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+      .axes tbody, .axes tr { display: block; width: 100%; }
+      .axes tr { margin: .75rem 0; padding: .35rem .7rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+      .axes td { display: grid; grid-template-columns: minmax(6rem, 29%) minmax(0, 1fr); gap: .6rem; padding: .55rem 0; border-bottom: 1px solid #e6ebef; white-space: normal !important; overflow-wrap: anywhere; }
+      .axes td::before { color: var(--muted); font-size: .78rem; font-weight: 700; }
+      .score-axis td:nth-child(1)::before { content: "利用者のニーズ"; }
+      .score-axis td:nth-child(2)::before { content: "重み"; }
+      .score-axis td:nth-child(3)::before { content: "agmsg v1.5.1"; }
+      .score-axis td:nth-child(4)::before { content: "claudex P1"; }
+      .score-axis td:nth-child(5)::before { content: "根拠・理由・確信度"; }
+      .scope-axis td:nth-child(1)::before { content: "状況"; }
+      .scope-axis td:nth-child(2)::before { content: "同じ作業場所"; }
+      .scope-axis td:nth-child(3)::before { content: "同じローカルrepo"; }
+      .scope-axis td:nth-child(4)::before { content: "理由"; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+    @media print {
+      :root { background: white; }
+      body { color: #111; font-size: 10pt; }
+      .hero { padding: 1rem 0; color: #111; background: white; border-bottom: 2px solid #24384a; }
+      .hero .eyebrow, .hero .dek, .meta { color: #333; }
+      .thesis { background: white; }
+      main { width: 100%; margin: 1rem 0; }
+      .panel { box-shadow: none; break-inside: avoid; }
+      .controls { display: none; }
+      .view-panel[hidden], .scenario-panel[hidden] { display: block !important; }
+      details:not([open]) > :not(summary) { display: block !important; }
+      a { color: #111; text-decoration: none; }
+      .score-placeholder, .pending-copy, .scope-item { background: white; }
+      footer { margin-top: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">CLAUDEX × AGMSG · 比較レポート</p>
+      <h1>claudex と agmsg は、今どこまで比べられるか</h1>
+      <p class="dek">2026年10月2日時点。agmsg は安定版 v1.5.1（commit <code>4a712f2</code>（ソースコードの特定保存版））、claudex は第1段階（P1）の現行記録で比べる。</p>
+      <p class="thesis">今日、コマンド画面で使うAI同士のメッセージ連携はagmsgが先行する。たとえば、登録済みの相手へ送る中継メッセージはagmsg v1.5.1で使える。既存Codex会話を直接読む用途は別で、claudexは10月1日の手動実験で方式を確認しただけ。通常製品への会話読取り・返信接続はこれからであり、総合的な優劣は判定しない。</p>
+      <div class="meta"><span>観測日: 2026-10-02 JST</span><span>agmsg: v1.5.1 / 固定commit 4a712f2</span><span>claudex: 2026-10-02 第1段階の現行コード</span><span>本レポートは派生物であり、製品仕様の正本ではない</span></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel" aria-labelledby="progress-title">
+      <h2 id="progress-title">claudexの現在地</h2>
+      <div class="scope-grid progress-grid">
+        <div class="scope-item"><strong>プロジェクトの目的</strong><span>既存のCodex / Claude会話を、別の作業中セッションから読み、返信できる連携を作る。</span></div>
+        <div class="scope-item"><strong>全体進捗</strong><span>製品全体の百分率は未算定。工程ごとの重みがないため。探索コア（相手候補を探し、許可と作業場所から候補を絞る基本部品）は定義範囲で100%完了。66項目の試験は全件成功、厳密な型検査も成功し、独立実装レビューも合格した。</span></div>
+        <div class="scope-item"><strong>今の作業</strong><span>第1段階（P1）の探索コアまで完了。元アプリの会話を確かめる接続部、読取り・送信部品、普段の設定から使う接続は未接続。10月1日の手動実験は別の限定環境で、実装の完了を意味しない。</span></div>
+        <div class="scope-item"><strong>何のため</strong><span>共通の接続口（MCP。AIアプリから共通の道具を呼ぶ仕組み）は候補一覧だけを返す。相手を選ぶ処理（CLI（コマンド画面の道具）にある `select`）は、現在 `caller_unobserved`（呼出し元を観測できない）で停止する。呼出し元の会話が起動中か、どの会話IDと作業場所かを確かめる接続部が未接続のため。</span></div>
+        <div class="scope-item"><strong>次に進めるタスク</strong><span>次は既存計画に沿い、実会話を観測する接続部と読取り・送信を製品へつなぐ。今回の比較ではその実装や導入は行っていない。完了条件は通常のCodex / Claudeから実会話の読取りと往復が統合試験で通ること。</span></div>
+      </div>
+      <details>
+        <summary>製品実装と方式実験の境界</summary>
+        <ol>
+          <li><strong>第1段階の探索コア:</strong> 登録情報、読取り・送信の許可、作業場所から候補を分類する基本部品。66/66試験の実終了コード0、厳密型検査の実終了コード0、独立実装レビューにも合格した。</li>
+          <li><strong>10月1日の方式実験:</strong> CLI（コマンド画面の道具）とDesktop（デスクトップアプリ）の専用条件で、既存会話の読取りと返信を手動確認した。Claude Desktop fixture（試験専用の会話や環境）を含む限定実験で、通常製品の機能ではない。</li>
+          <li><strong>未接続の製品部分:</strong> 元アプリの会話を確かめる接続部、読取り・送信部品、Desktopへの常用登録、共通の接続口（MCP）を通した統合動作。</li>
+          <li><strong>次の段階:</strong> 次の段階は既存計画に沿う製品接続の実装。今回は比較を行い、実装・導入はしていない。</li>
+        </ol>
+      </details>
+    </section>
+
+    <section class="panel" aria-labelledby="summary-title">
+      <h2 id="summary-title">ひとことで</h2>
+      <p class="plain">agmsg v1.5.1は、SQLite（手元のメッセージを保存するデータベース）へ記録し、別のコマンド画面で使うAIへ届ける機能を公開している。claudexの第1段階（P1）は、相手候補と許可を絞る共通部品まで試験済み。普段の利用から既存会話を観測し、読み書きする接続はまだない。</p>
+      <p>同じセッションを読む場合は、会話本文を直接読む道と、受信箱へ届いたメッセージを読む道が別になる。将来の設計案は現状点へ足さない。</p>
+    </section>
+
+    <section class="panel" aria-labelledby="comparison-title">
+      <div class="view-heading">
+        <h2 id="comparison-title">二つの見方で比較する</h2>
+        <span class="status pending">根拠に基づく限定段階点</span>
+      </div>
+      <div class="controls">
+        <div class="control">
+          <label for="view-select">比較する問い</label>
+          <select id="view-select" aria-controls="view-current view-fit">
+            <option value="current">今使える範囲</option>
+            <option value="fit">立花さんの目的への適合</option>
+          </select>
+        </div>
+        <div class="control">
+          <label for="scenario-select">同じセッションの読み方</label>
+          <select id="scenario-select" aria-controls="scenario-native scenario-inbox">
+            <option value="native">セッションを直接読む</option>
+            <option value="inbox">受信箱の内容を読む</option>
+          </select>
+        </div>
+      </div>
+      <p id="control-status" class="sr-only" aria-live="polite">今使える範囲。セッションを直接読む。</p>
+
+      <div id="view-current" class="view-panel" aria-labelledby="current-title">
+        <h3 id="current-title">今使える範囲</h3>
+        <p>製品として今使える機能と、実験で動いた方式やテスト済みコアを分ける。</p>
+        <div class="scenario-grid">
+          <article class="scenario-card inbox"><h3>agmsg v1.5.1</h3><p><strong>公開製品の段階3:</strong> チーム名とagent名（登録名）を登録し、SQLite受信箱にメッセージを送る。Claude Code Monitor（起動中の相手に知らせる監視機能）またはturn hook（AIが応答を終えた後の処理）で通知し、履歴を後のセッションへ渡せる。</p><p><strong>実機確認:</strong> このMacでは未導入。実会話と実性能は未確認。Codex Desktopの既存会話に接続できる根拠もない。</p></article>
+          <article class="scenario-card native"><h3>claudex 第1段階（P1）</h3><p><strong>探索共通コアの段階2:</strong> 66/66試験と厳密な型検査が成功した。相手、読取り・送信の許可、作業場所から候補を絞る規則を確認した。</p><p><strong>既存会話を読む・返信する製品機能の段階0:</strong> 元アプリの会話を確かめる接続部が未接続。通常の接続口は候補一覧までで、会話の読取り・返信を提供しない。10月1日の手動実験は段階1の別記録で、P1製品ではない。</p></article>
+        </div>
+        <p class="caveat"><strong>実際に誰が何を見られるか:</strong> agmsgは同じteam（登録グループ）に参加し、受信箱を確認するコマンド画面のAIへ、agmsg宛のメッセージを届ける。claudex第1段階は相手候補の一覧までで、通常利用では既存Claude/Codex会話本文を読めず、返信も送れない。</p>
+        <details>
+          <summary>claudexが作業場所を分ける4ケース</summary>
+          <p>下の分類は試験済みの探索コアが持つ規則である。元アプリの会話を確かめる接続部がまだないため、通常製品が実会話から相手を自動分類しているわけではない。</p>
+          <div class="table-wrap"><table class="axes scope-axis">
+            <caption class="sr-only">同じブランチ名やリモートURLだけで誤って同じ作業場所と見なさないための4ケース</caption>
+            <thead><tr><th scope="col">状況</th><th scope="col">同じ作業場所</th><th scope="col">同じローカルrepo</th><th scope="col">理由</th></tr></thead>
+            <tbody>
+              <tr><td>同じ登録作業場所、同じworktree（作業フォルダ）、branch（Gitの作業枝）とHEAD（その枝が指すcommit位置）も一致</td><td>候補にできる</td><td>候補にできる</td><td>最も近い一致。登録・許可・live観測も必要。</td></tr>
+              <tr><td>同じローカルrepo、別の枝・worktree</td><td>候補にしない</td><td>候補にできる</td><td>別worktree。対象範囲を広げる許可を明示した場合だけ候補。</td></tr>
+              <tr><td>枝名は同じ、作業フォルダは別</td><td>候補にしない</td><td>候補にできる</td><td>branch（Gitの作業枝）名だけで同じ作業場所とは見なさない。</td></tr>
+              <tr><td>取得元URLは同じ、clone（取得した作業コピー）は別</td><td>候補にしない</td><td>候補にしない</td><td>別のローカルrepo（ソースコードの保管場所）。`any_registered`（登録済み全体）を明示した場合だけ候補。</td></tr>
+            </tbody>
+          </table></div>
+          <p>同順位が複数、観測が古い、または取得できない場合は選択を止める。別の候補へ自動で乗り換えない。再照合bindingは60秒で失効する。</p>
+          <p>agmsgは同じteam（登録グループ）のAI登録名なら、登録project（利用者が登録した作業場所）をまたいで共通の受信箱へ届ける。Git common-dir（worktree間で共有するGit情報の場所）はprojectの特定に使うが、branchやworktreeが一致する相手だけに配送する条件ではない。</p>
+        </details>
+      </div>
+
+      <div id="view-fit" class="view-panel" aria-labelledby="fit-title" hidden>
+        <h3 id="fit-title">立花さんの目的への適合</h3>
+        <p>8つの実用ニーズへ両方に同じ重みを適用して並べる。点数が表すのは機能の実現段階であり、品質、速さ、安全性、最終的な優劣ではない。</p>
+        <div class="score-placeholder"><div><strong>限定実験を含む到達段階。今日使える製品点でも完成率でもない</strong><br><span>共有対象で agmsg は 38.8 / 100、claudex は 26.1 / 100。共有対象重みは 85 / 100。agmsgは公開版に統合された機能段階を評価。claudexの点には限定手動実験と単体コアの結果を含む。</span></div><span class="score-na" aria-label="製品完成率や品質スコアではない">段階点</span></div>
+        <details>
+          <summary>段階点と重み付き計算の方法</summary>
+          <p><strong>0:</strong> 機能が未提供とソースで確認。<strong>1:</strong> 手動・限定的な方式確認。<strong>2:</strong> 独立したコアの実装・試験。<strong>3:</strong> 公開コードと利用方法が統合して文書化済み。<strong>4:</strong> 対象環境で製品の実会話を通して確認。<strong>5:</strong> 運用条件を変えた反復確認。</p>
+          <p>総合点 = Σ（段階点 × 重み）÷（5 × 共有対象重み）× 100。どちらかがN/Aの軸は、両側の総合点から外す。N/Aは0点ではない。今回はagmsgのDesktop接続15点だけが該当し、共有対象重みは85。小数1桁へ丸める。100点満点は製品の完成率、品質、性能を意味しない。</p>
+          <p>最高段階は、その行に明記した機能だけに付ける。複合機能の未確認部分は本文と確信度に残し、段階点を足さない。</p>
+        </details>
+        <div class="table-wrap">
+          <table class="axes score-axis">
+            <caption class="sr-only">機能の実現段階と目的への対応。点数、重み、根拠、確信度を示します。</caption>
+            <thead><tr><th scope="col">利用者のニーズ</th><th scope="col">重み</th><th scope="col">agmsg v1.5.1</th><th scope="col">claudex P1</th><th scope="col">根拠・理由・確信度</th></tr></thead>
+            <tbody>
+              <tr><td>既存セッションの元会話履歴を直接読む</td><td>20</td><td>0<br><small>公開機能はteam内のroom（会話グループ）履歴</small></td><td>1<br><small>手動方式検証</small></td><td>agmsgの公開 `inbox`（受信箱）/ `history`（履歴）はteam内のroom（会話グループ）を読む。Codex / Claudeの元会話を読む公開コマンドはない。claudexは10/1にCLI方式を確認したが、P1製品は未接続。<br><a href="2026-10-02-agmsg-primary-research.md">一次比較（19行）</a> · <a href="2026-10-02-claudex-current-audit.md">実機方式検証（26行）</a><br>確信度: 高</td></tr>
+              <tr class="hit"><td>相手へ送信し、返信を受けて知らせる</td><td>15</td><td>3<br><small>公開統合済み</small></td><td>1<br><small>手動方式検証</small></td><td>agmsgはSQLite受信箱と複数の通知方法を公開。Codex monitor（Codex起動時の監視）を使う場合は、shell関数/PATH shim（起動方法をつなぐ設定）または `codex-monitor.sh` から起動し、保存先への書込み許可とCodexの再起動が必要。すでに起動中のCodexには再起動まで届かない。README内のCodex通知表現は専用monitor資料と一致しない箇所があり、実機確認とは数えない。claudexの送受信は試験専用MCPの記録でP1製品には未接続。<br><a href="2026-10-02-agmsg-primary-research.md">機能範囲（20行）</a> · <a href="2026-10-02-agmsg-primary-research.md">Codex monitor資料差（32行）</a> · <a href="2026-10-02-claudex-current-audit.md">claudex実験（26行）</a><br>確信度: 中（Codex monitorの文書差）</td></tr>
+              <tr><td>既存Desktop会話へ接続する</td><td>15</td><td>N/A<br><small>公開資料で未確認</small></td><td>1<br><small>手動方式検証</small></td><td>agmsg v1.5.1の資料ではCodex Desktop既存会話への接続を確認できないためN/A。claudexは10/1に既存Codex会話とClaude Desktop fixtureでread/replyを手動確認。P1に常用接続はない。<br><a href="2026-10-02-agmsg-primary-research.md">未確認項目（66行）</a> · <a href="2026-10-02-claudex-current-audit.md">Desktop検証条件（28行）</a><br>確信度: 高（claudex記録）/ N/A（agmsg）</td></tr>
+              <tr class="hit"><td>相手を登録・発見して選ぶ</td><td>12</td><td>3<br><small>team/name登録</small></td><td>2<br><small>探索コア試験済み</small></td><td>agmsgはteamとagent identityを登録。claudexは探索・候補分類の共通コアが通ったが、元アプリの会話を観測する接続部が未接続。<br><a href="2026-10-02-agmsg-primary-research.md">宛先と作業場所（22行）</a> · <a href="2026-10-02-claudex-current-audit.md">コア検収範囲（18行）</a><br>確信度: 高</td></tr>
+              <tr><td>送信者と許可範囲を確かめる</td><td>12</td><td>3<br><small>登録teamを前提</small></td><td>2<br><small>読取り・送信の許可を試験済み</small></td><td>agmsgはteam/name登録を前提にする。`from`（送信者名）は呼出し側が指定し、`--force`で登録確認を迂回できる。接続実体からの送り主確認や操作ごとの許可はない。claudexは呼出し側と受け手側それぞれの読取り・送信許可を要求する一方、呼出し側を示す値だけで本人確認はできない。<br><a href="2026-10-02-agmsg-primary-research.md">許可と送り主（23行）</a><br>確信度: 高（機能範囲。セキュリティ全般の点数ではない）</td></tr>
+              <tr><td>repo（ソースコードの保管場所）/worktree（そこから分けた作業フォルダ）の一致条件で相手を絞る</td><td>10</td><td>0<br><small>送信先をGit一致で絞らない</small></td><td>2<br><small>候補分類規則を試験済み</small></td><td>agmsgはGit common-dirで登録projectを特定できるが、同じAI登録名とteam（登録グループ）への配送をbranch/worktreeで絞らない。これは共有identityによる配送設計であり、品質欠陥やセキュリティ評価ではない。claudexはworktree（同じrepoから分けた作業フォルダ）、共通Git情報、branch（Gitの作業枝）/HEAD（その枝が指すcommit位置）を使う候補分類規則を試験済み。ただし元アプリの観測と実際の送信は未接続。<br><a href="agmsg-comparison-evidence/released-design-v1.5.1.md">Gitによるproject解決（96–121行）</a> · <a href="agmsg-comparison-evidence/released-teams-v1.5.1.md">projectをまたぐidentity配送（9–11行）</a> · <a href="2026-10-02-claudex-current-audit.md">scope比較（36行）</a><br>この軸の確信度: 高</td></tr>
+              <tr class="hit"><td>中継メッセージの履歴を残し、後から読み返す</td><td>8</td><td>3<br><small>SQLite・replay</small></td><td>0<br><small>中継履歴は未提供</small></td><td>SQLiteの永続履歴はagmsgの利点。任意の別インストール間の同期で別インストールへ同期する案内もある。claudex現行コアは中継本文・配送内容を保存せず、registryと短命bindingのみを持つ。native会話の元履歴は元のアプリに残る。手動実験の保存証拠は別扱いである。<br><a href="2026-10-02-agmsg-primary-research.md">保存するもの（18行）</a> · <a href="2026-10-02-claudex-current-audit.md">保存方針（47行）</a> · <a href="https://github.com/fujibee/agmsg/blob/4a712f2aeba8f0b2070f7533b827c7cac78c9fdf/docs/remote-setup.md">agmsg remote setup</a><br>確信度: 高</td></tr>
+              <tr><td>対応CLIへ導入し使い始める</td><td>8</td><td>3<br><small>複数CLI・導入手順</small></td><td>1<br><small>ローカル実行のみ</small></td><td>agmsgは複数CLI、npx導入を文書化。claudexはNode.js上のCLI/MCPとCodex/Claudeの探索コアがあるが、通常設定やDesktopへの製品導入はない。<br><a href="2026-10-02-agmsg-primary-research.md">導入と範囲（24行）</a> · <a href="2026-10-02-claudex-current-audit.md">製品境界（20行）</a><br>確信度: 高</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="caveat">この段階点は到達段階を示す。agmsgは中継受信箱への送信・配信・導入・履歴を公開版に統合しているが、既存Codex / Claudeの元会話を読む公開機能は確認できない。claudexは作業場所による候補分類と、読取り・送信の許可確認を共通コアで試験しており、元会話の読取り・返信は限定実験で確認した。通常の製品接続はこれからである。測っていない速さ・費用・安全性は採点していない。</p>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="scenario-title">
+      <h2 id="scenario-title">同じセッションを読む二つの道</h2>
+      <p>比較するのは「claudex と agmsg の名前」ではなく、同じ対象セッションを読める状態までの具体的な道のりである。</p>
+      <div id="scenario-native" class="scenario-panel" aria-labelledby="native-title">
+        <article class="scenario-card native">
+          <h3 id="native-title">セッションを直接読む</h3>
+          <div class="path" aria-label="道のり: 利用者から既存セッション本体へ"><span>利用者</span><b aria-hidden="true">→</b><span>既存セッション</span><b aria-hidden="true">→</b><span>読み取り結果</span></div>
+          <p><strong>agmsg:</strong> `inbox` と `history` はagmsg team内のメッセージを読む。公開資料にCodex Desktopの既存会話を直接読む契約はなく、その可否は未確認。</p>
+          <p><strong>claudex:</strong> 10月1日の限定試験は既存Codex会話とClaude Desktop fixtureから本文を読み、返信まで確認した。P1本体は元アプリの会話を観測する接続部と、アプリ別の読取り・返信部品が未接続なので、共通の接続口から同じことはできない。</p>
+          <p class="pending-copy"><strong>区別:</strong> 方式を手作業で成立させた証拠は、いつものアプリから毎回使える機能の証拠ではない。</p>
+        </article>
+      </div>
+      <div id="scenario-inbox" class="scenario-panel" aria-labelledby="inbox-title" hidden>
+        <article class="scenario-card inbox">
+          <h3 id="inbox-title">受信箱の内容を読む</h3>
+          <div class="path" aria-label="道のり: 利用者から受信箱を経て内容へ"><span>利用者</span><b aria-hidden="true">→</b><span>受信箱</span><b aria-hidden="true">→</b><span>届いた内容</span></div>
+          <p><strong>agmsg:</strong> AI登録名をteamへ登録し、相手が送ったagmsgをSQLite受信箱で読む。履歴は別の作業セッションにも渡せる。別インストールと同期する場合は、利用者自身が管理する中継サーバーを任意で設定する。</p>
+          <p><strong>claudex:</strong> P1はセッション一覧を返すが、受信箱・メッセージ配送・既読更新を提供しない。</p>
+          <p class="pending-copy"><strong>実際の利用者:</strong> agmsgで読むのは同じteam（登録グループ）に届いたメッセージとその履歴。claudexの目的はCodex / Claude元会話を直接読むこと。保存する内容も届き方も異なる。</p>
+        </article>
+      </div>
+      <p class="caveat">SQLite受信箱は中継メッセージを残し、後で読み返せる。agmsgの公開機能に既存Codex / Claude会話の読取りは確認できない。claudexは元会話の読取り・返信を限定実験で確認したが、普段の製品への接続は未実装である。</p>
+    </section>
+
+    <section class="panel" aria-labelledby="states-title">
+      <h2 id="states-title">完成したものと、まだ案のものを分ける</h2>
+      <div class="scope-grid">
+        <div class="scope-item"><strong>現在利用できる製品</strong><span>agmsg v1.5.1は公開CLI製品。claudex P1に通常利用のnative read/send製品接続はない。</span></div>
+        <div class="scope-item"><strong>テスト済みの単体コア</strong><span>claudex第1段階の探索・許可条件は66/66試験に合格。元アプリの観測や、共通接続口からの会話読取り・返信は含まない。</span></div>
+        <div class="scope-item"><strong>実現可能性</strong><span>claudexは10/1にコマンド画面とデスクトップアプリの限定条件で相互に会話を読み、返信する方式を確認。手動経路1回の記録。</span></div>
+        <div class="scope-item"><strong>未実装の設計</strong><span>元アプリの会話を確かめる接続部と、アプリごとの読取り・返信部品の通常製品への接続。現状点には含めない。</span></div>
+      </div>
+    </section>
+
+    <footer class="panel" aria-labelledby="sources-title">
+      <h2 id="sources-title">出典と採点方法</h2>
+      <div class="footer-grid">
+        <div>
+          <h3>一次資料</h3>
+          <ul class="evidence-list">
+            <li><a href="2026-10-02-agmsg-primary-research.md">2026-10-02 agmsg 一次調査</a>（リリースtag/commit、機能比較、制限）</li>
+            <li><a href="2026-10-02-claudex-current-audit.md">2026-10-02 claudex 現状監査</a>（P1、方式検証、作業場所4ケース）</li>
+            <li><a href="agmsg-comparison-evidence/released-README-v1.5.1.md">固定commitの取得資料と照合記録</a>（v1.5.1 peeled commit <code>4a712f2aeba8f0b2070f7533b827c7cac78c9fdf</code>）</li>
+            <li>未リリースのmain <code>07a67a3</code> と古いローカルcloneは、agmsg安定版の比較に混ぜていない。</li>
+          </ul>
+        </div>
+        <div>
+          <h3>判定の読み方</h3>
+          <p>agmsgの一次資料: <a href="https://github.com/fujibee/agmsg/blob/4a712f2aeba8f0b2070f7533b827c7cac78c9fdf/README.md">README</a> · <a href="https://github.com/fujibee/agmsg/blob/4a712f2aeba8f0b2070f7533b827c7cac78c9fdf/ARCHITECTURE.md">Architecture</a> · <a href="https://github.com/fujibee/agmsg/blob/4a712f2aeba8f0b2070f7533b827c7cac78c9fdf/docs/codex-monitor-beta.md">Codex Monitor</a> · <a href="https://github.com/fujibee/agmsg/blob/4a712f2aeba8f0b2070f7533b827c7cac78c9fdf/docs/teams.md">Teams</a> · <a href="https://github.com/fujibee/agmsg/blob/4a712f2aeba8f0b2070f7533b827c7cac78c9fdf/docs/remote-setup.md">Remote setup</a>.</p>
+          <p>採点式、8軸の重み、共有対象、各点の理由、出典、確信度を併記した。未知はN/Aとし、0へ置き換えていない。X投稿は使用例の補助で、点数根拠には使っていない。</p>
+          <p>agmsgはこのMacへ導入していない。画面内のagmsg評価は固定commitの公開文書・コードに基づき、実機動作や性能の証明ではない。本レポートは比較用の派生資料であり、製品仕様の正本ではない。</p>
+          <p><strong>比較HTMLの確認状況:</strong> 独立レビューの根拠指摘を反映した。独立した再確認は待ち。ブラウザでの表示、画面幅ごとの折返し、印刷レイアウトはすべて未観測。P1のmanifestハッシュ一致と厳密型検査は現行監査記録を根拠にし、この独立レビューでは再計算・再実行していない。</p>
+        </div>
+      </div>
+    </footer>
+  </main>
+
+  <script>
+    (() => {
+      const viewSelect = document.getElementById('view-select');
+      const scenarioSelect = document.getElementById('scenario-select');
+      const status = document.getElementById('control-status');
+      const views = { current: document.getElementById('view-current'), fit: document.getElementById('view-fit') };
+      const scenarios = { native: document.getElementById('scenario-native'), inbox: document.getElementById('scenario-inbox') };
+      const showChoice = (select, panels) => {
+        Object.entries(panels).forEach(([key, panel]) => {
+          const active = key === select.value;
+          panel.hidden = !active;
+          panel.setAttribute('aria-hidden', String(!active));
+        });
+      };
+      const announce = () => {
+        const viewName = viewSelect.options[viewSelect.selectedIndex].text;
+        const scenarioName = scenarioSelect.options[scenarioSelect.selectedIndex].text;
+        status.textContent = `${viewName}。${scenarioName}。`;
+      };
+      viewSelect.addEventListener('change', () => { showChoice(viewSelect, views); announce(); });
+      scenarioSelect.addEventListener('change', () => { showChoice(scenarioSelect, scenarios); announce(); });
+      showChoice(viewSelect, views);
+      showChoice(scenarioSelect, scenarios);
+    })();
+  </script>
+</body>
+</html>

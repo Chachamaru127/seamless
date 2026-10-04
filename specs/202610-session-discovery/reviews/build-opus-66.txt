@@ -1,0 +1,39 @@
+## 判定: D1〜D6 は全項目 PASS、現行 66 試験版に P1 ブロッカーはなし
+
+自分で `bash scripts/verify.sh` を実行しました。**実終了 0**、tests 66、pass 66、fail 0、cancelled 0、skipped 0、todo 0（6942ms）でした。内訳は discovery 46、git-context 5、mcp 1、process 14 です。旧 64 試験版の判定は根拠に使っていません。
+
+**確信度**: コードの判定は high です。ただし、ディスク上のファイルが frozen66 の manifest と同一かは確認できていません（最後の節を参照）。
+
+| AC | 判定 | 現行コードと試験の根拠 |
+|---|---|---|
+| D1 | PASS | `permitted()`（`registry.ts:15`）は、caller.outbound、target.inbound、双方の operations をすべて要求する。未認可と未登録の target は `discovery.ts:82` で observe 前に同じ `target_unavailable` を返す（test 3 で deepEqual と observe されないことを確認）。投影は `:68` の列挙項目だけで、bootstrap は未知項目を拒否する（`protocol.ts:29`、test 33） |
+| D2 | PASS | 実 Git の一時 fixture で区別を確認（test 47〜51）。対象は worktree、同 branch 別 worktree、別 repo、clone、detached、unborn、no_git、dirty、symlink、GIT_DIR 混入。取得失敗と timeout は unknown になる。`rank()`（`:22`）は、片側だけの状態差を順位 1 にしない |
+| D3 | PASS | provider が出てくるのは identity と投影だけで、順位と認可に provider による分岐はない。test 1 で caller の逆転と provider の入替えを、test 5 で ambiguous かつ binding なしを確認 |
+| D4 | PASS | scope_conflict（test 7）、role_mismatch と no_candidates（test 6）、scope 外の stale による blocked_unobserved（test 17、45）、最上位順位の世代不一致（test 43）を確認 |
+| D5 | PASS | revalidate は最後の await（`:122`）の後で、次をすべて同期的に検査する。state、単調時計の期限、登録、認可、双方の ready、dirty を除いた context の同一性。test 20〜31、34、40、41 が PASS |
+| D6 | PASS | CLI sessions と MCP の tools/call の出力が一致する（test 53）。sender の偽装と read/send tool は拒否される（test 54、65）。binding は同一プロセス内で照合でき、別プロセスでは invalid_binding になる（test 54）。製品入口には observer が注入されず、結果は unknown になる |
+
+## 直近 2 修正の検査
+
+1. **最終鮮度の再評価**
+   - `:108` は最後の await（`:103`）の後で、caller、全 participants、target の reason を壁時計で再計算する。participants は `:87` で絞込み前に保存されており、scope 外と offline 除外分も含む。
+   - 時間経過で起こる遷移は、ready、generation_mismatch、offline から stale への変化だけです。これらはすべて `opaque` に入る。
+   - binding 発行（`:109-110`）までの間に await はない。
+   - test 45 は判別力がある。`:108` がなければ、b は observe 時点で ready かつ scope 外として除外され、c が選ばれていた。
+2. **登録集合の比較**
+   - `:106` のフィルタ（host、permitted(op)、target、role）は、collect のフィルタ（`:56`）と同値。permitted(op) が read||send を含むため。
+   - 「長さ一致」と「全 id が同一の registration で見つかる」の 2 条件は、id が一意（Map と bootstrap 検査で保証）なので集合一致と同じ意味になる。追加、削除、変更はすべて registration_changed になる。
+   - 明示 target の場合、比較対象の集合は target だけ。
+   - test 46 にも判別力がある。`:106-107` がなければ b はすべての検査を通り、selected になっていた。
+3. **回帰とスコープ**
+   - revalidate、sessions、認可、MCP、serve に変更はない。
+   - 追加された処理はすべて拒否方向（fail-closed）で、選択経路も tool も増えていない。スコープの拡張はない。
+
+## 未検証の点
+
+- **manifest の SHA256 照合**: 未実施です。`shasum` は権限で拒否され、Bash で実行できたのは verify.sh だけでした。この判定は、今回読み込み、verify.sh が実行したディスク上のファイルに対するものです。
+- **strict tsc**: 再実行していません。manifest にある typecheckExitCode 0 は、私が実測した値ではありません。
+- **専用の一時試験**: 作成していません。書込み手段がなく、既存の 66 試験とコードの読解で 2 修正の判断には足りました。
+- **PASS の範囲**: P1 共通部の契約試験への合格です。native 観測器が未接続なので、実会話の稼働や read/send の証明にはなりません（spec どおり P2 の範囲）。
+
+**次の一手（leader）**: `verification.json` の hash と現物を照合してください。一致すれば、この判定で `independentJudgement` を確定できます。不一致なら、この判定は使えないので再判定が必要です。

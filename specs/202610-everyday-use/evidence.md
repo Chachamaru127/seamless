@@ -1,0 +1,153 @@
+# 終わった証拠
+
+本文、思考、認証値は記録しない。
+
+## 本文なしの一覧（T3a、2026-10-03）
+
+結果: 経路あり。
+
+- Codex Desktop 26.928.40906+12694 の `~/.codex/state_5.sqlite`（所有者は本人、mode 0644）に `threads` 表がある。
+- 列 `id`、`cwd`、`archived`、`updated_at_ms` だけを読取り専用（`mode=ro`）で選べば、本文の列（`first_user_message`、`preview`、`title`）は取得しない。
+- 実測: 会話 `01a0f59d-d3d1-79a2-948c-4a1f12a0a1a5` の cwd が `/Users/tachibanashuuta/LocalWork/Code/claudex`、archived 0 で返った。表は 8803 行、未アーカイブ 8676 行。
+- 読む手段: Node 22 組み込みの `node:sqlite`（外部パッケージ不要）。
+- 制約: Codex の内部データで公開の仕組みではない。対応の組（compat）で Codex の版を確かめてから使う。表の形が違えば作業場所を「未確認」にする。
+- 不採用: rollout の先頭行 `session_meta` にも cwd があるが、同じ行に指示文（base_instructions、約 23KB）が入るため使わない。
+
+## 第1便 T0、T0a、T4（2026-10-03）
+
+- 施工: Codex Astra（gpt-6-astra、推論量 low、service_tier ultrafast）。1回目は依頼文の矛盾（T4 の完了条件が T5 の範囲を含んでいた）で正しく停止。tasks の T4 と T5 の境界を直して再依頼。
+- 変更: `scripts/verify.sh`（strict 型検査を追加）、`src/native-runtime.ts`（版の直書きを撤去）、新規 `src/compat.ts`、新規 `src/limits.ts`、`tests/discovery.test.ts`（型注釈だけ）、新規 `tests/compat.test.ts`、`tests/limits.test.ts`、`tests/support/limits-writer.ts`。範囲外の変更なし（リーダーが変更前の複製と比較）。
+- リーダーの環境での `bash scripts/verify.sh`: 実終了 0、114 試験 PASS（型検査を含む）。node v24.19.0、tsc 5.9.3。
+- 施工役の環境では Unix socket の listen が EPERM になり、socket を使う既存の4件が失敗する（施工環境の制約）。
+- 未了: 別家系の判定（段の完了点 M1 でまとめて行う）。
+
+## 版 2.1.286（T0b、2026-10-03、G1 承認済みの試験用ペア）
+
+- 対象: Claude 会話 f8352827-bd6c-4bfc-83bd-b6b1dd7a0a37（Claude Code 2.1.286、Desktop 同梱、pid 96054）、Codex 会話 01a0f59d-d3d1-79a2-948c-4a1f12a0a1a5（Codex Desktop 26.928.40906+12694）。
+- 稼働記録の項目（pid、sessionId、peerProtocol 1、procStart、startedAt、messagingSocketPath、cwd）は 2.1.284 と同じ形。
+- 方法: 対応表で 2.1.286 を「確認済み」にした試験用の複製（scratchpad）で製品の serve --native を実行。本体の表は変えていない。
+- 結果: 両方向の read が ok。Claude → Codex の send（cldx-t0b-c2x-EFB6EAEC）が submitted、Codex の記録に peer として到達し、Codex の返答に nonce が出た。Codex 名義 → Claude の send（cldx-t0b-x2c-EFB6EAEC）が submitted、この Claude 会話で受信。
+- 本体のまま（2.1.286 が確認中）では送受信が止まる。ただし理由が `caller_unobserved` で、版の未確認と区別されない（T18 で直す）。
+- 1回だけ Codex の read（limit 100）が unavailable。再試行で ok。原因は未確認（全履歴の読込みの時間切れと推定）。
+- 本体の対応表を「確認済み」にするのは G3b の承認後。
+
+## 呼ぶ側（T1、2026-10-03）
+
+- Claude: 道具（MCP）のプロセスは、会話のプロセス（pid 96054）の直接の子。親の pid と起動時刻で稼働記録の sessionId に一意に結び付く。結果: 一意に特定できる。
+- Codex: 道具のプロセスは1つの app-server（pid 57938）の子で、同じ道具が20個ずつ立つ（会話ごとに立てていると推定）。各プロセスの作業場所はその会話の作業場所。環境変数に会話 ID はない。Codex 本体に `turn_metadata`、`x-codex-turn-metadata` などの名前があるが、MCP の道具呼出しに会話 ID が付くかは未確認。結果: 現時点では一意に特定できない（同じ作業場所に Codex 会話が2つ以上あると区別できない）。
+- 2026-10-03 G3b 承認（立花さん）。本体の `src/compat.ts` で 2.1.286 を「確認済み」に変更し、`tests/compat.test.ts` の期待値を合わせた。verify.sh は下の再実行を参照。
+
+## Codex 自身の呼ぶ側の見分け方（D1 の調査、2026-10-03）
+
+- 出典: Codex Desktop 26.928.40906 に同梱の道具 `~/.codex/plugins/cache/openai-bundled/browser/26.928.40906/scripts/browser-service.mjs`（同じ仕組みが chrome、codex-app-tools にもある）。
+- Codex は道具の呼出しごとに、MCP の要求の付帯情報 `_meta["x-codex-turn-metadata"]`（JSON の文字列か object）を付ける。
+- 中身として読まれている項目: `session_id`（会話の ID）、`turn_id`、`thread_id`、`thread_source`、`model`。
+- 同梱の道具の扱い: `thread_source` が `subagent` なら `thread_id`、それ以外は `session_id` を会話の ID として使う。`session_id` と `turn_id` が無いと「Missing required Codex turn metadata」で止まる。
+- 付帯情報は Codex 本体が付けるもので、モデルが道具の引数として書くものではない。
+- 未確認: 利用者が足した MCP サーバー（claudex など）への呼出しにも同じ付帯情報が付くか。同梱の道具で確認できたのは読む側のコードだけ。
+- 2026-10-03 Codex 会話（試験用ペア）のシェルで確認: `CODEX_THREAD_ID` は設定あり、会話 ID と一致。`CODEX_SESSION_IDS` は設定なし。値は表示していない。環境変数はコマンドの前に書けば変えられるため、シェル経由の呼出しでは補助の手がかり（名乗りと同等）として扱い、親プロセスが Codex の app-server であることと作業場所の一致を合わせて照合する。
+
+## 第2便 段 A（T2、T3、T5、T6、T6b、T7、T8）2026-10-03
+
+- 施工: Codex Astra（low、ultrafast）。1回目は T7 の変換規則が未定義として全体を停止。リーダーが規則を決め（名簿にかかわらず「除外なし、同じ作業場所、操作の制限なし」の案と注意書き）、「判断待ちはそのタスクだけ飛ばす」と依頼文を直して再依頼。7件を施工、新しい試験 43 件。
+- リーダーが実環境で一覧を試し、2つの問題を見つけて直した（`src/sessions-scan.ts`、`src/native-runtime.ts`）。
+  1. 同じ作業場所の判定が「同じ git の worktree」で、claudex が親の `~/LocalWork/Code` リポジトリの中にあるため、582 種類の作業場所のほとんどが対象になり、1件ずつ git と稼働の問合せ（開いていない会話は 8 秒の時間切れ）を行って数分止まった。判定を「呼ぶ側のフォルダと同じか、その中」に変え、パスで先に絞り、git の結果を作業場所ごとに使い回す形にした。
+  2. 一覧での Codex の稼働の問合せを、待ち時間 1.5 秒、16 件ずつ並列にした（IPC の待ち時間を引数で渡せるようにした）。
+- 実環境の確認（この Claude 会話から、名簿も `--caller` も使わない新方式）: 呼ぶ側を Claude（祖先のプロセス）として特定、0.5 秒。一覧に同じ作業場所の Codex 会話 01a0f59d が ticket 付きで出た。ticket で送信（cldx-auto-1BB6C0A6）が submitted。
+- `bash scripts/verify.sh`: 実終了 0、157 試験 PASS（作業場所の判定の試験 1 件を足した）。
+- 未了: 段の完了点 M1 の別家系の判定。
+
+## M1 の判定（1回目、2026-10-03）
+
+- 判定役: Claude Opus 5.5（effort high、読取り専用）。施工の大部分が Codex のため逆の家系。差分（変更前の複製との diff 1024 行）と verify の記録を渡した。
+- 結果: FAIL。T0a、T4、T3、T6、T6b、T8 は PASS。T0 は条件付き PASS（verify の記録に tsc の終了コードが残っていない）。FAIL は T2、T5、T7。
+  - T2（重大）: Codex を CLI から呼んだときの見分けが環境変数 `CODEX_THREAD_ID` と作業場所だけで、同じ作業場所の別の Codex 会話を名乗れる。
+  - T5（中）: 照会（revalidate）への制限の効き目を試験が確かめていない（`notEqual('ok')` は成功の `validated` でも通る）。
+  - T7（中）: 完了条件の「今の名簿の変換結果」を試験が使っていない。片方向の名簿が制限なしに広がることを注意書きが伝えない。
+  - そのほか中: 除外の作業場所が完全一致で中のフォルダに効かない、実パスでない書き方が黙って効かない、リーダーが足した先絞りに試験がない、Codex の MCP 経路で作業場所の補助照合がない。軽7件。
+- T7 の追加確認（リーダー）: 今の `.local/interop-pair.json` で `migrate`（`--write` なし）を実行。案は既定どおり、notes に会話 ID と世代は出ず、`~/.claudex/limits.json` は作られなかった。
+
+## 呼ぶ側 T1b（2026-10-03）
+
+- 方法: Codex の設定ファイルを変えず、`codex exec -c mcp_servers.probe...` で1回の実行に限って調べる道具を足し、Codex に1回呼ばせた（codex-cli 0.160.0、gpt-6-astra、読取り専用の sandbox）。道具は受け取った付帯情報の項目名と会話 ID だけを記録した。
+- 結果: 利用者が足した道具への tools/call にも `_meta` が付く。項目は `callId`、`x-codex-turn-metadata`、`threadId`、`sessionId`、`windowId`、`itemId`、`progressToken`。`x-codex-turn-metadata` の中は `session_id`、`thread_id`、`turn_id`、`thread_source`（user）、`model` など。
+- 2回目の実行で、`session_id`、`thread_id`、`_meta.threadId`、`_meta.sessionId` がすべて、その実行の会話 ID（01a10231-9ef2-7671-8f36-62efe16706aa）と一致した。
+- 道具のプロセスには `CODEX_THREAD_ID` が渡っていなかった（シェルのコマンドにだけ渡る）。
+- 未確認: Desktop 同梱の Codex（0.159.2）での同じ動き。T26 の導入時に確かめる。Desktop 同梱の道具（browser など）が同じ項目を読むことは確認済み。
+- 決定（2026-10-03 立花さん）: 付帯情報が付いたので、Codex を呼ぶ側とする経路は道具（MCP）だけにし、コマンド経由（`CODEX_THREAD_ID`）は外す。
+
+## 処理開始の根拠 T13a（2026-10-03、試験用ペアの既存の記録を読取りだけで調査）
+
+- Codex: claudex の依頼（functionCallOutput、namespace claudex / claudex_test）は、待機中なら新しい turn の先頭（0番目）に入る。5件すべてで、同じ turn の中に依頼の後ろの項目（agentMessage、reasoning、commandExecution など）が続いた。判定: 「依頼の入った turn に、依頼より後ろの項目が1つ以上ある」を処理開始とする。turn の ID で依頼と結び付くので、無関係な作業を拾わない。
+- Claude: 待機中の依頼は peer の user 記録、作業中の依頼は queued_command の添付として入る。22件すべてで、依頼の後の最初の assistant 記録から parentUuid をたどると、依頼の記録に戻れた。`promptId` は依頼と応答を結び付けない（同じ値が複数の依頼に付き、assistant 記録に付かない）。判定: 「parentUuid をたどって依頼の記録に戻れる assistant 記録がある」を処理開始とする。
+- 注意: 作業中に届いた依頼では、処理開始は「会話に取り込まれ、その後に応答が続いた」ことまでを示す。依頼に従って行動したかは示さない。
+
+## 第3便と Codex Desktop の更新（2026-10-03）
+
+- 第3便（Codex Astra、low、ultrafast）: 審査の指摘 10 項目を施工。Codex のコマンド経由の経路を削除、Codex の MCP 経路に作業場所の補助照合、照会の試験の強化、除外を中のフォルダと realpath に効かせ空の除外を拒否、移行の注意書き、先絞りの試験、壊れた設定でも clear を通す、一覧の既定を read、clear の hash を null、50件で切った件数の表示。
+- リーダー: verify.sh に型検査の開始と終了の記録を足し、型検査の対象に tests/support を加えた。Plans の古い記述を直した。
+- 第3便の後、私の環境で既存の試験1件（Codex failure response after native frame is unknown）が3回続けて失敗。原因は Codex Desktop の更新（26.928.40906+12694 → 26.930.31730+12947、アプリも再起動）で、試験が偽の Codex を相手にしながら実物の Desktop の版を読んでいたこと。`createNativeRuntime` に版の差し替え口（desktopVersion）を足し、試験で版を固定した。
+- `bash scripts/verify.sh`: 実終了 0、typecheck exit=0、170 試験 PASS。
+- 本体の動き（対応表に 26.930.31730 がない）: 一覧で Codex の作業場所が unknown になり、Codex 会話は出ない。設計どおりの停止（AC18）。
+- 新しい版の実測（G1 の試験用ペア、対応表に新しい版を足した複製）: 一覧に Codex 会話 01a0f59d が出た（世代が bdd313cb… から 48665a1d… に変わり、名簿なしで追従）。read（limit 3）ok、全履歴（limit 100）ok で complete true。ticket での send（cldx-v930-E646FBE2）が submitted、Codex の記録に peer として到達し、Codex の応答が続いた。
+- 本体の対応表へ足すのは G3b の承認後。
+
+## M1 の判定（2回目）と第4便（2026-10-04）
+
+- 2回目の判定（Opus 5.5）: FAIL。前回の重大と中はすべて直ったと確認。残りは T7 の完了条件の文言（リーダーが判定役の推奨 A に沿い、合成の名簿3種の試験と実ファイルでの手動確認に改めた）と、新しい中1（Claude の会話の中から起動した Codex が、Claude として特定される）。全文は `.local/build/m1-review-2.md`。
+- 第4便（Codex Astra、low、ultrafast）: 祖先の探索を一番近い会話のプロセスで止める、除外の作業場所を絶対パスだけにする、書く直前の再照合で拒否したときに予約を残さない（同じ ID で再試行できる。書いた後の予約は残す）、select の既定を read にそろえる。
+- `bash scripts/verify.sh`: 実終了 0、typecheck exit=0、179 試験 PASS。実環境で、この Claude 会話から名簿なしの一覧が動くことを再確認。
+
+## M1 の判定（3回目、2026-10-04）: PASS
+
+- 判定役: Claude Opus 5.5。全文は `.local/build/m1-review-3.md`。2回目の指摘はすべて直った（軽2 は止まる側に倒れるため対応不要）。T7 は改めた文言で PASS。段 A の全タスクが完了し、verify は実終了 0。
+- 新しい指摘（M1 は止めない）:
+  - 中: Codex かどうかを実行ファイルの名前（`CodexCLI.app` を含む、またはファイル名が `codex`）だけで決めている。`codex` という名前のファイルを置けば、Codex の祖先を装える。期限: T26 の前。
+  - 軽: 名前の前提の実測。→ リーダーが実測した（下）。
+- 実測（リーダー）: この Claude 会話のシェルから `codex exec`（codex-cli 0.160.0、sandbox read-only）を起動し、その Codex に `node src/cli.ts sessions '{}'` を実行させた。結果は `caller_unobserved`（reason `native_ancestor_missing`）。Claude の名義にはならず、止まる側に倒れた。Codex の実体は `~/.codex/packages/standalone/releases/0.160.0-aarch64-apple-darwin/bin/codex`（名前は codex）。理由が `codex_cli_unsupported` でないのは、sandbox の中から祖先のプロセスを調べられないためと推定（未確認）。
+
+## 第5便 段 B、段 C、T2c（2026-10-04）
+
+- 施工: Codex Astra（low、ultrafast）。T2c、T9、T10、T11、T12、T13、T14 を施工、新しい試験 32 件。結果は `.local/build/batch5-result.md`。
+- リーダーの実環境確認:
+  - 名簿なしの一覧を2回呼び、1回目は change=unknown（比べる相手なし）、2回目は none。`~/.claudex/seen.json`（mode 0600）が作られた。
+  - 試験用ペアの確認経路（T14）: 既定の `~/.claudex/limits.json` を渡すと `compat_check_requires_test_limits` で拒否。
+  - 試験用の制限の設定（同じ作業場所のもう1つの Claude 会話 44043390 を除外、send を止めたもの、scratchpad に mode 0600）では、最初 `compat_check_pair_required` で止まった。原因: 組の数を Codex の稼働の問合せより前に数えるため、同じ作業場所の Codex の会話（アーカイブ前 26 件、ほとんどは開いていない）が全部数えられた。
+  - 問合せの後に数える形へ一度変えたが、「未確認の版では組以外の会話に接続しない」既存の試験が落ちた。試験の意図が正しいと判断して戻し、代わりに `compat-check --target <会話>` を足して、組を呼ぶ側と指定の1件に絞る形にした（`src/compat-check.ts`、`src/automatic.ts`、`src/cli.ts`）。
+  - あわせて、作業場所のフォルダが消えた Codex 会話があると、除外の判定の realpath が例外を出して一覧全体が止まる穴を直した（失敗したら元のパスで比べる）。試験に消えたフォルダの会話を入れた。
+  - `compat-check --target codex:01a0f59d-…` で、Codex Desktop 26.930.31730+12947（checking）のまま、試験用ペアの一覧と読取りが `compat_check_passed`。
+- `bash scripts/verify.sh`: 実終了 0、typecheck exit=0、212 試験 PASS。
+
+## 段 B・C の判定（2026-10-04）: PASS
+
+- 判定役: Claude Opus 5.5。全文は `.local/build/m3-review-1.md`。T9、T10、T11、T12、T13、T14、T2c がすべて PASS。M3 は PASS。M2 は G4 と T11b を除いて PASS。重大 0、中 2、軽 8。
+- 中1: Codex の既知のインストール先に、利用者が書き込める `~/.codex/packages/standalone/releases/*/bin/codex` が入っている。偽物を置けば通る。推奨はコード署名の照合。
+- 中2: 試験用の組の指定はコードではなく G1 で担保。Plans.md に注記した。
+- コード署名の実測（リーダー）: Desktop 同梱の codex と standalone の codex 0.160.0 は、どちらも Developer ID Application: OpenAI OpCo, LLC（2DC432GLL2）で署名され `codesign --verify --strict` が ok。Claude Code 2.1.286 は Anthropic PBC（Q6L2SF6YDW）で ok。`/bin/sh` を codex の名前で複製した偽物は TeamIdentifier なし。
+- 2026-10-04 立花さん承認: G3b（Codex Desktop 26.930.31730+12947 を確認済みに。反映は第6便で、試験が本物の対応表に依存しない形へ直してから）、G4（探索仕様の冒頭に改訂の注記。T11b 完了、M2 完了）、T2d（コード署名の照合。第6便）。
+
+## 第6便 段 D の中心、G3b、T2d（2026-10-04）
+
+- 施工: Codex Astra（low、ultrafast）。結果は `.local/build/batch6-result.md`。新しい試験 25 件。
+- 実環境（リーダー、試験用の組）: 実物のコード署名の照合を通して呼ぶ側（Claude）を特定。Codex Desktop 26.930 が確認済みになり、一覧に Codex 会話 01a0f59d が ticket 付きで出た。ticket で送信（cldx-d-54EA6403）、5 秒後の照会で accepted と reached が observed。
+- 不具合（リーダーが修正）: Codex の構造の取り出しが turn の ID を `turn.id` で読んでいたが、実物の snapshot の項目名は `turnId`。処理開始が常に unobserved になっていた。`turnId` を読むよう直し、実物と同じ形の試験を足した。修正後、実環境で processing が observed。
+- 観測: Codex は依頼を受けて返信を試みたが `caller_unobserved / codex_cli_unsupported` で止まった（Codex を呼ぶ側とする経路は MCP だけで、Codex にはまだ claudex の道具が入っていない。段 F で解消）。照会の待機 60 秒は `wait_limit`（processingCancelled false）で終わり、replied は unobserved。
+- 気づき: 一覧に、同じ作業場所の Codex 会話 37 件（ほとんどは Desktop で開いていない unreachable）が並ぶ。T20 で各相手の状態を出すようにしたため。既定の表示は立花さんの判断待ち。
+- `bash scripts/verify.sh`: 実終了 0、typecheck exit=0、238 試験 PASS。
+
+## 第7便 送り主の照合と段 E（2026-10-04）
+
+- 施工: Codex Astra（low、ultrafast）。T21b、T22、T24。新規 src/inbound.ts、tests/inbound.test.ts、tests/privacy.test.ts、specs/202610-everyday-use/storage.md。結果は `.local/build/batch7-result.md`。
+- `bash scripts/verify.sh`: 実終了 0、typecheck exit=0、244 試験 PASS。
+- 実環境: 一覧の `inbound` は 0 件。新方式の受信の照合は新方式の宛名（`claude:<sessionId>`）の依頼だけを対象にし、これまでの受信はすべて旧方式の宛名（`claude-current`）だったため。新方式でこの会話へ送れる相手が今はいない（Codex は claudex の道具が未導入、同じ作業場所のもう1つの Claude 会話 44043390 は G1 の範囲外）。実環境での確認は段 F（T26、T27）の後。
+
+## 段 D・E の判定（1回目）と第8便（2026-10-04）
+
+- 1回目の判定（Opus）: FAIL。重大1（送り主の照合が部分一致で偽物が verified）、中5、軽9。M5 は T23 未実施のため未完了。全文は `.local/build/m45-review-1.md`。
+- リーダーの実測: `codesign --verify --strict -R='anchor apple generic and certificate leaf[subject.OU] = "<チームID>"'` で、Desktop 同梱と standalone の codex（2DC432GLL2）、Claude Code（Q6L2SF6YDW）は通り、違うチーム ID、/bin/sh の複製、ad-hoc 署名は落ちた。
+- 第8便（Codex Astra、low、ultrafast）: 送り主の照合を完全一致と宛先の照合に、段階の照合に送り主を、署名の照合を -R の要求に、send の入力定義から最上位の oneOf を外す、呼ぶ側の Claude の版の未確認を unsupported_version に、除外した相手の稼働記録を読まない、PID 再利用を process_exited に。結果は `.local/build/batch8-result.md`。
+- リーダー: verify.sh の最後に `echo "verify: exit=0"` を足した。
+- `bash scripts/verify.sh`: 実終了 0、typecheck exit=0、256 試験 PASS、記録の最後に `verify: exit=0`。実環境で、実物の -R の署名の照合を通して一覧が動き、Claude 44043390 と Codex 01a0f59d が online。
+- T23（実会話での承認の格上げの観測）: 未実施。立花さんの判断待ち。
+- 2026-10-04 立花さん決定: T23 は段 G で試験専用の新しい Codex 会話を立てて行う（M5 は T22、T24 で完了）。一覧は既定で開いている会話（online）だけを出し、`includeOffline` のときだけ全部出す。claudex は独立したリポジトリにし、名前を seamless に変え、CJ-Plugin へは symlink で取り込む（計画中）。
+- 段 D・E の判定（2回目、Opus）: PASS。重大 0、中 0、軽 5。M4 PASS。全文は `.local/build/m45-review-2.md`。

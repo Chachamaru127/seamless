@@ -1,0 +1,331 @@
+TAP version 13
+# (node:18134) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts is not specified and it doesn't parse as CommonJS.
+# Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+# To eliminate this warning, add "type": "module" to /Users/tachibanashuuta/LocalWork/Code/package.json.
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: production CLI and MCP sessions share output and ignore environment online injection
+not ok 1 - production CLI and MCP sessions share output and ignore environment online injection
+  ---
+  duration_ms: 38.662667
+  type: 'test'
+  location: '/Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:20:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    node:internal/modules/cjs/loader:1433
+      throw err;
+      ^
+    
+    Error: Cannot find module '/Users/tachibanashuuta/LocalWork/Code/claudex/src/cli.ts'
+        at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+        at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+        at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+        at Function._load (node:internal/modules/cjs/loader:1216:25)
+        at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+        at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+        at node:internal/main/run_main_module:36:49 {
+      code: 'MODULE_NOT_FOUND',
+      requireStack: []
+    }
+    
+    Node.js v22.22.3
+    
+    
+    1 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 1
+  operator: 'strictEqual'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    Function._load (node:internal/modules/cjs/loader:1216:25)
+    wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    node:internal/main/run_main_module:36:49 {
+    file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:21:202
+    fixture (file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:10:235)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: serve rejects sender spoof and unsupported operation; consumes binding once
+not ok 2 - serve rejects sender spoof and unsupported operation; consumes binding once
+  ---
+  duration_ms: 5008.416791
+  type: 'test'
+  location: '/Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:24:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    child timeout: node:internal/modules/esm/resolve:275
+        throw new ERR_MODULE_NOT_FOUND(
+              ^
+    
+    Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/tachibanashuuta/LocalWork/Code/claudex/src/serve.ts' imported from /Users/tachibanashuuta/LocalWork/Code/claudex/tests/support/serve-fixture.ts
+        at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+        at moduleResolve (node:internal/modules/esm/resolve:861:10)
+        at defaultResolve (node:internal/modules/esm/resolve:985:11)
+        at #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+        at ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+        at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+        at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+      code: 'ERR_MODULE_NOT_FOUND',
+      url: 'file:///Users/tachibanashuuta/LocalWork/Code/claudex/src/serve.ts'
+    }
+    
+    Node.js v22.22.3
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    finalizeResolution (node:internal/modules/esm/resolve:275:11)
+    moduleResolve (node:internal/modules/esm/resolve:861:10)
+    defaultResolve (node:internal/modules/esm/resolve:985:11)
+    #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+    ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+    ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+    ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+    Timeout._onTimeout (file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:16:133)
+    listOnTimeout (node:internal/timers:585:17)
+    process.processTimers (node:internal/timers:521:7)
+  ...
+# Subtest: persistent process refuses revoked registry on next request
+not ok 3 - persistent process refuses revoked registry on next request
+  ---
+  duration_ms: 5006.342042
+  type: 'test'
+  location: '/Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:27:61'
+  failureType: 'testCodeFailure'
+  error: |-
+    child timeout: node:internal/modules/esm/resolve:275
+        throw new ERR_MODULE_NOT_FOUND(
+              ^
+    
+    Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/tachibanashuuta/LocalWork/Code/claudex/src/serve.ts' imported from /Users/tachibanashuuta/LocalWork/Code/claudex/tests/support/serve-fixture.ts
+        at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+        at moduleResolve (node:internal/modules/esm/resolve:861:10)
+        at defaultResolve (node:internal/modules/esm/resolve:985:11)
+        at #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+        at ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+        at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+        at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+      code: 'ERR_MODULE_NOT_FOUND',
+      url: 'file:///Users/tachibanashuuta/LocalWork/Code/claudex/src/serve.ts'
+    }
+    
+    Node.js v22.22.3
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    finalizeResolution (node:internal/modules/esm/resolve:275:11)
+    moduleResolve (node:internal/modules/esm/resolve:861:10)
+    defaultResolve (node:internal/modules/esm/resolve:985:11)
+    #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+    ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+    ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+    ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+    Timeout._onTimeout (file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:16:133)
+    listOnTimeout (node:internal/timers:585:17)
+    process.processTimers (node:internal/timers:521:7)
+  ...
+# Subtest: persistent process refuses invalid registry on next request
+not ok 4 - persistent process refuses invalid registry on next request
+  ---
+  duration_ms: 5004.507417
+  type: 'test'
+  location: '/Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:27:61'
+  failureType: 'testCodeFailure'
+  error: |-
+    child timeout: node:internal/modules/esm/resolve:275
+        throw new ERR_MODULE_NOT_FOUND(
+              ^
+    
+    Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/tachibanashuuta/LocalWork/Code/claudex/src/serve.ts' imported from /Users/tachibanashuuta/LocalWork/Code/claudex/tests/support/serve-fixture.ts
+        at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+        at moduleResolve (node:internal/modules/esm/resolve:861:10)
+        at defaultResolve (node:internal/modules/esm/resolve:985:11)
+        at #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+        at ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+        at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+        at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+      code: 'ERR_MODULE_NOT_FOUND',
+      url: 'file:///Users/tachibanashuuta/LocalWork/Code/claudex/src/serve.ts'
+    }
+    
+    Node.js v22.22.3
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    finalizeResolution (node:internal/modules/esm/resolve:275:11)
+    moduleResolve (node:internal/modules/esm/resolve:861:10)
+    defaultResolve (node:internal/modules/esm/resolve:985:11)
+    #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+    ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+    ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+    ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+    Timeout._onTimeout (file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:16:133)
+    listOnTimeout (node:internal/timers:585:17)
+    process.processTimers (node:internal/timers:521:7)
+  ...
+# Subtest: persistent process refuses caller-replaced registry on next request
+not ok 5 - persistent process refuses caller-replaced registry on next request
+  ---
+  duration_ms: 5002.961875
+  type: 'test'
+  location: '/Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:27:61'
+  failureType: 'testCodeFailure'
+  error: |-
+    child timeout: node:internal/modules/esm/resolve:275
+        throw new ERR_MODULE_NOT_FOUND(
+              ^
+    
+    Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/tachibanashuuta/LocalWork/Code/claudex/src/serve.ts' imported from /Users/tachibanashuuta/LocalWork/Code/claudex/tests/support/serve-fixture.ts
+        at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+        at moduleResolve (node:internal/modules/esm/resolve:861:10)
+        at defaultResolve (node:internal/modules/esm/resolve:985:11)
+        at #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+        at ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+        at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+        at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+      code: 'ERR_MODULE_NOT_FOUND',
+      url: 'file:///Users/tachibanashuuta/LocalWork/Code/claudex/src/serve.ts'
+    }
+    
+    Node.js v22.22.3
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    finalizeResolution (node:internal/modules/esm/resolve:275:11)
+    moduleResolve (node:internal/modules/esm/resolve:861:10)
+    defaultResolve (node:internal/modules/esm/resolve:985:11)
+    #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+    ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+    ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+    ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+    Timeout._onTimeout (file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:16:133)
+    listOnTimeout (node:internal/timers:585:17)
+    process.processTimers (node:internal/timers:521:7)
+  ...
+# Subtest: oversized and malformed lines are sanitized and subsequent request works
+not ok 6 - oversized and malformed lines are sanitized and subsequent request works
+  ---
+  duration_ms: 5006.251542
+  type: 'test'
+  location: '/Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:30:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    child timeout: node:internal/modules/esm/resolve:275
+        throw new ERR_MODULE_NOT_FOUND(
+              ^
+    
+    Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/Users/tachibanashuuta/LocalWork/Code/claudex/src/serve.ts' imported from /Users/tachibanashuuta/LocalWork/Code/claudex/tests/support/serve-fixture.ts
+        at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+        at moduleResolve (node:internal/modules/esm/resolve:861:10)
+        at defaultResolve (node:internal/modules/esm/resolve:985:11)
+        at #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+        at ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+        at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+        at ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+      code: 'ERR_MODULE_NOT_FOUND',
+      url: 'file:///Users/tachibanashuuta/LocalWork/Code/claudex/src/serve.ts'
+    }
+    
+    Node.js v22.22.3
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    finalizeResolution (node:internal/modules/esm/resolve:275:11)
+    moduleResolve (node:internal/modules/esm/resolve:861:10)
+    defaultResolve (node:internal/modules/esm/resolve:985:11)
+    #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+    ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+    ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+    ModuleJob._link (node:internal/modules/esm/module_job:182:49) {
+    Timeout._onTimeout (file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:16:133)
+    listOnTimeout (node:internal/timers:585:17)
+    process.processTimers (node:internal/timers:521:7)
+  ...
+# Subtest: CLI rejects online bootstrap without echoing values
+ok 7 - CLI rejects online bootstrap without echoing values
+  ---
+  duration_ms: 30.112042
+  type: 'test'
+  ...
+# Subtest: CLI rejects self-grant bootstrap without echoing values
+ok 8 - CLI rejects self-grant bootstrap without echoing values
+  ---
+  duration_ms: 26.194084
+  type: 'test'
+  ...
+# Subtest: CLI rejects duplicate bootstrap without echoing values
+ok 9 - CLI rejects duplicate bootstrap without echoing values
+  ---
+  duration_ms: 29.027834
+  type: 'test'
+  ...
+# Subtest: CLI rejects mode bootstrap without echoing values
+ok 10 - CLI rejects mode bootstrap without echoing values
+  ---
+  duration_ms: 28.515334
+  type: 'test'
+  ...
+# Subtest: CLI rejects symlink bootstrap without echoing values
+ok 11 - CLI rejects symlink bootstrap without echoing values
+  ---
+  duration_ms: 32.995375
+  type: 'test'
+  ...
+# Subtest: CLI rejects json-secret bootstrap without echoing values
+ok 12 - CLI rejects json-secret bootstrap without echoing values
+  ---
+  duration_ms: 22.869541
+  type: 'test'
+  ...
+# Subtest: MCP rejects spoof arguments and unknown read/send tools
+not ok 13 - MCP rejects spoof arguments and unknown read/send tools
+  ---
+  duration_ms: 5004.011667
+  type: 'test'
+  location: '/Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:36:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    child timeout: node:internal/modules/cjs/loader:1433
+      throw err;
+      ^
+    
+    Error: Cannot find module '/Users/tachibanashuuta/LocalWork/Code/claudex/src/cli.ts'
+        at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+        at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+        at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+        at Function._load (node:internal/modules/cjs/loader:1216:25)
+        at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+        at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+        at node:internal/main/run_main_module:36:49 {
+      code: 'MODULE_NOT_FOUND',
+      requireStack: []
+    }
+    
+    Node.js v22.22.3
+    
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    Function._load (node:internal/modules/cjs/loader:1216:25)
+    wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    node:internal/main/run_main_module:36:49 {
+    Timeout._onTimeout (file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/process.test.ts:16:133)
+    listOnTimeout (node:internal/timers:585:17)
+    process.processTimers (node:internal/timers:521:7)
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 6
+# fail 7
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 30328.714542

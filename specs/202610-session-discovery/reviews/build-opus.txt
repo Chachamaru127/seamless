@@ -1,0 +1,71 @@
+## 結論: P1範囲で PASS。D1〜D6 に blocker はありません
+
+ただし、ソースを読んで穴を1件見つけました。`src/git-context.ts` の filter 無効化は、driver 名に `=` が入ると効きません。実行での確認はしていません。P1 では自動で通る経路がないため blocker にはしません。P2 で observeGit を live observer へつなぐ前には直す必要があります。
+
+## 実行証拠
+
+- コマンド: `bash scripts/verify.sh`（cwd は claudex）
+- 終了コード: **0**。Bash ツールは終了コードが 0 以外ならエラーとして返します。今回はエラーなしで返りました。数値を直接出すために `; echo $?` を付けようとしましたが、権限で拒否されました。
+- TAP 集計: **tests 58 / pass 58 / fail 0 / cancelled 0 / skipped 0 / todo 0**、duration_ms 9572.5
+- 内訳: discovery 41 件、git-context 4 件（実 Git fixture）、process 13 件（実子プロセス）
+- `reviews/verification.json` は repo 直下にはありませんでした。実際の場所は `specs/202610-session-discovery/reviews/verification.json` です。SHA256 が現行ファイルと一致するかは、許可された操作の範囲外なので照合していません（UNDETERMINED）。tsc も今回は実行していません。
+
+## AC 判定
+
+判断軸は3つです。誤った相手へ binding を出す経路があるか。秘密や未認可の相手の存在が漏れるか。P1 でその経路に自動で到達するか。
+
+| AC | 判定 | 根拠 |
+|---|---|---|
+| D1 | PASS | `permitted()` は双方の operations と、caller.outbound と target.inbound の両方を要求する（`src/registry.ts:15-17`）。明示 target の未登録、未認可、別 host は、観測する前に同じ `target_unavailable` を返す（`src/discovery.ts:75-76`）。role と operation の不一致は認可の後でだけ返す。投影は項目を列挙して組み立てる（`src/discovery.ts:63-66`, `15-20`）。grants、cwd、source は出さない。bootstrap はキーの許可リストで検査し、credentials、status、transcript は bootstrap_invalid になる（`src/protocol.ts:29`） |
+| D2 | PASS | 実 Git fixture で worktree、別 branch、clone、detached、unborn、Git 外、symlink、GIT_DIR 混入を区別できた。rank の判定は `src/discovery.ts:22-27`。取得失敗は unknown になり、no_git と取り違えない（`src/git-context.ts:27`, `51`） |
+| D3 | PASS | discovery と registry に provider による分岐はない。caller を実際に入れ替える試験あり。同順位は ambiguous（`src/discovery.ts:95`）。試験は判定理由までは比べていないが、分岐がないので結論は変わらない |
+| D4 | PASS | role が不明な候補は観測前に除外する（`src/discovery.ts:53`）。未観測の候補が1件でもあれば scope の判定前に全体を止める（`src/discovery.ts:88`）。最上位に未確定があれば下位へ降りない（`src/discovery.ts:94`）。明示 target が scope 外なら scope_conflict（`src/discovery.ts:90`） |
+| D5 | PASS | issued から checking への移行は同期区間で行う（`src/discovery.ts:105-106`）。最後の await の後に、状態と単調時計を再確認する（`src/discovery.ts:115-116`）。登録内容全体と認可を比べ直し（`src/discovery.ts:110`）、双方の作業場所も比べる（dirty は除外、`src/discovery.ts:117`）。superseded は `src/discovery.ts:100`、期限の 60000ms 境界は `src/protocol.ts:2` |
+| D6 | PASS | CLI と MCP は同じ `Discovery.sessions` を使う（`src/cli.ts:17`, `src/mcp.ts:25`）。sender は許可リストで invalid_params になる（`src/protocol.ts:20`）。MCP の tool は sessions だけ（`src/mcp.ts:22`）。製品入口の observer は既定の null で、環境変数、引数、bootstrap からは切り替えられない（`src/cli.ts:14`, `src/registry.ts:9`）。binding は serve プロセスの中にだけあり、別プロセスでは invalid_binding になる |
+
+## 重点5項目
+
+- **公開投影**: PASS
+- **観測の信頼**: PASS。注記として、`reason()` は観測 cwd と `context.workspace` が一致するかを検査しません。observer を信頼する前提なので、これは P2 で作るアダプター側の条件になります。
+- **scope 選択**: PASS
+- **要求ごとの名簿再読込み**: PASS。各要求の開始時と、観測 await の後に読み直します（`src/discovery.ts:51`, `73`, `96`, `108`, `113`）。読み込みに失敗したら registry_unavailable を返して終わるので、古い名簿で判断する経路はありません。caller の ID と世代は起動時に固定しています（`src/discovery.ts:36`, `39`）。
+- **期限と並行処理**: PASS
+
+## 指摘
+
+**F1（中。P2 の前に修正必須）** `src/git-context.ts:42-45`
+
+- **仕組み**: git の `-c` は最初の `=` で key と value を分けます。repo の config に `[filter "x=y"] clean = <cmd>` と書き、`.gitattributes` で `filter=x=y` を指定したとします。このとき無効化のつもりの `-c filter.x=y.clean=` は、`filter.x` に値 `y.clean=` を入れる指定として解釈されます。本物の `filter.x=y.clean` は残るので、status が中身を比べる場面で `<cmd>` が実行されます。
+- **確度**: git 本体の実装知識による静的な判断です。指定外のコマンドは禁止なので、実行での再現はしていません。
+- **P1 の到達経路**: 手動の `cli context <path>`（`src/cli.ts:10`）だけです。
+- **最小修正**: ループ内に `if(key.includes('='))return unknown('invalid_output');` を足して fail-closed にします。fixture に `filter "x=y"` が実行されないことの試験を1件追加します。
+- **evidence.md の記述**: T2 の「filter/fsmonitor未実行 PASS」は、通常の driver 名に限った結果です。
+
+**F2（低）** `select` は、候補0件と、全員が新しい観測で offline の場合を、どちらも `no_candidates` で返します（`src/discovery.ts:86-92`）。明示 target が offline のときも同じです。spec.md:24 は「候補0件、停止、metadata 不明」の区別を求めていますが、区別できるのは sessions の reason だけです。誤った相手へ送る方向の問題ではなく、fail-closed です。
+
+**F3（低）** 新しい観測で offline でも、Git context が unknown だと rank が null になり、全体が blocked_unobserved になります（`src/discovery.ts:58`, `88`）。spec.md:67 は「信頼した停止観測だけ除外可能」としているので、それより保守的です。
+
+**F4（低）** `open` に O_NONBLOCK がありません（`src/registry.ts:21`）。名簿のパスを FIFO（名前付きパイプ）に差し替えると、その要求が返らず serve が止まります。同じ OS ユーザーは名簿を書き換えられる前提なので、可用性だけの問題です。
+
+**F5（細部）**
+- maxBuffer を超えたときも reason が `timeout` になります。unknown になる点は正しいです。
+- `README.md:53` は operation を「一覧の参照条件」と書いています。実際の sessions は、spec.md:63 どおり read か send のどちらかが許可された相手を返し、operation では絞り込みません。
+- spec.md:32 は取得元を稼働と Git metadata で別々に持つよう求めていますが、Observation の source は1本で、分かれているのは時刻だけです。
+- Git 試験の一時ディレクトリは試験後も削除されません（`tests/git-context.test.ts:8`）。
+- D5 の未観測系の試験は「selected にならない」ことしか確かめていません。
+
+## 置いた仮定と確信度
+
+- Bash ツールが正常に返ったことを、終了コード 0 とみなしています。
+- live observer がないこと、native read/send がないことは、P1 の仕様どおりとして減点していません。
+- 確信度: D1〜D6 の PASS は **high**。F1 は **medium**（実行で再現していないため）。
+
+## 判断が必要なこと
+
+F1 を P1 のうちに直すか、P2 の着手条件に回すか。推奨は今直すことです。差分は1行と試験1件で、後戻りはありません。Plans.md:58 の契約と、証拠の文言も一致するようになります。
+
+## 次の一手
+
+- **AI が続ける**: 承認されたら施工担当が F1 を修正して試験を追加し、`bash scripts/verify.sh` をもう一度実行します。あわせて evidence.md の T2 の文言を範囲付きに直します。
+- **判断待ち**: F1 を直す時期。
+- 完了条件: F1 の試験を含めて verify の終了コードが 0 になり、別の家系のレビューでも同じ判定が出ること。

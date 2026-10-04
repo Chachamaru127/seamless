@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: production CLI and MCP sessions share output and ignore environment online injection
+ok 1 - production CLI and MCP sessions share output and ignore environment online injection
+  ---
+  duration_ms: 118.767541
+  type: 'test'
+  ...
+# Subtest: serve rejects sender spoof and unsupported operation; consumes binding once
+ok 2 - serve rejects sender spoof and unsupported operation; consumes binding once
+  ---
+  duration_ms: 111.109208
+  type: 'test'
+  ...
+# Subtest: persistent process refuses revoked registry on next request
+ok 3 - persistent process refuses revoked registry on next request
+  ---
+  duration_ms: 61.094084
+  type: 'test'
+  ...
+# Subtest: persistent process refuses invalid registry on next request
+ok 4 - persistent process refuses invalid registry on next request
+  ---
+  duration_ms: 59.984834
+  type: 'test'
+  ...
+# Subtest: persistent process refuses caller-replaced registry on next request
+ok 5 - persistent process refuses caller-replaced registry on next request
+  ---
+  duration_ms: 56.471417
+  type: 'test'
+  ...
+# Subtest: oversized and malformed lines are sanitized and subsequent request works
+ok 6 - oversized and malformed lines are sanitized and subsequent request works
+  ---
+  duration_ms: 54.93725
+  type: 'test'
+  ...
+# Subtest: CLI rejects online bootstrap without echoing values
+ok 7 - CLI rejects online bootstrap without echoing values
+  ---
+  duration_ms: 55.875542
+  type: 'test'
+  ...
+# Subtest: CLI rejects self-grant bootstrap without echoing values
+ok 8 - CLI rejects self-grant bootstrap without echoing values
+  ---
+  duration_ms: 57.491291
+  type: 'test'
+  ...
+# Subtest: CLI rejects duplicate bootstrap without echoing values
+ok 9 - CLI rejects duplicate bootstrap without echoing values
+  ---
+  duration_ms: 63.005292
+  type: 'test'
+  ...
+# Subtest: CLI rejects mode bootstrap without echoing values
+ok 10 - CLI rejects mode bootstrap without echoing values
+  ---
+  duration_ms: 58.200875
+  type: 'test'
+  ...
+# Subtest: CLI rejects symlink bootstrap without echoing values
+ok 11 - CLI rejects symlink bootstrap without echoing values
+  ---
+  duration_ms: 56.856458
+  type: 'test'
+  ...
+# Subtest: CLI rejects json-secret bootstrap without echoing values
+ok 12 - CLI rejects json-secret bootstrap without echoing values
+  ---
+  duration_ms: 53.684125
+  type: 'test'
+  ...
+# Subtest: MCP rejects spoof arguments and unknown read/send tools
+ok 13 - MCP rejects spoof arguments and unknown read/send tools
+  ---
+  duration_ms: 61.687708
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 930.904709

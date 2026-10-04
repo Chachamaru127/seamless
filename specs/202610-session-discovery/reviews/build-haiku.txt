@@ -1,0 +1,55 @@
+**READ-ONLY CONFORMITY REVIEW: PASS**
+
+---
+
+## Verification Status
+
+**Spec Date:** 2026-10-02  
+**Artifacts Present:** ✓ verification.json, verify.txt (TAP output), typecheck.txt  
+**Exit Codes:** verify=0 (58/58 tests), typecheck=0  
+**Observer Status:** Always `async()=>null` in production (unconnected per spec)
+
+---
+
+## D1-D6 Conformity ✓
+
+| Criterion | Finding | Evidence |
+|---|---|---|
+| **D1: Authorization & projection** | ✓ Only permitted targets listed; no credentials/transcript returned | `registry.ts:15–17` (permitted check); `discovery.ts:63–66` (project excludes grants); `protocol.ts:29` (bootstrap rejects unknown fields) |
+| **D2: Git state distinction** | ✓ All states (attached/detached/unborn/no_git/unknown) properly separated; dirty excluded from comparison | `git-context.ts:6–8` (GitContext union); `discovery.ts:21–27` (rank logic); contextIdentity strips dirty |
+| **D3: Symmetry & ambiguity** | ✓ No provider preference; ambiguous candidates rejected | Rank only depends on workspace/worktree/branch/head/repo, not provider; `discovery.ts:95` ambiguous detection |
+| **D4: Scope/role/target validation** | ✓ scope_conflict, role_mismatch, operation_not_permitted returned correctly | `discovery.ts:77–79` (explicit target checks); `line 90` (scope_conflict); `line 85` (role filter) |
+| **D5: Binding revalidation** | ✓ State transitions (issued→checking→consumed/invalid/expired/superseded) enforced; registration/permits/contexts re-checked | `discovery.ts:100–119` (full revalidate logic); `line 100` (superseded handling) |
+| **D6: CLI/MCP consistency & observer unconnected** | ✓ Both use same Discovery; caller fixed at startup; observer null in production; test injection isolated | `cli.ts:14` (Registry default observer); `mcp.ts:6` (same Discovery); `serve-fixture.ts:7` (test injection only); `registry.ts:9` default=`async()=>null` |
+
+---
+
+## Source Observer Status ✓
+
+- **Production (cli.ts, mcp.ts):** Observer always `null` (unconnected)
+- **Tests (serve-fixture.ts):** Explicit injection only in test processes
+- **Bootstrap:** No `status` or `observedAt` fields accepted (`protocol.ts:29`)
+- **Result inference:** All candidates report `status:'unknown'` when observer unconnected, preventing auto-selection per spec line 39
+
+---
+
+## Verification Artifacts ✓
+
+- `verification.json`: SHA256 checksums of 14 source/test files, `observedAt: 2026-10-02T06:47:28.376978+00:00`
+- `verify.txt`: TAP 13 format, 58 tests, all `ok`
+- Exit codes: both 0
+
+---
+
+## Constraints Observed ✓
+
+- ✓ No edits attempted (read-only)
+- ✓ No native sessions / secrets inspected  
+- ✓ No network / global config accessed
+- ✓ P1 scope only; P2 read/send excluded
+
+---
+
+**RESULT: PASS**
+
+All D1–D6 criteria implemented and verified. Source observer correctly unconnected in production. Bootstrap validation strict (unknown fields rejected). Binding state machine sound. Verification artifacts present with reproducible checksums.

@@ -1,0 +1,2379 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23313A7E'/%3E%3Cpath d='M8 16h16M18 10l6 6-6 6' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+  <title>claudexの仕組みと仕様</title>
+  <style>
+    :root {
+      --bg: #f5f4f1;
+      --surface: #fcfbf9;
+      --surface-2: #f0efea;
+      --ink: #1b1b22;
+      --ink-soft: #5a5a64;
+      --ink-faint: #8c8c92;
+      --line: #e4e2db;
+      --line-strong: #d2cfc6;
+      --primary: #313a7e;
+      --primary-soft: #e9eaf4;
+      --primary-ink: #262e66;
+      --kernel: #191b2c;
+      --kernel-2: #23263c;
+      --kernel-line: #343750;
+      --kernel-ink: #c9cbe0;
+      --done: #2f8f5b;
+      --done-soft: #e4f2ea;
+      --wip: #b8821c;
+      --wip-soft: #f6edd8;
+      --risk: #b5462f;
+      --risk-soft: #f6e7e2;
+      --plain: #1f7a6d;
+      --plain-soft: #e1f1ee;
+      --plain-line: #bbe0d9;
+      --radius: 12px;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      color-scheme: light;
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(49, 58, 126, 0.08), transparent 28rem),
+        var(--bg);
+      font-family: var(--sans);
+      line-height: 1.75;
+      overflow-wrap: anywhere;
+      word-break: keep-all;
+    }
+
+    button,
+    summary {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+    }
+
+    button:focus-visible,
+    summary:focus-visible {
+      outline: 3px solid rgba(49, 58, 126, 0.34);
+      outline-offset: 3px;
+    }
+
+    .visually-hidden {
+      position: absolute !important;
+      width: 1px !important;
+      height: 1px !important;
+      padding: 0 !important;
+      margin: -1px !important;
+      overflow: hidden !important;
+      clip: rect(0 0 0 0) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
+    }
+
+    .wrap {
+      width: min(1440px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      margin: 24px auto 18px;
+      padding: clamp(24px, 4vw, 48px);
+      overflow: hidden;
+      color: #fff;
+      background:
+        linear-gradient(135deg, rgba(49, 58, 126, 0.96), rgba(25, 27, 44, 0.98)),
+        var(--kernel);
+      border: 1px solid var(--kernel-line);
+      border-radius: 18px;
+      box-shadow: 0 18px 60px rgba(25, 27, 44, 0.16);
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: #bfc3ff;
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 900px;
+      margin: 0;
+      font-size: clamp(1.8rem, 4vw, 3.4rem);
+      line-height: 1.2;
+      letter-spacing: -0.035em;
+    }
+
+    .thesis {
+      max-width: 980px;
+      margin: 24px 0 0;
+      padding: 14px 18px;
+      color: #f4f5ff;
+      background: rgba(255, 255, 255, 0.08);
+      border-left: 4px solid #9ca3ff;
+      border-radius: 0 10px 10px 0;
+      font-size: clamp(1rem, 1.7vw, 1.2rem);
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      margin-top: 18px;
+      color: var(--kernel-ink);
+      font-size: 0.82rem;
+    }
+
+    .decision-section {
+      margin-bottom: 18px;
+      padding: 20px;
+    }
+
+    .decision-head {
+      margin-bottom: 14px;
+    }
+
+    .decision-head h2 {
+      margin: 0;
+      font-size: 1.22rem;
+      line-height: 1.35;
+    }
+
+    .decision-head p:last-child {
+      margin: 6px 0 0;
+      color: var(--ink-soft);
+    }
+
+    .decision-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .decision-card {
+      min-width: 0;
+      padding: 16px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-top: 4px solid var(--primary);
+      border-radius: 10px;
+    }
+
+    .decision-card h3 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      line-height: 1.45;
+    }
+
+    .decision-facts {
+      display: grid;
+      gap: 9px;
+      margin: 0;
+    }
+
+    .decision-fact {
+      display: grid;
+      gap: 2px;
+    }
+
+    .decision-fact dt {
+      color: var(--primary);
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+    }
+
+    .decision-fact dd {
+      margin: 0;
+      color: var(--ink-soft);
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+
+    .decision-fact:first-child dd {
+      color: var(--ink);
+      font-weight: 800;
+    }
+
+    .decision-choices {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 14px;
+    }
+
+    .decision-choice {
+      flex: 1 1 30%;
+      min-width: 0;
+      padding: 9px 6px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      color: var(--ink-soft);
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 800;
+      line-height: 1.3;
+      cursor: pointer;
+    }
+
+    .decision-choice[data-choice="go"][aria-pressed="true"] {
+      background: var(--done-soft);
+      border-color: var(--done);
+      color: var(--done);
+    }
+
+    .decision-choice[data-choice="talk"][aria-pressed="true"] {
+      background: var(--wip-soft);
+      border-color: var(--wip);
+      color: var(--wip);
+    }
+
+    .decision-choice[data-choice="stop"][aria-pressed="true"] {
+      background: var(--risk-soft);
+      border-color: var(--risk);
+      color: var(--risk);
+    }
+
+    .decision-memo-label {
+      display: block;
+      margin-top: 12px;
+      color: var(--ink-faint);
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+    }
+
+    .decision-memo {
+      width: 100%;
+      min-height: 54px;
+      margin-top: 5px;
+      padding: 8px 9px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--ink);
+      font: inherit;
+      font-size: 0.85rem;
+      line-height: 1.6;
+      resize: vertical;
+    }
+
+    .decision-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .decision-copy {
+      padding: 9px 16px;
+      background: var(--primary);
+      border: 1px solid var(--primary);
+      border-radius: 8px;
+      color: #fff;
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .decision-copy-state {
+      color: var(--ink-soft);
+      font-size: 0.8rem;
+    }
+
+    .decision-transcript {
+      width: 100%;
+      min-height: 108px;
+      margin-top: 10px;
+      padding: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.65;
+    }
+
+    .explorer {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 390px);
+      gap: 18px;
+      align-items: start;
+      margin-bottom: 18px;
+    }
+
+    .workflow-main {
+      display: grid;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .workflow-footer {
+      width: 100%;
+      margin: 0;
+    }
+
+    .card {
+      min-width: 0;
+      background: rgba(252, 251, 249, 0.94);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 34px rgba(27, 27, 34, 0.07);
+    }
+
+    .canvas-card {
+      overflow: hidden;
+    }
+
+    .canvas-head {
+      display: grid;
+      gap: 14px;
+      padding: 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .canvas-title-row {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .section-label {
+      margin: 0 0 3px;
+      color: var(--primary);
+      font-size: 0.72rem;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+    }
+
+    .canvas-head h2,
+    .side-section h2 {
+      margin: 0;
+      font-size: 1.08rem;
+      line-height: 1.35;
+    }
+
+    .flow-description {
+      margin: 5px 0 0;
+      color: var(--ink-soft);
+      font-size: 0.88rem;
+    }
+
+    .view-state {
+      flex: 0 0 auto;
+      padding: 5px 9px;
+      color: var(--primary-ink);
+      background: var(--primary-soft);
+      border: 1px solid #cfd2ec;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .plain-summary {
+      margin: 0;
+      padding: 12px 14px;
+      color: #15564d;
+      background: var(--plain-soft);
+      border: 1px solid var(--plain-line);
+      border-radius: 10px;
+      font-size: 0.92rem;
+    }
+
+    .plain-summary strong {
+      display: block;
+      margin-bottom: 2px;
+      font-size: 0.76rem;
+      letter-spacing: 0.06em;
+    }
+
+    .canvas-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .control-button {
+      min-height: 38px;
+      padding: 7px 12px;
+      cursor: pointer;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 9px;
+      font-size: 0.82rem;
+      font-weight: 750;
+    }
+
+    .control-button:hover:not(:disabled) {
+      border-color: var(--primary);
+    }
+
+    .control-button[aria-pressed="true"] {
+      color: #fff;
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .control-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.42;
+    }
+
+    .diagram-shell {
+      max-width: 100%;
+      padding: 18px;
+      overflow-x: auto;
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+        var(--kernel);
+      background-size: 24px 24px;
+      scrollbar-color: var(--kernel-line) var(--kernel);
+    }
+
+    /* 列と行を 1 つの grid で共有する。列ごとに grid を分けると、
+       同じ row を指定しても列をまたいで高さが揃わないため。 */
+    .diagram {
+      position: relative;
+      display: grid;
+      align-items: start;
+      grid-auto-rows: auto;
+      column-gap: 30px;
+      row-gap: 12px;
+      min-width: 880px;
+      min-height: 470px;
+      padding: 12px 0 40px;
+      isolation: isolate;
+    }
+
+    .edge-layer {
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    /* 列の帯は装飾のみ。ノードとは重ねて敷く。
+       .diagram が align-items:start なので、帯だけは列の高さいっぱいに伸ばす。 */
+    .lane-bg {
+      z-index: 0;
+      align-self: stretch;
+      margin: -12px;
+      background: rgba(35, 38, 60, 0.78);
+      border: 1px solid var(--kernel-line);
+      border-radius: 12px;
+      pointer-events: none;
+    }
+
+    .lane-title {
+      position: relative;
+      z-index: 2;
+      min-width: 0;
+      min-height: 36px;
+      margin: 0;
+      padding-bottom: 8px;
+      color: #c3c8f5;
+      border-bottom: 1px solid var(--kernel-line);
+      font-size: 0.8rem;
+      font-weight: 900;
+      letter-spacing: 0.03em;
+    }
+
+    .node-card {
+      position: relative;
+      z-index: 3;
+      min-width: 0;
+      min-height: 76px;
+      padding: 11px 13px;
+      color: #f0f1ff;
+      background: #2b2e47;
+      border: 1px solid #484c6b;
+      border-radius: 10px;
+      box-shadow: 0 8px 20px rgba(8, 9, 18, 0.22);
+      transition:
+        opacity 160ms ease,
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        transform 160ms ease;
+    }
+
+    .node-card.is-dim {
+      opacity: 0.34;
+      box-shadow: none;
+    }
+
+    .node-card.is-flow {
+      background: #303552;
+      border-color: #99a0ff;
+      box-shadow: 0 0 0 2px rgba(153, 160, 255, 0.16);
+    }
+
+    .node-card.is-step {
+      border-color: #fff;
+      box-shadow:
+        0 0 0 3px rgba(153, 160, 255, 0.38),
+        0 12px 26px rgba(8, 9, 18, 0.34);
+      transform: translateY(-2px);
+    }
+
+    .node-label {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 850;
+      line-height: 1.35;
+    }
+
+    .node-summary {
+      display: block;
+      margin-top: 5px;
+      color: var(--kernel-ink);
+      font-size: 0.72rem;
+      line-height: 1.5;
+    }
+
+    .edge-line {
+      fill: none;
+      stroke: #5c6080;
+      stroke-width: 1.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.16;
+      transition:
+        opacity 160ms ease,
+        stroke 160ms ease,
+        stroke-width 160ms ease;
+    }
+
+    .edge-line.is-return {
+      stroke-dasharray: 5 5;
+    }
+
+    .edge-line.is-flow {
+      stroke: #a7adff;
+      stroke-width: 2.4;
+      opacity: 0.92;
+    }
+
+    .edge-line.is-step {
+      stroke: #fff;
+      stroke-width: 3.6;
+      opacity: 1;
+    }
+
+    .step-badge .badge-halo {
+      fill: var(--kernel);
+      stroke: none;
+    }
+
+    .step-badge circle.badge-body {
+      fill: var(--primary);
+      stroke: #aeb3e7;
+      stroke-width: 1.4;
+    }
+
+    .step-badge.is-current circle.badge-body {
+      fill: #fff;
+      stroke: var(--primary);
+      stroke-width: 2.6;
+    }
+
+    .step-badge.is-dim {
+      opacity: 0.3;
+    }
+
+    .step-badge text {
+      fill: #fff;
+      font-family: var(--sans);
+      font-size: 11px;
+      font-weight: 900;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+
+    .step-badge.is-current text {
+      fill: var(--primary);
+    }
+
+    .sidebar {
+      display: grid;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .side-section {
+      padding: 18px;
+    }
+
+    .side-head {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .side-count {
+      color: var(--ink-faint);
+      font-size: 0.74rem;
+    }
+
+    .flow-list,
+    .step-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .flow-button {
+      width: 100%;
+      padding: 12px;
+      cursor: pointer;
+      text-align: left;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .flow-button:hover {
+      border-color: #aeb2d6;
+    }
+
+    .flow-button[aria-pressed="true"] {
+      background: var(--primary-soft);
+      border-color: var(--primary);
+      box-shadow: inset 4px 0 0 var(--primary);
+    }
+
+    .flow-button-title {
+      display: block;
+      font-size: 0.88rem;
+      font-weight: 850;
+      line-height: 1.4;
+    }
+
+    .flow-button-description {
+      display: block;
+      margin-top: 4px;
+      color: var(--ink-soft);
+      font-size: 0.72rem;
+      line-height: 1.5;
+    }
+
+    .step-card {
+      overflow: hidden;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .step-card.is-current {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(49, 58, 126, 0.1);
+    }
+
+    .step-select {
+      display: grid;
+      grid-template-columns: 32px minmax(0, 1fr);
+      gap: 10px;
+      width: 100%;
+      padding: 12px;
+      cursor: pointer;
+      text-align: left;
+      background: transparent;
+      border: 0;
+    }
+
+    .step-select:hover {
+      background: var(--surface-2);
+    }
+
+    .step-number {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      color: #fff;
+      background: var(--primary);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 900;
+    }
+
+    .step-route {
+      display: block;
+      color: var(--primary);
+      font-size: 0.7rem;
+      font-weight: 850;
+      line-height: 1.4;
+    }
+
+    .step-action {
+      display: block;
+      margin-top: 3px;
+      font-size: 0.86rem;
+      font-weight: 850;
+      line-height: 1.4;
+    }
+
+    .step-description {
+      display: block;
+      margin-top: 5px;
+      color: var(--ink-soft);
+      font-size: 0.76rem;
+      line-height: 1.58;
+    }
+
+    .step-more {
+      padding: 0 12px 10px 54px;
+      color: var(--ink-soft);
+      font-size: 0.73rem;
+    }
+
+    .step-more summary {
+      cursor: pointer;
+      color: var(--primary);
+      font-weight: 800;
+    }
+
+    .detail-grid {
+      display: grid;
+      gap: 7px;
+      margin: 8px 0 0;
+    }
+
+    .detail-row {
+      margin: 0;
+    }
+
+    .detail-row strong {
+      color: var(--ink);
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.92em;
+    }
+
+    .error-box,
+    .noscript {
+      margin: 18px;
+      padding: 14px;
+      color: #7f2c1e;
+      background: var(--risk-soft);
+      border: 1px solid #e5c0b4;
+      border-radius: 10px;
+    }
+
+    .report-footer {
+      margin-bottom: 28px;
+      padding: 18px 20px;
+      color: var(--ink-soft);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      font-size: 0.78rem;
+    }
+
+    .report-footer strong {
+      color: var(--ink);
+    }
+
+    .source-list {
+      margin: 8px 0 0;
+      padding-left: 20px;
+    }
+
+    @media (max-width: 960px) {
+      .decision-list {
+        grid-template-columns: 1fr;
+      }
+
+      .explorer {
+        grid-template-columns: 1fr;
+      }
+
+      .workflow-main {
+        display: contents;
+      }
+
+      .canvas-card {
+        order: 1;
+      }
+
+      .sidebar {
+        order: 2;
+      }
+
+      .workflow-footer {
+        order: 3;
+      }
+
+      .sidebar {
+        grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+      }
+    }
+
+    @media (max-width: 680px) {
+      .wrap {
+        width: min(100% - 20px, 1440px);
+      }
+
+      .hero {
+        margin-top: 10px;
+        padding: 22px 18px;
+        border-radius: 14px;
+      }
+
+      .canvas-title-row {
+        display: grid;
+      }
+
+      .view-state {
+        width: fit-content;
+      }
+
+      .sidebar {
+        grid-template-columns: 1fr;
+      }
+
+      .diagram {
+        min-width: 640px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.001ms !important;
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 12mm;
+      }
+
+      body {
+        background: #fff;
+      }
+
+      .wrap {
+        width: 100%;
+      }
+
+      .hero {
+        margin-top: 0;
+        box-shadow: none;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+
+      .explorer {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .workflow-main {
+        display: contents;
+      }
+
+      .canvas-card {
+        order: 1;
+      }
+
+      .sidebar {
+        order: 2;
+      }
+
+      .workflow-footer {
+        order: 3;
+      }
+
+      .canvas-card,
+      .decision-card,
+      .decision-section,
+      .side-section,
+      .report-footer {
+        box-shadow: none;
+        break-inside: avoid;
+      }
+
+      .canvas-controls,
+      .flow-section,
+      .decision-actions {
+        display: none;
+      }
+
+      .decision-choice {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+
+      .decision-memo,
+      .decision-transcript {
+        border-color: var(--line-strong);
+        overflow: visible;
+      }
+
+      .diagram-shell {
+        overflow: visible;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+
+      .diagram {
+        min-width: 0;
+      }
+
+      .node-card,
+      .edge-line {
+        opacity: 1 !important;
+      }
+
+      .sidebar {
+        margin-top: 12px;
+      }
+
+      .step-card {
+        break-inside: avoid;
+      }
+    }
+  
+.lesson{max-width:1080px;margin:22px auto;padding:28px;background:var(--surface);border:1px solid var(--line);border-radius:12px}.lesson h2{margin:8px 0 14px;font-size:clamp(1.35rem,3vw,1.85rem);line-height:1.5}.lesson p{margin:12px 0}.lead{font-size:1.1rem}.big-route{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:14px;align-items:center;background:var(--kernel);padding:26px;border-radius:10px;color:white}.big-route div{border:1px solid var(--kernel-line);padding:16px;text-align:center;border-radius:8px}.big-route b{display:block;font-size:1.35rem}.big-route span{font-size:.88rem}.arrow{font-size:1.6rem!important}.analogy{background:var(--plain-soft);border-left:4px solid var(--plain);padding:16px}.note{background:var(--wip-soft);border-left:3px solid var(--wip);padding:12px;font-size:.94rem}.quote{border-left:4px solid var(--primary);padding:16px;background:var(--primary-soft)}.progress-list{display:grid;grid-template-columns:190px 1fr;gap:12px 20px}.progress-list dt{font-weight:700}.progress-list dd{margin:0}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:.96rem}th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:13px 12px}th{background:var(--surface-2)}tr.hit{background:var(--done-soft)}tr.gap{background:var(--risk-soft)}details{margin:18px 0;border:1px solid var(--line);border-radius:8px;padding:14px}summary{cursor:pointer;font-weight:700}li{margin:8px 0}.readable-steps{padding-left:25px}.verdict{padding:18px;background:var(--done-soft);border-left:4px solid var(--done)}a{color:var(--primary);text-underline-offset:3px}.source-list code{white-space:normal}.wrap{max-width:1260px}.lesson{width:min(1080px,calc(100% - 32px))}.hero{box-shadow:none}.diagram-shell{background:var(--surface)}@media(max-width:650px){.lesson{padding:18px}.progress-list{grid-template-columns:1fr;gap:6px}.progress-list dd{margin-bottom:12px}.big-route{grid-template-columns:1fr;padding:16px;gap:7px}.big-route .arrow{transform:rotate(90deg);text-align:center}.big-route div{padding:10px}.table-wrap th,.table-wrap td{padding:9px 7px;font-size:.87rem}}@media print{.lesson{width:100%;max-width:none;border:0;margin:10px 0;padding:12px 0;break-inside:auto}.lesson h2{break-after:avoid}.big-route{grid-template-columns:1fr auto 1fr auto 1fr}.big-route .arrow{transform:none}details{break-inside:auto}tr{break-inside:avoid}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.progress-list{grid-template-columns:190px 1fr}.note,.analogy{break-inside:auto}}
+
+</style>
+</head>
+<body>
+  <header class="hero wrap">
+    <p class="eyebrow" id="project-name">PROJECT / INTERACTIVE WORKFLOW</p>
+    <h1 id="report-title">何が、どこを通って動くのか？</h1>
+    <p class="thesis" id="report-thesis">フローを選ぶと、関係する場所と処理順だけを表示します。</p>
+    <div class="hero-meta">
+      <span id="generated-at">作成日: 未設定</span>
+      <span>判断用の派生レポート</span>
+      <span>正本はフッターの出典</span>
+    </div>
+  </header>
+
+  <section class="card decision-section wrap" id="decision-section" aria-labelledby="decision-heading" hidden>
+    <div class="decision-head">
+      <p class="section-label">立花が今決めること</p>
+      <h2 id="decision-heading">進める範囲を選ぶ</h2>
+      <p>推奨と、今回の許可に含まれないことを分けて表示します。</p>
+    </div>
+    <div class="decision-list" id="decision-list" role="list"></div>
+    <div class="decision-actions">
+      <button type="button" class="decision-copy" id="decision-copy">選んだ結果をまとめてコピー</button>
+      <span class="decision-copy-state" id="decision-copy-state" role="status" aria-live="polite">選んだ内容はこのページに保存されません。コピーして戻してください。</span>
+    </div>
+    <textarea class="decision-transcript" id="decision-transcript" readonly hidden aria-label="コピーする本文"></textarea>
+  </section>
+
+
+<section class="lesson wrap" id="start">
+ <p class="section-label">ひとことで</p><h2>会話を引っ越さず、その会話に質問を届ける</h2>
+ <p class="lead">CodexとClaudeには、それぞれ別の会話がある。claudexは、その間に「探す」「読む」「送る」の共通窓口を足す仕組みです。</p>
+ <div class="big-route" aria-label="Codexの元の会話から共通窓口を通りClaudeの元の会話へ届く。逆方向も同じ。"><div><b>Codex</b><span>元の会話にいる</span></div><span class="arrow">↔</span><div><b>claudex</b><span>共通窓口＋接続部</span></div><span class="arrow">↔</span><div><b>Claude Code</b><span>元の会話にいる</span></div></div>
+ <p class="analogy"><b>添える比喩：</b>元の会話を教室にたとえると、claudexは教室間の連絡係に近い。先生もノートも、元の教室に残ります。<br><b>実際には：</b>会話IDと動いているプロセスを照合し、その製品が使う接続方法で届けます。会話本文を共有SQLiteへ集めません。</p>
+ <p class="note">この図の矢印は通信の構成です。すべての仕事が自動で始まる意味ではありません。受信した依頼は、登録時に決めた処理範囲と元の承認ルールに従います。</p>
+</section>
+<section class="lesson wrap" id="progress"><p class="section-label">現在地</p><h2>実通信は確かめた。普段使いへの組込みが残る</h2>
+ <dl class="progress-list"><dt>1. プロジェクトの目的</dt><dd>立花さんがコピー貼付けや会話IDの操作をせず、相手の元の会話を読んで往復できる。</dd><dt>2. 全体進捗％</dt><dd><b>今回依頼された方式検証と実装計画は100％。</b>100％の条件は、相互読取り、両方向通信、Desktop接続、境界観測、独立判定。製品全体の完成率は工程ごとの重みを決めておらず、数字にはしていません。</dd><dt>3. 今やっている作業</dt><dd>方式検証と計画は完了。P1の探索共通部は66/66試験PASS、実際の終了コード0。最終66試験版はHaikuとOpusの独立判定PASS。今回のP1探索共通核は完了です。native稼働観測器とread / sendの製品接続はこれからです。</dd><dt>4. 何のためにやるのか</dt><dd>実験で成立した接続を、毎回手動コマンドを打たずに使える形へつなげるため。</dd><dt>5. 次に進めるべきタスク</dt><dd>この回答までに進めた：方式検証、仕様と計画、P1探索共通核の実装と検収。次にAIが続ける：P2〜P6の製品実装。本人の判断が必要：導入時の連携対象と許可範囲。外部条件待ち：将来の標準通知への置換は各製品の対応待ち。現在の実装はその対応を待たず進められます。</dd></dl>
+ <p class="note">説明と図の作成日は2026-10-02。実通信の観測は2026-10-01。今日は通信試験を再実行していません。</p>
+</section>
+<section class="lesson wrap" id="tools"><p class="section-label">中身 01</p><h2>使うものの名前と仕事</h2>
+ <div class="table-wrap"><table><thead><tr><th>実名</th><th>正体と使い方</th><th>押さえる点</th></tr></thead><tbody>
+ <tr><td>セッション</td><td>一つの会話と、それまでのやり取り。会話を区別する番号がsession ID。</td><td>元の会話を保つ。別の会話へコピーして代用しない。</td></tr>
+ <tr><td>Codex / Claude Code</td><td>依頼を考え、道具を呼び、応答する製品。CLIはコマンド画面、Desktopは通常のアプリ画面。</td><td>Claude Codeが対象。Claudeの通常ChatやCoworkとの連携は初版の範囲外。</td></tr>
+ <tr><td>MCP</td><td>Model Context Protocol。製品が追加の道具を共通の呼び方で使う約束。</td><td>MCPは入口。特定の元会話を動かす処理は接続部が担当。</td></tr>
+ <tr><td>sessions / read / send</td><td>会話を探す／可視本文を読む／依頼や返信を届ける、の3操作。</td><td>同じ3操作を両製品に足す。純正の全機能を差し替える仕様ではない。</td></tr>
+ <tr><td>登録と接続資格</td><td>連携を認めた会話と権限を対応付ける。接続資格は送り主を確かめるための情報。</td><td>モデルが「私は別の会話です」と本文に書いても、送り主は変更できない設計。</td></tr>
+ <tr><td>adapter（接続部）</td><td>Codex用とClaude用を分け、共通操作を各製品の接続形式へ変える。</td><td>違いを吸収する場所。Desktop内部接続は対応する版を固定する。</td></tr>
+ <tr><td>message_id / reply_to</td><td>依頼の番号／どの依頼への返信かを示す番号。</td><td>一つの応答処理に複数の依頼が入る場合も、番号で追う。</td></tr>
+ </tbody></table></div>
+ <p><b>AIに任せる詳細：</b>接続形式、データの型、順番の制御。<b>立花さんが押さえる本質：</b>元会話が残ること、登録した相手だけが対象であること、届いた段階を正しく示すこと。</p>
+</section>
+<section class="lesson wrap"><p class="section-label">中身 02</p><h2>読む、送る、返信する流れを追う</h2><p>下の「見たい流れ」を一つ選ぶ。図の番号と「処理の順番」が対応します。「次へ」で一段ずつ進めます。図は完成版の設計であり、実際の通信をこのページから起こす操作ではありません。</p></section>
+
+  <main class="explorer wrap" id="workflow-explorer">
+    <div class="workflow-main">
+    <section class="card canvas-card" aria-labelledby="active-flow-title">
+      <div class="canvas-head">
+        <div class="canvas-title-row">
+          <div>
+            <p class="section-label">選択中の流れ</p>
+            <h2 id="active-flow-title">フローを読み込み中</h2>
+            <p class="flow-description" id="active-flow-description"></p>
+          </div>
+          <span class="view-state" id="view-state">流れ全体</span>
+        </div>
+
+        <p class="plain-summary">
+          <strong>やさしく言うと</strong>
+          <span id="plain-summary">選んだフローの要点をここに表示します。</span>
+        </p>
+
+        <div class="canvas-controls" aria-label="段階を移動">
+          <button class="control-button" id="previous-step" type="button">← 前へ</button>
+          <button class="control-button" id="show-overview" type="button" aria-pressed="true">流れ全体</button>
+          <button class="control-button" id="next-step" type="button">次へ →</button>
+        </div>
+      </div>
+
+      <div class="diagram-shell" aria-label="システム構成図。横方向にスクロールできます。">
+        <div class="diagram" id="diagram">
+          <svg class="edge-layer" id="edge-layer" aria-hidden="true"></svg>
+        </div>
+      </div>
+
+      <noscript>
+        <p class="noscript">この図の切替にはJavaScriptが必要です。印刷版または「処理の順番」を参照してください。</p>
+      </noscript>
+    </section>
+
+    <footer class="report-footer workflow-footer">
+      <strong>SSOT出典</strong>
+      <ul class="source-list" id="source-list"></ul>
+      <p>本レポートは理解と判断のための派生物です。仕様や実装の正本ではありません。</p>
+    </footer>
+    </div>
+
+    <aside class="sidebar" aria-label="流れと処理の順番">
+      <section class="card side-section flow-section" aria-labelledby="flows-heading">
+        <div class="side-head">
+          <div>
+            <p class="section-label">1つ選ぶ</p>
+            <h2 id="flows-heading">見たい流れを選ぶ</h2>
+          </div>
+          <span class="side-count" id="flow-count"></span>
+        </div>
+        <div class="flow-list" id="flow-list" role="list"></div>
+      </section>
+
+      <section class="card side-section" aria-labelledby="steps-heading">
+        <div class="side-head">
+          <div>
+            <p class="section-label">上から順に読む</p>
+            <h2 id="steps-heading">処理の順番</h2>
+          </div>
+          <span class="side-count" id="step-count"></span>
+        </div>
+        <div class="step-list" id="step-list" role="list"></div>
+      </section>
+    </aside>
+
+    <p id="workflow-status" class="visually-hidden" aria-live="polite"></p>
+  </main>
+
+
+<section class="lesson wrap" id="discovery"><p class="section-label">2026-10-02の追加仕様</p><h2>Claudeから探すときも、Codexから探すときも同じ条件</h2>
+<p>CodexとClaudeは、連携を許可した同じ名簿を読みます。名前、登録した担当、操作の許可を先に確認します。相手の実行世代と実際の作業場所は、製品へ接続する観測器が確認します。</p>
+<p>今のP1は観測器が未接続です。そのため製品の一覧は「状態不明」と返し、自動選択は成功させません。試験で稼働情報を注入して通ったことと、実セッションを発見できることを分けています。</p>
+<div class="table-wrap"><table><thead><tr><th>相手の場所</th><th>選択条件</th><th>既定の扱い</th></tr></thead><tbody>
+<tr><td>同じworkspaceとworktree</td><td>論理プロジェクト、Git作業場所、branchとHEAD状態が一致</td><td>current_workの候補。同順位が複数なら選ばない</td></tr>
+<tr><td>同じrepoの別branch</td><td>ローカルGit共通管理場所が同じ</td><td>same_repositoryを指定したとき候補にする</td></tr>
+<tr><td>同じbranchの別worktree</td><td>別の作業場所として区別</td><td>branch名だけでcurrent_workへ入れない</td></tr>
+<tr><td>別repo、同じremoteの別clone</td><td>別ローカルrepoとして区別</td><td>any_registeredを指定したとき候補にする</td></tr>
+</tbody></table></div>
+<p>実例として、このclaudexは親のCodeディレクトリのGit管理を共有しています。別プロジェクトも同じGit管理場所を持ち得ます。そのためGitの場所に加えて、論理プロジェクトのworkspaceを照合します。</p>
+<ol class="readable-steps"><li>起動時に呼出し元を固定する。要求のJSONから別の呼出し元へ変更させない。</li><li>呼出し元が相手へ操作する許可と、相手が受け入れる許可の両方を見る。</li><li>現在の観測で実際の作業場所を分類する。古い候補があれば選択を止める。</li><li>適合する最上位が1件だけなら、その元会話IDと実行世代へ固定したbinding（宛先の確認票）を発行する。</li><li>60秒以内に名簿と観測を再確認する。許可取消、世代変更、作業場所変更、期限切れを拒否する。成功した確認票は再利用できない。</li></ol>
+<p>表示名に命令文が入っても、順位や許可には使いません。同じOSユーザーが名簿を編集できる前提なので、起動引数だけで本人認証が済んだとも扱いません。</p>
+<p class="note">P1のMCPはsessions（許可された一覧）だけです。元履歴のread、相手へのsend、Desktop常用設定はまだ接続していません。今回の試験成功を「普段の会話から送信できる」と読み替えません。</p>
+<p>P1の最新試験は66/66 PASS、実際の終了コード0。最終66試験版はHaikuとOpusの独立判定PASS。今回のP1探索共通核は完了です。旧64試験版の判定は流用しません。製品のnative稼働観測器は未接続です。</p>
+<p><a href="../../specs/202610-session-discovery/spec.md">探索の仕様</a> / <a href="../../specs/202610-session-discovery/evidence.md">探索の試験と独立判定</a> / <a href="../../specs/202610-session-discovery/reviews/verify.txt">66試験の実行記録</a> / <a href="../../specs/202610-session-discovery/reviews/verification.json">検証版の識別記録</a> / <a href="../../specs/202610-session-discovery/reviews/build-opus-66.txt">最終独立判定</a></p>
+</section>
+<section class="lesson wrap" id="example"><p class="section-label">具体例</p><h2>設計の相談を元の会話へ届ける</h2>
+ <p class="quote">立花さん → Codex：「Claudeで話している設計を読んで、二重に送ったときの扱いを聞いて」</p>
+ <ol class="readable-steps"><li>Codexがsessionsを呼び、登録済みのClaude会話を選ぶ。</li><li>readで、その会話の可視本文と元の発言番号を取得する。</li><li>Codexが質問を作り、sendで元のClaude会話へ届ける。</li><li>Claudeが元の相談内容を踏まえて回答する。</li><li>Claudeがsendにreply_toを付け、元のCodex会話へ返す。</li><li>Codexが返信を使って、立花さんへ答える。</li></ol>
+ <p class="note">これは完成後の使い方の例です。実試験では専用の文字列と依頼番号を使い、同じ接続方式による読取りと往復を確認しました。</p>
+ <details><summary>実際に届いた証拠と、試験の判定方法</summary><p>Claude Desktop専用会話は、通常画面に「別のセッションからのメッセージ」と表示し、CDESK84 PEER_OK85と応答しました。同じClaudeが、このCodex会話の正本を読み、DESKTOP_FROM_CLAUDE_91を元のCodex会話へ返信しました。</p><p>CLIの最終試験では、配送ごとに新しく作る24桁の16進数receipt_nonce（受信確認用の乱数）を使いました。受信者が前から知っている固定文字列だけでは合格にしません。返信に乱数とmessage_idの両方があること、元の会話記録にも由来が残ることを照合しました。</p></details>
+</section>
+<section class="lesson wrap" id="native"><p class="section-label">中身 03</p><h2>元の会話へつなぐ方法は製品ごとに違う</h2>
+ <p>共通のreadとsendの内側で、製品ごとの接続部が仕事を分けます。「相互に読める」は、保存形式を同じにする意味ではありません。</p>
+ <div class="table-wrap"><table><thead><tr><th>対象</th><th>読むとき</th><th>届けるとき</th></tr></thead><tbody>
+ <tr><td>管理下のCodex CLI</td><td>所有app-server（会話を動かすサーバー）へthread/read(includeTurns=true)を呼ぶ。</td><td>turn/start(input=[], toolOutput=...)。一つの応答処理を始める／処理中の会話へ取り込む。</td></tr>
+ <tr><td>既存Codex Desktop</td><td>Desktop IPC（同じMacのアプリ内部の通信）で所有者を見つける。対象会話のsnapshot（現在の状態）から可視項目を取り出す。</td><td>元の会話のowner（実際の管理者）へ、独自名のtoolOutputを渡す。元の設定を引き継ぐ。</td></tr>
+ <tr><td>Claude Codeと同梱Code</td><td>公式SDK（接続用の開発部品）のget_session_messages。処理中のpeer記録は登録済み正本だけから補う。</td><td>SessionStart（会話開始時の通知）で示されたpeer socket（他セッションの文を受ける接続口）へ送る。</td></tr>
+ </tbody></table></div>
+ <p>peerは「別のセッションから来た文」という由来です。CodexではfunctionCallOutput、Claudeではpeerという記録として残ります。送り主の識別はclaudexの登録で行い、純正製品が他社セッションを認証したとは扱いません。</p>
+ <details><summary>元会話を保つ条件と、Desktop全履歴の判定</summary><p>別のapp-serverで同じ会話IDをresume（保存済み会話を別の実行体で再開）して代用しません。元のID、プロセス、モデル、推論量、作業場所、権限を照合します。純正製品の予約名を名乗る発信元偽装もしません。</p><p>Codex Desktopは対象会話だけをfollower（状態を受け取る接続）として登録します。取得後はfollowing=falseを送って接続を閉じます。完全なsnapshot本文は中継ログに保存しません。</p><p>全履歴が必要ならthread-follower-load-complete-historyを呼びます。ロード応答後にsnapshotを再取得し、返却revision（状態の版番号）以降の状態を待ちます。実観測では両方が1444でした。</p><p>canonicalIsComplete=true、turnsHaveLoadedOldest=trueは明示された値。個別turn（モデルの一回の応答処理）のpaginationはtrue=0、false=0、missing=8でした。欠測を勝手にtrueへ変えません。Desktop 26.928.31416 build12553の内部完了規則が欠測を許容することをコードで照合し、その版にだけ適用しました。明示falseや未知版は不合格。全項目の明示trueを求めた独自試験の終了1も負の証拠として残しています。</p><p>内部IPCは安定した公開SDKではありません。更新版が未対応なら送信を無効化し、理由を表示します。user入力への自動置換や別プロセスへの再開で隠しません。</p></details>
+</section>
+<section class="lesson wrap" id="wake"><p class="section-label">中身 04</p><h2>MCPから相手を「起こす」ときの範囲</h2>
+ <div class="table-wrap"><table><thead><tr><th>相手の状態</th><th>今の仕様と検証</th><th>実際に起こること</th></tr></thead><tbody>
+ <tr class="hit"><td>起動済みで返答待ち</td><td>読取りと応答の開始を実証。</td><td>MCPのsendを受け、接続部が元の会話へ届ける。</td></tr>
+ <tr class="hit"><td>別の作業を実行中</td><td>両製品で実証。5秒のhold（試験用の待機道具）が完了し、受信に応答。</td><td>純正処理に従って入力を扱う。Codexは同じ応答処理へ取り込む場合がある。Claudeのbusy記録はqueued_command attachmentになる。</td></tr>
+ <tr class="gap"><td>アプリや対象プロセスが停止中</td><td>初版はofflineを返す。自動起動を実証したとは言わない。</td><td>相手を勝手に起動せず、別の会話へ送って代用しない。</td></tr>
+ </tbody></table></div>
+ <p class="analogy"><b>添える比喩：</b>起動済みの会話に知らせることは、教室にいる先生へ呼びかけることに近い。閉まった教室を開ける仕事は別です。<br><b>実際には：</b>送信時に受信接続が存在するかを確認します。停止中の会話を起動するなら、起動を管理する機能と再開後の同一性検証が追加で必要です。</p>
+ <details><summary>Triggers/Events、通知、Samplingとの違い</summary><p>MCP Triggers/Eventsは、サーバーから接続先へ変化を知らせる方式を検討する作業部会です。2026-10-02の公式リポジトリは、内容が実験段階で正式仕様ではないと明記しています。<a href="https://github.com/modelcontextprotocol/experimental-ext-triggers-events">公式実験リポジトリ</a></p><p>通知を受け取ることと、指定した元の会話でモデルの応答を始めることは別の処理です。通知方式が標準化されても、CodexとClaude側に対象会話を動かす対応が必要です。</p><p>Samplingは、MCPサーバーが接続先へモデルの回答生成を頼む機能です。接続先のsampling対応が必要で、特定の既存会話をその文脈のまま起動する保証ではありません。<a href="https://modelcontextprotocol.io/specification/2025-11-25/client/sampling">公式Sampling仕様</a></p><p>今回の実装は、実証済みの直接接続を使います。標準通知と両製品の対応を確認できた時点で接続部を見直せます。標準通知の完成待ちは、現在の実装の停止理由にしません。</p></details>
+</section>
+<section class="lesson wrap" id="states"><p class="section-label">中身 05</p><h2>送信できた、読まれた、返信されたを分ける</h2>
+ <p>接続口に書けても、相手がその文を処理したとは限りません。表示するのは実際に観測した段階だけです。</p>
+ <div class="table-wrap"><table><thead><tr><th>仕様の状態</th><th>やさしい意味</th><th>その段階の根拠</th></tr></thead><tbody>
+ <tr><td>accepted</td><td>窓口が受け付けた</td><td>認可と重複検査を終えた。</td></tr><tr><td>submitted</td><td>元製品の接続口へ書けた</td><td>native（その製品本来の接続）への書込み成功。</td></tr><tr><td>observed</td><td>相手側で受信を確認した</td><td>対象メッセージの受信か、相手側の元の記録を確認。</td></tr><tr><td>replied</td><td>返信が来た</td><td>認めた相手からreply_to付きの返信を確認。</td></tr><tr><td>rejected / offline</td><td>送る前に拒否／停止を確認</td><td>許可されていない、または接続停止などを確認。</td></tr><tr class="gap"><td>unknown</td><td>届いたか分からない</td><td>書込み後の時間切れや接続断。自動再送しない。</td></tr>
+ </tbody></table></div>
+ <p class="note">これらは全件が必ず順番に現れる一本道ではありません。拒否や停止なら途中で終わります。ACK（受付の返答）をモデルの処理完了と同じにしません。</p>
+ <details><summary>依頼番号、重複、再起動、返信の取り違え</summary><ul><li>message_idは送り側が呼出し前に作る。同じIDの再呼出しは既存結果を返し、再配送しない設計。</li><li>同じIDで宛先や本文が違えば、番号の衝突として拒否する。</li><li>Codexへの実試験では同じIDを2度送ると、異なる2turnが動いた。純正側の重複排除に頼れないため、中継で送信前に止める。</li><li>Claudeの2回目は12秒内に応答結果がなかった。この限られた観測を、常に重複排除する保証にしない。</li><li>1message＝1turnと仮定しない。一つのturnへ複数の依頼が入ることがある。</li><li>中継の再起動では新しい接続世代を発行。古い依頼はunknownとして照会だけ許す。耐久キューによる自動再送は初版に含めない。</li><li>reply_to付きの返信を、新しい質問として自動処理しない。</li></ul></details>
+</section>
+<section class="lesson wrap" id="storage"><p class="section-label">中身 06</p><h2>会話本文の正本と、登録する情報</h2>
+ <p>正本は「間違ったときに戻って確かめる元の記録」です。Codexの会話はCodex側、Claudeの会話はClaude側が正本です。</p>
+ <div class="table-wrap"><table><thead><tr><th>場所</th><th>保持するもの</th><th>扱い</th></tr></thead><tbody>
+ <tr><td>元の製品</td><td>元の会話履歴と、そこへ届いた文。</td><td>元製品の保存方式のまま残る。</td></tr>
+ <tr><td>中継の動作中メモリ</td><td>登録した接続、依頼番号、返信先、配送状態。readの本文は呼出し処理に必要な間だけ。</td><td>共通の会話履歴DBにしない。</td></tr>
+ <tr><td>短い監査記録</td><td>時刻、接続世代、依頼番号、送り主、宛先、結果。</td><td>本文、認証値、思考内容を記録しない設計。</td></tr>
+ <tr><td>今回の試験成果物</td><td>合否を確認するための専用試験文と番号。</td><td>製品の共有受信箱ではない。業務会話の複製ではない。</td></tr>
+ </tbody></table></div>
+ <details><summary>readの返却項目と、初版で変換しないもの</summary><p>readの返却は、元のメッセージID、user／assistant／peer、可視テキスト、由来、取得時刻、次cursor（続きを読む位置）です。limitは一回に読む上限です。省略した内容はmetadata（内容についての付加情報）へ記します。</p><p>初版は人間に見える文章を共通化します。画像、音声、添付ファイル本体、すべての道具結果、思考、署名を相互変換しません。Codexのephemeral=true（一時会話）はincludeTurnsを拒否したため、read不可と表示します。</p><p>会話識別子はprovider（製品）、host（実行場所）、native_session_id（元会話番号）、runtime_generation（今回の起動世代）の組合せです。表示名は別に持ちます。PID（実行プロセスの番号）は使い回されるため、起動時刻と会話IDも照合します。</p><p>完成版は同じMac内のUnix socket（ローカルのプロセス間接続）と推測できない接続資格を使います。試験のlocalhost HTTPは外向きAPIにしません。モデルの引数でfromや接続先socketを自由に選ばせません。</p></details>
+</section>
+<section class="lesson wrap" id="permission"><p class="section-label">なぜこの条件が必要か</p><h2>相手の文は、人間の許可にはならない</h2>
+ <p>Claudeから「公開してよい」と届いても、それだけで人間の公開承認を得た扱いにはしません。読取り、質問、返信は、登録した範囲と元の製品の承認方式に従います。</p>
+ <p>元のモデル、推論量、作業場所、権限、承認待ちの状態を相手の文章で変更しません。登録した会話のペアが最初の導入単位です。</p>
+ <details><summary>試験で分かった承認条件と、保証していないこと</summary><p>read-only／approvalPolicy=neverで、MCPにreadOnly注釈がない専用試験ではreadが拒否されました。この組合せの観測であり、never単独の一般則にしません。完成版は読取の道具に正しいreadOnly注釈を付け、sendを読取専用と偽りません。</p><p>両モデルがNO_AUTHと回答した試験は、その固定条件での観測です。あらゆる攻撃文に対する権限保証ではありません。製品の登録認可と元の承認経路を実装で検証します。</p><p>CodexのsupportsUntrustedAppInputは別の入力経路の能力表示であり、独自toolOutput送信の認可条件として流用しません。</p></details>
+</section>
+<section class="lesson wrap" id="proof"><p class="section-label">確認したこと</p><h2>合格の範囲と、残る製品実装</h2>
+ <div class="table-wrap"><table><thead><tr><th>実通信の方式検証</th><th>結果</th></tr></thead><tbody><tr class="hit"><td>実モデルが共通MCPを呼ぶ相互read、両方向send／reply、busy受信、元ID／PID、peer履歴</td><td>17/17 PASS。実プロセス終了0。</td></tr><tr class="hit"><td>重複、停止、peerの承認という意味</td><td>7/7観測完了。実プロセス終了0。</td></tr><tr class="hit"><td>可視履歴とpeer抽出、他会話と隠れた内容の除外、Desktop完了規則</td><td>6/6 PASS。実プロセス終了0。</td></tr><tr class="hit"><td>既存Codex Desktopと専用Claude Desktopで、元会話の読取りと往復</td><td>受信と応答を確認。全履歴ロードも終了0。</td></tr><tr class="hit"><td>別家系のGrokによる独立検査</td><td>APPROVE。対象は方式検証と実装計画。製品完成の判定ではない。</td></tr></tbody></table></div>
+ <p class="note">CLIは両モデルが共通MCPを呼んだ。Desktopは固定Python接続部を通常のBash道具から呼び、純正の一度だけの許可を通した。この二つの証拠を分ける。完成版MCPのDesktop常用導入はまだ行っていません。</p>
+ <details><summary>検証した版、モデル、元の実行体</summary><ul><li>Codex CLI 0.159.3／gpt-6.1-sol／low。Claude CLI 2.1.286／claude-haiku-4-5／low。</li><li>Codex Desktop 26.928.31416 build12553／同梱Codex0.159.2。Desktop PID41846 → runtime43343。元会話ID01a0f59d-d3d1-79a2-948c-4a1f12a0a1a5。</li><li>Claude Desktop2.16120.0／同梱Code2.1.284／Haiku4.5。Desktop76019 →43098 →43099。native会話ID44043390-7770-4427-8d7b-edd91f804f8a。</li><li>CLI原記録run：12faa30c-467d-4619-8662-30c444c18edb。境界run：8bcd3513-328f-4573-b085-f71e43fdd482。</li><li>専用Claude試験は利用可能と公式確認した既存の別プロファイルを使用。通常ログインの識別ハッシュは前後一致。認証値は結果へ保存していません。</li></ul><p>これらは2026-10-01時点の記録です。現在の起動状態、将来版、全モデルについて合格を宣言するものではありません。</p></details>
+</section>
+<section class="lesson wrap" id="scope"><p class="section-label">注意点</p><h2>初版の境界と、前後の変化</h2>
+ <div class="table-wrap"><table><thead><tr><th>比較する点</th><th>現在の検証用コード</th><th>完成版の仕様</th></tr></thead><tbody><tr><td>操作</td><td>専用会話と固定IDで試験。</td><td>登録した相手を自然言語で探し、読み、送る。</td></tr><tr><td>立花さんの手間</td><td>試験接続部の呼出しが必要。</td><td>コピー貼付けや接続IDの手操作を不要にする。</td></tr><tr><td>会話の保存</td><td>正本は各製品。試験証拠だけ別保存。</td><td>正本は各製品。共有SQLiteなし。</td></tr><tr><td>純正機能</td><td>製品ごとに違う接続を実証。</td><td>共通3操作を追加。片方だけのfork、pause、モデル切替を共通化しない。</td></tr><tr><td>停止と版不一致</td><td>停止と失敗を観測。</td><td>offline／unsupportedと理由を示す。別プロセスで代用しない。</td></tr></tbody></table></div>
+ <p>agmsgはforkしません。接続部を製品ごとに分ける考え方と、元の実行体へ届ける方式を参考にします。初版は同じMacの登録したペアだけ。別Mac、クラウド会話、Claude Chat／Cowork、全履歴の横断公開は範囲外です。</p>
+ <p><b>後戻り：</b>連携を解除すると元の会話と純正機能は残ります。登録する範囲を広げると読める情報が増えるため、導入時に対象を決めます。長期の耐久配送や別Mac接続は、日を跨ぐ自動継続を要件に足す時点で別計画にします。</p>
+</section>
+<section class="lesson wrap" id="plan"><p class="section-label">製品にする順序</p><h2>6工程を実装し、完成版で再検収する</h2>
+ <ol class="readable-steps"><li><b>P1 登録：</b>会話、起動世代、使える操作を表示。未登録、重名、PID再利用を区別。</li><li><b>P2 読取り：</b>Codex／Claude用接続部を実装。元ID、peer由来、上限、続き、空と不存在を区別。</li><li><b>P3 送信：</b>一つの送信入口、共通MCP、依頼と返信の対応、重複排除を実装。</li><li><b>P4 Desktop：</b>元の画面の会話へ接続。版不一致なら理由付きで停止。</li><li><b>P5 使い始めと解除：</b>対象登録、外部依頼の扱い、自然言語操作、解除を用意。</li><li><b>P6 検収：</b>下の10条件を完成版で試験し、独立レビューを受ける。</li></ol>
+ <p>TypeScript（実装言語）を推奨。共通MCPとCodexの生成型を一緒に扱えるためです。Pythonの参照試験は残します。試験の固定IDやPIDを製品へ流用しません。ユーザー共通のMCPやskillを配布する段階では、CJ-Pluginのwire経路で設定します。</p>
+ <details><summary>完成版を合格にする10条件</summary><ol><li>起動済み対象を登録し、両モデルが3操作を選べる。</li><li>元IDと出典を保持。読取上限、続きを読む位置、空、不存在、世代を区別。</li><li>両方向の依頼と返信が同じ会話とプロセスへ届き、未知乱数と番号が一致。</li><li>作業中の処理が完了。複数依頼が一つのturnに入っても取り違えない。</li><li>同ID別本文、別sender、他者のreply_to、旧世代を拒否。同ID再呼出しは既存結果を返して再配送しない。</li><li>native停止、中継停止、送信前後の切断を分け、unknownの自動再送0回。</li><li>送り主の文言で資格や承認状態を変更できない。元の承認経路に従う。</li><li>本文、思考、認証値を中継の永続記録へ保存しない。</li><li>対応Desktopの通常画面で受信を確認。未対応版は無効化。</li><li>独立レビューの重大指摘0件。試験の実終了コードと判定を別々に記録。</li></ol></details>
+ <div class="verdict"><b>立花さんから見える完成条件：</b>「Claudeのあの会話を読んで質問して」と頼むだけで、元の相手から返事が来る。接続を解除しても、それぞれの会話は残る。</div>
+</section>
+<footer class="lesson wrap" id="sources"><h2>出典と読み方</h2><p>この資料は仕様と2026-10-01の実測から作った説明用の派生物です。製品の正本は下の文書です。図の切替は説明用で、実通信は起こしません。</p><ul>
+ <li><a href="../../specs/202610-session-interop/spec.md">製品仕様</a></li><li><a href="../../specs/202610-session-interop/Plans.md">実装計画と10条件</a></li><li><a href="../../specs/202610-session-interop/evidence.md">実観測の合否と範囲</a></li><li><a href="../../specs/202610-session-interop/plan-review.md">独立レビュー</a></li><li><a href="../../experiments/live-interop/results/execution-observations.json">実際のプロセス終了コード</a></li><li><a href="../../experiments/live-interop/desktop/contract.md">Desktop接続契約</a></li></ul><p>検証の確信度は確認済みの版でhigh。将来版には再確認が必要です。直すときは「この節のここをこう直して」と伝えれば、AIが同じ資料へ反映します。</p></footer>
+
+  <script id="report-data" type="application/json">
+{
+  "meta": {
+    "project": "claudex",
+    "eyebrowSuffix": "会話をつなぐ仕組みと仕様",
+    "title": "CodexとClaudeは、どうやって会話をつなぐ？",
+    "thesis": "起動済みの元の会話どうしで、読取りと往復通信は実証済み。完成版は共通の3操作を加え、自然言語で使える形にする。",
+    "generatedAt": "2026-10-02 JST／実通信の観測は2026-10-01",
+    "sourceRefs": [
+      "specs/202610-session-interop/spec.md:5",
+      "specs/202610-session-interop/Plans.md:10",
+      "specs/202610-session-interop/evidence.md:21",
+      "experiments/live-interop/desktop/contract.md:125"
+    ]
+  },
+  "categories": [
+    {
+      "id": "request",
+      "label": "① 頼む"
+    },
+    {
+      "id": "entry",
+      "label": "② 受け付ける"
+    },
+    {
+      "id": "check",
+      "label": "③ 確かめる"
+    },
+    {
+      "id": "native",
+      "label": "④ 元の場所へ届ける"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "requester",
+      "categoryId": "request",
+      "row": 1,
+      "label": "依頼する会話",
+      "summary": "CodexかClaude。反対側の会話を読み、質問し、返信する。"
+    },
+    {
+      "id": "mcp",
+      "categoryId": "entry",
+      "row": 1,
+      "label": "claudexのMCP窓口",
+      "summary": "両方が呼べる3操作。探すsessions、読むread、送るsend。"
+    },
+    {
+      "id": "check",
+      "categoryId": "check",
+      "row": 1,
+      "label": "登録と送信の検査",
+      "summary": "送り主、宛先、起動の世代、許可、依頼番号を確かめる。"
+    },
+    {
+      "id": "adapter",
+      "categoryId": "native",
+      "row": 1,
+      "label": "製品ごとの接続部",
+      "summary": "CodexとClaudeの異なる接続形式をここで合わせる。"
+    },
+    {
+      "id": "target",
+      "categoryId": "native",
+      "row": 2,
+      "label": "相手の元の会話と履歴",
+      "summary": "元の会話IDと実行プロセスを保つ。本文の正本はここに残る。"
+    }
+  ],
+  "edges": [
+    {
+      "id": "a",
+      "sourceNodeId": "requester",
+      "targetNodeId": "mcp",
+      "label": "共通操作を呼ぶ"
+    },
+    {
+      "id": "b",
+      "sourceNodeId": "mcp",
+      "targetNodeId": "check",
+      "label": "接続を照合"
+    },
+    {
+      "id": "c",
+      "sourceNodeId": "check",
+      "targetNodeId": "adapter",
+      "label": "認めた操作だけ"
+    },
+    {
+      "id": "d",
+      "sourceNodeId": "adapter",
+      "targetNodeId": "target",
+      "label": "元の場所へ接続"
+    },
+    {
+      "id": "e",
+      "sourceNodeId": "target",
+      "targetNodeId": "mcp",
+      "label": "本文または配送状態"
+    },
+    {
+      "id": "f",
+      "sourceNodeId": "mcp",
+      "targetNodeId": "requester",
+      "label": "結果を返す"
+    }
+  ],
+  "flows": [
+    {
+      "id": "read",
+      "title": "相手の会話を読む",
+      "description": "完成版の処理順。接続方式は実測済み。登録と重複排除を含む製品全体はこれから実装する。",
+      "plainSummary": "CodexからClaude、ClaudeからCodexの両方向で、元の可視本文を読めた。完成版では出典付きで返し、共有の会話DBには保存しない。",
+      "steps": [
+        {
+          "stepNumber": 1,
+          "edgeId": "a",
+          "action": "読む会話を選ぶ",
+          "description": "依頼側がsessionsで登録済みの候補を見つけ、readで対象を指定する。",
+          "why": "名前が同じ会話を取り違えないため。",
+          "payload": "target, cursor, limit"
+        },
+        {
+          "stepNumber": 2,
+          "edgeId": "b",
+          "action": "登録した接続か確かめる",
+          "description": "窓口が会話IDと起動の世代、読取の許可を照合する。",
+          "why": "別の会話や、再起動前の古い接続を読まないため。"
+        },
+        {
+          "stepNumber": 3,
+          "edgeId": "c",
+          "action": "相手用の接続部を選ぶ",
+          "description": "相手がCodexならCodex用、ClaudeならClaude用の読取部へ渡す。",
+          "why": "両製品では履歴を読む方法が違うため。"
+        },
+        {
+          "stepNumber": 4,
+          "edgeId": "d",
+          "action": "元の保存先から読む",
+          "description": "接続部が元の履歴から人間に見える本文とpeer由来の記録を取り出す。",
+          "why": "会話を別の場所へ移さず、正本を読むため。"
+        },
+        {
+          "stepNumber": 5,
+          "edgeId": "e",
+          "action": "本文と出典を整える",
+          "description": "元のメッセージID、役割、由来、取得時刻、次の読取位置を返す。",
+          "why": "どの発言を読んだかを後から確かめるため。",
+          "payload": "original_id, role, provenance, fetched_at, next_cursor"
+        },
+        {
+          "stepNumber": 6,
+          "edgeId": "f",
+          "action": "依頼側の会話へ返す",
+          "description": "readの結果として本文を依頼側へ返す。中継の履歴DBには残さない。",
+          "why": "依頼側が内容を理解して、質問や回答を作るため。"
+        }
+      ]
+    },
+    {
+      "id": "send",
+      "title": "相手に質問して応答を始めさせる",
+      "description": "完成版の処理順。接続方式は実測済み。登録と重複排除を含む製品全体はこれから実装する。",
+      "plainSummary": "起動済みの元の会話へメッセージが届くと、その会話で応答できる。MCPは入口。応答を始める処理は製品ごとの接続部が呼ぶ。",
+      "steps": [
+        {
+          "stepNumber": 1,
+          "edgeId": "a",
+          "action": "質問を送る",
+          "description": "依頼側が宛先と本文、message_idを付けてsendを呼ぶ。",
+          "why": "一つの依頼を一つの番号で追うため。",
+          "payload": "target, text, message_id"
+        },
+        {
+          "stepNumber": 2,
+          "edgeId": "b",
+          "action": "送り主と重複を検査する",
+          "description": "窓口は接続資格から送り主を決め、同じ依頼番号の再配送を止める。",
+          "why": "モデルが他人を名乗ったり、同じ依頼が二度動いたりしない構造にするため。"
+        },
+        {
+          "stepNumber": 3,
+          "edgeId": "c",
+          "action": "送信を一つの入口へ集める",
+          "description": "delivery.tsという送信処理だけが、認めた依頼を接続部へ渡す。",
+          "why": "どの操作から送っても同じ認可と重複検査を通すため。"
+        },
+        {
+          "stepNumber": 4,
+          "edgeId": "d",
+          "action": "元の会話へ直接届ける",
+          "description": "Codexではturn/startのtoolOutput、Claudeでは純正peer socketへ届ける。",
+          "why": "元の会話IDと実行プロセスを保ったまま応答させるため。"
+        },
+        {
+          "stepNumber": 5,
+          "edgeId": "e",
+          "action": "確認できた配送段階を返す",
+          "description": "書込み成功、相手での観測、返信を分けて窓口へ知らせる。",
+          "why": "書けたことだけで「相手が読んだ」と表示しないため。"
+        },
+        {
+          "stepNumber": 6,
+          "edgeId": "f",
+          "action": "送信側へ状態を返す",
+          "description": "sendの結果として、観測できた状態を依頼側へ返す。",
+          "why": "届いたか不明な状態で勝手に再送しないため。"
+        }
+      ]
+    },
+    {
+      "id": "reply",
+      "title": "届いた質問へ返信する",
+      "description": "完成版の処理順。接続方式は実測済み。登録と重複排除を含む製品全体はこれから実装する。",
+      "plainSummary": "相手が元の会話内容を踏まえて回答を作り、sendで返す。reply_toで元の依頼を指定する。左右の製品が入れ替わっても同じ操作になる。",
+      "steps": [
+        {
+          "stepNumber": 1,
+          "edgeId": "a",
+          "action": "元の依頼に返信する",
+          "description": "受信側が新しいmessage_idと、元の依頼番号reply_toを付けてsendを呼ぶ。",
+          "why": "どの質問への答えかを区別するため。",
+          "payload": "target, text, message_id, reply_to"
+        },
+        {
+          "stepNumber": 2,
+          "edgeId": "b",
+          "action": "返信する資格を確かめる",
+          "description": "窓口が認めた相手からの返信か、reply_toの宛先が正しいかを検査する。",
+          "why": "別の会話の答えを混ぜないため。"
+        },
+        {
+          "stepNumber": 3,
+          "edgeId": "c",
+          "action": "元の送り主用の接続部へ渡す",
+          "description": "送信処理が、最初の依頼をした会話への接続部を選ぶ。",
+          "why": "新しい会話へ答えを逃がさないため。"
+        },
+        {
+          "stepNumber": 4,
+          "edgeId": "d",
+          "action": "元の送り主の会話へ届ける",
+          "description": "返信を同じ会話へ入れる。相手からの文という由来を残す。",
+          "why": "人間が承認した指示と混同しないため。"
+        },
+        {
+          "stepNumber": 5,
+          "edgeId": "e",
+          "action": "依頼と返信を対応付ける",
+          "description": "reply_toを使って、認めた相手から返信が来たことを記録する。",
+          "why": "一回の応答処理と一件の依頼が一致しない場合も追うため。"
+        },
+        {
+          "stepNumber": 6,
+          "edgeId": "f",
+          "action": "往復の結果を返す",
+          "description": "返信の状態を返す。返信を新しい依頼として自動で送り返さない。",
+          "why": "答えに答え続ける無限の往復を作らないため。"
+        }
+      ]
+    },
+    {
+      "id": "offline",
+      "title": "相手が停止していたら止まる",
+      "description": "完成版の処理順。接続方式は実測済み。登録と重複排除を含む製品全体はこれから実装する。",
+      "plainSummary": "今の仕様は起動済み会話が対象。停止した相手への送信はoffline。新しい実行プロセスを勝手に起動して、元の相手の代わりにしない。",
+      "steps": [
+        {
+          "stepNumber": 1,
+          "edgeId": "a",
+          "action": "登録済みの相手へ送信を頼む",
+          "description": "依頼側がsendを呼ぶ。登録済みでも相手が停止している場合がある。",
+          "why": "登録が残っていることと、今も動いていることを分けるため。"
+        },
+        {
+          "stepNumber": 2,
+          "edgeId": "b",
+          "action": "今も同じ実行体か照合する",
+          "description": "会話ID、起動時刻、プロセスID、接続の世代を確かめる。",
+          "why": "再利用された番号を古い相手と取り違えないため。"
+        },
+        {
+          "stepNumber": 3,
+          "edgeId": "c",
+          "action": "接続の停止を検出する",
+          "description": "接続部が対象の受信接続を使えないことを確認する。",
+          "why": "存在しない接続へ送ったことにしないため。"
+        },
+        {
+          "stepNumber": 4,
+          "edgeId": "f",
+          "action": "停止または不明を伝える",
+          "description": "送る前に停止を確認したらoffline。書込み後の切断ならunknownと表示する。",
+          "why": "結果を確かめられない依頼を自動で再送しないため。"
+        }
+      ]
+    }
+  ]
+}
+</script>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const svgNamespace = "http://www.w3.org/2000/svg";
+      const decisionChoices = [
+        ["go", "やっていい"],
+        ["talk", "相談したい"],
+        ["stop", "やらない"]
+      ];
+      const decisionState = new Map();
+      const decisionMemo = new Map();
+      const elements = {
+        projectName: document.getElementById("project-name"),
+        reportTitle: document.getElementById("report-title"),
+        reportThesis: document.getElementById("report-thesis"),
+        generatedAt: document.getElementById("generated-at"),
+        decisionSection: document.getElementById("decision-section"),
+        decisionList: document.getElementById("decision-list"),
+        decisionCopy: document.getElementById("decision-copy"),
+        decisionCopyState: document.getElementById("decision-copy-state"),
+        decisionTranscript: document.getElementById("decision-transcript"),
+        diagram: document.getElementById("diagram"),
+        edgeLayer: document.getElementById("edge-layer"),
+        flowList: document.getElementById("flow-list"),
+        stepList: document.getElementById("step-list"),
+        activeFlowTitle: document.getElementById("active-flow-title"),
+        activeFlowDescription: document.getElementById("active-flow-description"),
+        plainSummary: document.getElementById("plain-summary"),
+        flowCount: document.getElementById("flow-count"),
+        stepCount: document.getElementById("step-count"),
+        viewState: document.getElementById("view-state"),
+        status: document.getElementById("workflow-status"),
+        previous: document.getElementById("previous-step"),
+        overview: document.getElementById("show-overview"),
+        next: document.getElementById("next-step"),
+        sourceList: document.getElementById("source-list")
+      };
+
+      let data;
+
+      try {
+        data = JSON.parse(document.getElementById("report-data").textContent);
+        const errors = validateData(data);
+        if (errors.length) throw new Error(errors.join(" / "));
+      } catch (error) {
+        showError(error.message);
+        return;
+      }
+
+      const nodeMap = new Map(data.nodes.map((node) => [node.id, node]));
+      const edgeMap = new Map(data.edges.map((edge) => [edge.id, edge]));
+      const state = {
+        flowIndex: 0,
+        stepIndex: null,
+        printStepIndex: null,
+        openedDetails: []
+      };
+
+      applyMetadata();
+      renderDecisions();
+      renderDiagramNodes();
+      renderFlowList();
+      selectFlow(0);
+      attachControls();
+
+      let resizeFrame = 0;
+      window.addEventListener("resize", () => {
+        cancelAnimationFrame(resizeFrame);
+        resizeFrame = requestAnimationFrame(drawEdges);
+      });
+
+      window.addEventListener("beforeprint", () => { document.querySelectorAll(".lesson details").forEach(d => {d.dataset.preprintOpen=String(d.open);d.open=true;}); preparePrint(); });
+      window.addEventListener("afterprint", () => { restoreAfterPrint(); document.querySelectorAll(".lesson details").forEach(d => {d.open=d.dataset.preprintOpen === "true";}); });
+
+      function applyMetadata() {
+        document.title = data.meta.title;
+        // 肩ラベルの後半は既定で "INTERACTIVE WORKFLOW"。
+        // 社外向け資料では meta.eyebrowSuffix に "" を入れて消せる。
+        const suffix =
+          data.meta.eyebrowSuffix === undefined
+            ? "INTERACTIVE WORKFLOW"
+            : data.meta.eyebrowSuffix;
+        elements.projectName.textContent = suffix
+          ? `${data.meta.project} / ${suffix}`
+          : data.meta.project;
+        elements.reportTitle.textContent = data.meta.title;
+        elements.reportThesis.textContent = data.meta.thesis;
+        elements.generatedAt.textContent = `作成日: ${data.meta.generatedAt || "未設定"}`;
+        elements.flowCount.textContent = `${data.flows.length}件`;
+
+        elements.sourceList.replaceChildren();
+        for (const source of data.meta.sourceRefs || []) {
+          const item = document.createElement("li");
+          const code = document.createElement("code");
+          code.textContent = source;
+          item.append(code);
+          elements.sourceList.append(item);
+        }
+      }
+
+      function renderDecisions() {
+        if (data.meta.decisionMode !== true) {
+          elements.decisionSection.hidden = true;
+          elements.decisionList.replaceChildren();
+          return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        const labels = [
+          ["推奨", "recommendation"],
+          ["許可すると起きること", "impact"],
+          ["今回はしないこと", "notNow"],
+          ["後から戻せるか", "reversible"]
+        ];
+
+        for (const decision of data.decisions) {
+          const card = document.createElement("article");
+          card.className = "decision-card";
+          card.setAttribute("role", "listitem");
+
+          const title = document.createElement("h3");
+          title.textContent = decision.title;
+
+          const facts = document.createElement("dl");
+          facts.className = "decision-facts";
+          for (const [label, key] of labels) {
+            const row = document.createElement("div");
+            row.className = "decision-fact";
+            const term = document.createElement("dt");
+            term.textContent = label;
+            const detail = document.createElement("dd");
+            detail.textContent = decision[key];
+            row.append(term, detail);
+            facts.append(row);
+          }
+
+          const choices = document.createElement("div");
+          choices.className = "decision-choices";
+          choices.setAttribute("role", "group");
+          choices.setAttribute("aria-label", decision.title + " の判断");
+          for (const [choiceKey, choiceLabel] of decisionChoices) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "decision-choice";
+            button.dataset.choice = choiceKey;
+            button.dataset.decisionId = decision.id;
+            button.setAttribute("aria-pressed", "false");
+            button.textContent = choiceLabel;
+            choices.append(button);
+          }
+
+          const memoLabel = document.createElement("label");
+          memoLabel.className = "decision-memo-label";
+          memoLabel.textContent = "ひとことメモ（任意）";
+          const memo = document.createElement("textarea");
+          memo.className = "decision-memo";
+          memo.dataset.decisionId = decision.id;
+          memo.rows = 2;
+          memoLabel.append(memo);
+
+          card.append(title, facts, choices, memoLabel);
+          fragment.append(card);
+        }
+
+        elements.decisionList.replaceChildren(fragment);
+        elements.decisionSection.hidden = false;
+      }
+
+      // 判断の記録。押した結果はページに保存せず、コピーして戻す前提にする。
+      function handleDecisionChoice(event) {
+        const button = event.target.closest(".decision-choice");
+        if (!button) return;
+        const pressed = button.getAttribute("aria-pressed") === "true";
+        const group = button.parentElement;
+        for (const sibling of group.querySelectorAll(".decision-choice")) {
+          sibling.setAttribute("aria-pressed", "false");
+        }
+        button.setAttribute("aria-pressed", pressed ? "false" : "true");
+        decisionState.set(button.dataset.decisionId, pressed ? "" : button.textContent);
+        elements.decisionCopyState.textContent = "選んだ内容はこのページに保存されません。コピーして戻してください。";
+      }
+
+      function buildDecisionTranscript() {
+        const lines = [data.meta.title, "判断: " + data.meta.project, ""];
+        for (const decision of data.decisions || []) {
+          const choice = decisionState.get(decision.id) || "未選択";
+          const memo = (decisionMemo.get(decision.id) || "").trim();
+          lines.push("- " + decision.title);
+          lines.push("  判断: " + choice + "（推奨: " + decision.recommendation + "）");
+          if (memo) lines.push("  メモ: " + memo);
+        }
+        return lines.join("\n");
+      }
+
+      // クリップボードは、権限待ちや未フォーカスのときに応答が返らないことがある。
+      // 1.2 秒で打ち切り、必ず手でコピーできる本文を出す。押して何も起きない状態を作らない。
+      function writeToClipboard(text) {
+        if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+          return Promise.resolve(false);
+        }
+        return Promise.race([
+          navigator.clipboard.writeText(text).then(() => true, () => false),
+          new Promise((resolve) => setTimeout(() => resolve(false), 1200))
+        ]);
+      }
+
+      async function copyDecisions() {
+        const text = buildDecisionTranscript();
+        elements.decisionCopyState.textContent = "コピーしています…";
+        const copied = await writeToClipboard(text);
+        if (copied) {
+          elements.decisionCopyState.textContent = "コピーしました。そのまま貼り付けて戻してください。";
+          elements.decisionTranscript.hidden = true;
+          return;
+        }
+        elements.decisionTranscript.value = text;
+        elements.decisionTranscript.hidden = false;
+        elements.decisionTranscript.select();
+        elements.decisionCopyState.textContent = "自動コピーができませんでした。下の本文を選んでコピーしてください。";
+      }
+
+      function renderDiagramNodes() {
+        const fragment = document.createDocumentFragment();
+        const columnOf = new Map(
+          data.categories.map((category, index) => [category.id, index + 1])
+        );
+
+        // 行番号を決める。row 指定があれば従い、無ければその列の次の空き行に置く。
+        const nextRow = new Map(data.categories.map((category) => [category.id, 1]));
+        const rowOf = new Map();
+
+        for (const node of data.nodes) {
+          const explicit = Number.isInteger(node.row) && node.row > 0 ? node.row : null;
+          const row = explicit ?? nextRow.get(node.categoryId) ?? 1;
+          rowOf.set(node.id, row);
+          nextRow.set(
+            node.categoryId,
+            Math.max(nextRow.get(node.categoryId) ?? 1, row + 1)
+          );
+        }
+
+        elements.diagram.style.gridTemplateColumns =
+          `repeat(${data.categories.length}, minmax(190px, 1fr))`;
+
+        data.categories.forEach((category, index) => {
+          // 帯はその列でノードが在る範囲までにする。空白まで伸ばすと図が間延びして見える。
+          const rowsHere = data.nodes
+            .filter((node) => node.categoryId === category.id)
+            .map((node) => rowOf.get(node.id) ?? 1);
+          const firstRowHere = rowsHere.length ? Math.min(...rowsHere) : 1;
+          const lastRowHere = rowsHere.length ? Math.max(...rowsHere) : 1;
+
+          const background = document.createElement("div");
+          background.className = "lane-bg";
+          background.style.gridColumn = String(index + 1);
+          background.style.gridRow = `${firstRowHere + 1} / ${lastRowHere + 2}`;
+          background.setAttribute("aria-hidden", "true");
+          fragment.append(background);
+
+          const title = document.createElement("h3");
+          title.className = "lane-title";
+          title.textContent = category.label;
+          title.style.gridColumn = String(index + 1);
+          title.style.gridRow = "1";
+          fragment.append(title);
+        });
+
+        for (const node of data.nodes) {
+          const category = data.categories.find((item) => item.id === node.categoryId);
+          const card = document.createElement("div");
+          card.className = "node-card";
+          card.id = `node-${node.id}`;
+          card.dataset.nodeId = node.id;
+          card.style.gridColumn = String(columnOf.get(node.categoryId) ?? 1);
+          // 1 行目は列見出しが占めるので 1 つ下げる。
+          card.style.gridRow = String((rowOf.get(node.id) ?? 1) + 1);
+          card.setAttribute(
+            "aria-label",
+            category ? `${category.label}／${node.label}` : node.label
+          );
+
+          const label = document.createElement("span");
+          label.className = "node-label";
+          label.textContent = node.label;
+
+          const summary = document.createElement("span");
+          summary.className = "node-summary";
+          summary.textContent = node.summary || "";
+
+          card.append(label, summary);
+          fragment.append(card);
+        }
+
+        elements.diagram.append(fragment);
+      }
+
+      function renderFlowList() {
+        elements.flowList.replaceChildren();
+
+        data.flows.forEach((flow, index) => {
+          const item = document.createElement("div");
+          item.setAttribute("role", "listitem");
+
+          const button = document.createElement("button");
+          button.className = "flow-button";
+          button.type = "button";
+          button.dataset.flowIndex = String(index);
+          button.setAttribute("aria-pressed", "false");
+
+          const title = document.createElement("span");
+          title.className = "flow-button-title";
+          title.textContent = flow.title;
+
+          const description = document.createElement("span");
+          description.className = "flow-button-description";
+          description.textContent = flow.description;
+
+          button.append(title, description);
+          button.addEventListener("click", () => selectFlow(index));
+          button.addEventListener("keydown", (event) => {
+            moveFocus(event, ".flow-button", index);
+          });
+          item.append(button);
+          elements.flowList.append(item);
+        });
+      }
+
+      function selectFlow(index) {
+        state.flowIndex = index;
+        state.stepIndex = null;
+
+        for (const button of elements.flowList.querySelectorAll(".flow-button")) {
+          button.setAttribute(
+            "aria-pressed",
+            String(Number(button.dataset.flowIndex) === state.flowIndex)
+          );
+        }
+
+        renderSteps();
+        updateView();
+      }
+
+      function renderSteps() {
+        const flow = currentFlow();
+        elements.stepList.replaceChildren();
+        elements.stepCount.textContent = `${flow.steps.length}段階`;
+
+        flow.steps.forEach((step, index) => {
+          const edge = edgeMap.get(step.edgeId);
+          const source = nodeMap.get(edge.sourceNodeId);
+          const target = nodeMap.get(edge.targetNodeId);
+
+          const card = document.createElement("article");
+          card.className = "step-card";
+          card.dataset.stepIndex = String(index);
+          card.setAttribute("role", "listitem");
+
+          const button = document.createElement("button");
+          button.className = "step-select";
+          button.type = "button";
+          button.dataset.stepIndex = String(index);
+
+          const number = document.createElement("span");
+          number.className = "step-number";
+          number.textContent = String(step.stepNumber);
+
+          const copy = document.createElement("span");
+
+          const route = document.createElement("span");
+          route.className = "step-route";
+          route.textContent = `${source.label} → ${target.label}`;
+
+          const action = document.createElement("span");
+          action.className = "step-action";
+          action.textContent = step.action;
+
+          const description = document.createElement("span");
+          description.className = "step-description";
+          description.textContent = step.description;
+
+          copy.append(route, action, description);
+          button.append(number, copy);
+          button.addEventListener("click", () => selectStep(index));
+          button.addEventListener("keydown", (event) => {
+            moveFocus(event, ".step-select", index);
+          });
+          card.append(button);
+
+          const details = buildStepDetails(step);
+          if (details) card.append(details);
+          elements.stepList.append(card);
+        });
+      }
+
+      function buildStepDetails(step) {
+        if (!step.why && !step.payload && !step.codeReference) return null;
+
+        const details = document.createElement("details");
+        details.className = "step-more";
+
+        const summary = document.createElement("summary");
+        summary.textContent = "理由、受け渡す情報、コードを見る";
+        details.append(summary);
+
+        const grid = document.createElement("div");
+        grid.className = "detail-grid";
+
+        const fields = [
+          ["なぜ", step.why],
+          ["受け渡すもの", step.payload],
+          ["コード参照", step.codeReference]
+        ];
+
+        for (const [label, value] of fields) {
+          if (!value) continue;
+          const row = document.createElement("p");
+          row.className = "detail-row";
+          const strong = document.createElement("strong");
+          strong.textContent = `${label}: `;
+          row.append(strong);
+
+          if (label === "コード参照") {
+            const code = document.createElement("code");
+            code.textContent = value;
+            row.append(code);
+          } else {
+            row.append(document.createTextNode(value));
+          }
+          grid.append(row);
+        }
+
+        details.append(grid);
+        return details;
+      }
+
+      function selectStep(index) {
+        state.stepIndex = index;
+        updateView();
+        const selected = elements.stepList.querySelector(`[data-step-index="${index}"]`);
+        selected?.scrollIntoView({
+          block: "nearest",
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "auto"
+            : "smooth"
+        });
+      }
+
+      function updateView() {
+        const flow = currentFlow();
+        const currentStep = state.stepIndex === null ? null : flow.steps[state.stepIndex];
+
+        elements.activeFlowTitle.textContent = flow.title;
+        elements.activeFlowDescription.textContent = flow.description;
+        elements.plainSummary.textContent = flow.plainSummary;
+        elements.viewState.textContent = currentStep
+          ? `段階 ${currentStep.stepNumber}/${flow.steps.length}`
+          : `流れ全体・${flow.steps.length}段階`;
+        elements.status.textContent = currentStep
+          ? `${flow.title}、段階${currentStep.stepNumber}/${flow.steps.length}を表示`
+          : `${flow.title}、流れ全体${flow.steps.length}段階を表示`;
+
+        elements.overview.setAttribute("aria-pressed", String(state.stepIndex === null));
+        elements.previous.disabled = state.stepIndex === null;
+        elements.next.disabled = state.stepIndex === flow.steps.length - 1;
+
+        const flowEdgeIds = new Set(flow.steps.map((step) => step.edgeId));
+        const flowNodeIds = new Set();
+        for (const edgeId of flowEdgeIds) {
+          const edge = edgeMap.get(edgeId);
+          flowNodeIds.add(edge.sourceNodeId);
+          flowNodeIds.add(edge.targetNodeId);
+        }
+
+        const stepNodeIds = new Set();
+        if (currentStep) {
+          const edge = edgeMap.get(currentStep.edgeId);
+          stepNodeIds.add(edge.sourceNodeId);
+          stepNodeIds.add(edge.targetNodeId);
+        }
+
+        for (const card of elements.diagram.querySelectorAll(".node-card")) {
+          const nodeId = card.dataset.nodeId;
+          card.classList.toggle("is-dim", !flowNodeIds.has(nodeId));
+          card.classList.toggle("is-flow", flowNodeIds.has(nodeId));
+          card.classList.toggle("is-step", stepNodeIds.has(nodeId));
+        }
+
+        for (const card of elements.stepList.querySelectorAll(".step-card")) {
+          const isCurrent = Number(card.dataset.stepIndex) === state.stepIndex;
+          card.classList.toggle("is-current", isCurrent);
+          const button = card.querySelector(".step-select");
+          if (isCurrent) {
+            button.setAttribute("aria-current", "step");
+          } else {
+            button.removeAttribute("aria-current");
+          }
+        }
+
+        requestAnimationFrame(drawEdges);
+      }
+
+      function drawEdges() {
+        const flow = currentFlow();
+        const currentStep = state.stepIndex === null ? null : flow.steps[state.stepIndex];
+        const flowEdgeIds = new Set(flow.steps.map((step) => step.edgeId));
+        const bounds = elements.diagram.getBoundingClientRect();
+
+        elements.edgeLayer.replaceChildren(buildMarkers());
+        elements.edgeLayer.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`);
+
+        // 番号が既に置いた番号と重なったら、空くまで下へ逃がす。
+        const placedBadges = [];
+        const avoidOverlap = (x, y) => {
+          let candidate = y;
+          for (let guard = 0; guard < 8; guard += 1) {
+            const clash = placedBadges.some(
+              (spot) => Math.abs(spot.x - x) < 26 && Math.abs(spot.y - candidate) < 26
+            );
+            if (!clash) break;
+            candidate += 28;
+          }
+          placedBadges.push({ x, y: candidate });
+          return candidate;
+        };
+
+        // 左へ戻る線は図の下を回る。複数あると重なるので通す高さを分ける。
+        const returnLane = new Map();
+        let returnCount = 0;
+
+        for (const edge of data.edges) {
+          const sourceElement = document.getElementById(`node-${edge.sourceNodeId}`);
+          const targetElement = document.getElementById(`node-${edge.targetNodeId}`);
+          if (!sourceElement || !targetElement) continue;
+
+          const source = sourceElement.getBoundingClientRect();
+          const target = targetElement.getBoundingClientRect();
+          const sourceCenter = source.left + source.width / 2;
+          const targetCenter = target.left + target.width / 2;
+
+          if (Math.abs(sourceCenter - targetCenter) >= 14 && targetCenter < sourceCenter) {
+            returnLane.set(edge.id, returnCount);
+            returnCount += 1;
+          }
+        }
+
+        for (const edge of data.edges) {
+          const sourceElement = document.getElementById(`node-${edge.sourceNodeId}`);
+          const targetElement = document.getElementById(`node-${edge.targetNodeId}`);
+          if (!sourceElement || !targetElement) continue;
+
+          const source = sourceElement.getBoundingClientRect();
+          const target = targetElement.getBoundingClientRect();
+          const geometry = edgeGeometry(source, target, bounds, returnLane.get(edge.id) ?? 0);
+          const path = document.createElementNS(svgNamespace, "path");
+          const isFlow = flowEdgeIds.has(edge.id);
+          const isCurrent = currentStep?.edgeId === edge.id;
+
+          path.setAttribute("d", geometry.path);
+          path.setAttribute("class", [
+            "edge-line",
+            geometry.kind === "return" ? "is-return" : "",
+            isFlow ? "is-flow" : "",
+            isCurrent ? "is-step" : ""
+          ].filter(Boolean).join(" "));
+          path.setAttribute(
+            "marker-end",
+            isCurrent
+              ? "url(#arrow-step)"
+              : isFlow
+                ? "url(#arrow-flow)"
+                : "url(#arrow-dim)"
+          );
+          elements.edgeLayer.append(path);
+
+          const matchingSteps = flow.steps.filter((step) => step.edgeId === edge.id);
+          const spread = geometry.kind === "vertical" ? { x: 27, y: 0 } : { x: 0, y: 27 };
+
+          matchingSteps.forEach((step, badgeIndex) => {
+            const shift = badgeIndex - (matchingSteps.length - 1) / 2;
+            const badgeX = geometry.midX + spread.x * shift;
+            const badgeY = avoidOverlap(badgeX, geometry.midY + spread.y * shift);
+            const badge = createStepBadge(
+              step.stepNumber,
+              badgeX,
+              badgeY,
+              currentStep?.stepNumber === step.stepNumber,
+              currentStep !== null && currentStep?.stepNumber !== step.stepNumber
+            );
+            elements.edgeLayer.append(badge);
+          });
+        }
+      }
+
+      function edgeGeometry(source, target, bounds, returnLane = 0) {
+        const s = {
+          left: source.left - bounds.left,
+          right: source.right - bounds.left,
+          top: source.top - bounds.top,
+          bottom: source.bottom - bounds.top
+        };
+        const t = {
+          left: target.left - bounds.left,
+          right: target.right - bounds.left,
+          top: target.top - bounds.top,
+          bottom: target.bottom - bounds.top
+        };
+        const sx = (s.left + s.right) / 2;
+        const tx = (t.left + t.right) / 2;
+        const sy = (s.top + s.bottom) / 2;
+        const ty = (t.top + t.bottom) / 2;
+        const radius = 14;
+
+        // 同じ列に並ぶ場合は縦の直線でつなぐ。膨らませない。
+        if (Math.abs(sx - tx) < 14) {
+          const downward = ty >= sy;
+          const y1 = downward ? s.bottom : s.top;
+          const y2 = downward ? t.top : t.bottom;
+          // 縦の間隔が狭いと番号が線を覆い隠す。そのときだけ番号を線の横へ逃がす。
+          const tight = Math.abs(y2 - y1) < 34;
+          return {
+            path: `M ${sx} ${y1} L ${sx} ${y2}`,
+            midX: tight ? sx + 26 : sx,
+            midY: (y1 + y2) / 2,
+            kind: "vertical"
+          };
+        }
+
+        // 右へ進む場合は列間の余白で一度だけ折れる階段にする。
+        if (tx > sx) {
+          const x1 = s.right;
+          const x2 = t.left;
+          // 隣の列なら間の余白の中央で折る。2 列以上先へ飛ぶ場合は
+          // 出発点のすぐ右で折り、番号が途中の列のノードに重ならないようにする。
+          const spansMany = tx - sx > (s.right - s.left) * 1.4;
+          const turnX = spansMany
+            ? x1 + Math.min(16, (x2 - x1) / 2)
+            : x1 + (x2 - x1) / 2;
+          return {
+            path: orthogonalPath(x1, sy, turnX, x2, ty, radius),
+            midX: turnX,
+            midY: (sy + ty) / 2,
+            kind: "forward"
+          };
+        }
+
+        // 左へ戻る場合は図の下側を回す。ノードの上を横切らせない。
+        const x1 = s.left;
+        const x2 = t.right;
+        const detourY = bounds.height - 14 - returnLane * 14;
+        const reach = Math.max(34, Math.abs(x1 - x2) * 0.16);
+        return {
+          path: [
+            `M ${x1} ${sy}`,
+            `C ${x1 - reach} ${sy}, ${x1 - reach} ${detourY}, ${(x1 + x2) / 2} ${detourY}`,
+            `C ${x2 + reach} ${detourY}, ${x2 + reach} ${ty}, ${x2} ${ty}`
+          ].join(" "),
+          midX: (x1 + x2) / 2,
+          midY: detourY,
+          kind: "return"
+        };
+      }
+
+      // 水平 → 垂直 → 水平の順に折れる直交線。角は同じ半径で丸める。
+      function orthogonalPath(x1, y1, turnX, x2, y2, radius) {
+        if (Math.abs(y1 - y2) < 3) {
+          return `M ${x1} ${y1} L ${x2} ${y2}`;
+        }
+
+        const direction = y2 > y1 ? 1 : -1;
+        const r = Math.max(
+          0,
+          Math.min(
+            radius,
+            Math.abs(y2 - y1) / 2,
+            Math.abs(turnX - x1),
+            Math.abs(x2 - turnX)
+          )
+        );
+
+        if (r < 2) {
+          return `M ${x1} ${y1} L ${turnX} ${y1} L ${turnX} ${y2} L ${x2} ${y2}`;
+        }
+
+        return [
+          `M ${x1} ${y1}`,
+          `L ${turnX - r} ${y1}`,
+          `Q ${turnX} ${y1} ${turnX} ${y1 + r * direction}`,
+          `L ${turnX} ${y2 - r * direction}`,
+          `Q ${turnX} ${y2} ${turnX + r} ${y2}`,
+          `L ${x2} ${y2}`
+        ].join(" ");
+      }
+
+      function buildMarkers() {
+        const definitions = document.createElementNS(svgNamespace, "defs");
+        const markers = [
+          ["arrow-dim", "#656982", 0.35],
+          ["arrow-flow", "#a7adff", 1],
+          ["arrow-step", "#ffffff", 1]
+        ];
+
+        for (const [id, color, opacity] of markers) {
+          const marker = document.createElementNS(svgNamespace, "marker");
+          marker.id = id;
+          marker.setAttribute("viewBox", "0 0 10 10");
+          marker.setAttribute("refX", "9");
+          marker.setAttribute("refY", "5");
+          marker.setAttribute("markerWidth", "4.4");
+          marker.setAttribute("markerHeight", "4.4");
+          marker.setAttribute("orient", "auto-start-reverse");
+
+          const arrow = document.createElementNS(svgNamespace, "path");
+          arrow.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+          arrow.setAttribute("fill", color);
+          arrow.setAttribute("opacity", String(opacity));
+          marker.append(arrow);
+          definitions.append(marker);
+        }
+
+        return definitions;
+      }
+
+      function createStepBadge(number, x, y, isCurrent, isDim) {
+        const group = document.createElementNS(svgNamespace, "g");
+        group.setAttribute(
+          "class",
+          [
+            "step-badge",
+            isCurrent ? "is-current" : "",
+            isDim ? "is-dim" : ""
+          ].filter(Boolean).join(" ")
+        );
+        group.setAttribute("transform", `translate(${x} ${y})`);
+
+        // 線の上に置いても数字が読めるよう、背景色で線を一度抜く。
+        const halo = document.createElementNS(svgNamespace, "circle");
+        halo.setAttribute("class", "badge-halo");
+        halo.setAttribute("r", isCurrent ? "15" : "13");
+
+        const circle = document.createElementNS(svgNamespace, "circle");
+        circle.setAttribute("class", "badge-body");
+        circle.setAttribute("r", isCurrent ? "12.5" : "10.5");
+
+        const text = document.createElementNS(svgNamespace, "text");
+        text.textContent = String(number);
+
+        group.append(halo, circle, text);
+        return group;
+      }
+
+      function attachControls() {
+        elements.decisionList.addEventListener("click", handleDecisionChoice);
+        elements.decisionList.addEventListener("input", (event) => {
+          const memo = event.target.closest(".decision-memo");
+          if (!memo) return;
+          decisionMemo.set(memo.dataset.decisionId, memo.value);
+        });
+        elements.decisionCopy.addEventListener("click", copyDecisions);
+
+        elements.overview.addEventListener("click", () => {
+          state.stepIndex = null;
+          updateView();
+        });
+
+        elements.previous.addEventListener("click", () => {
+          if (state.stepIndex === null) return;
+          if (state.stepIndex === 0) {
+            state.stepIndex = null;
+            updateView();
+          } else {
+            selectStep(state.stepIndex - 1);
+          }
+        });
+
+        elements.next.addEventListener("click", () => {
+          const flow = currentFlow();
+          if (state.stepIndex === null) {
+            selectStep(0);
+          } else if (state.stepIndex < flow.steps.length - 1) {
+            selectStep(state.stepIndex + 1);
+          }
+        });
+      }
+
+      function moveFocus(event, selector, index) {
+        if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+        event.preventDefault();
+        const container = selector === ".step-select"
+          ? elements.stepList
+          : elements.flowList;
+        const buttons = [...container.querySelectorAll(selector)];
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        buttons[(index + delta + buttons.length) % buttons.length]?.focus();
+      }
+
+      function currentFlow() {
+        return data.flows[state.flowIndex];
+      }
+
+      function validateData(value) {
+        const errors = [];
+        const arrays = ["categories", "nodes", "edges", "flows"];
+
+        if (!value?.meta?.title) errors.push("meta.titleがありません");
+        if (!value?.meta?.thesis) errors.push("meta.thesisがありません");
+        if (
+          value?.meta?.decisionMode !== undefined &&
+          typeof value.meta.decisionMode !== "boolean"
+        ) {
+          errors.push("meta.decisionModeは真偽値で指定してください");
+        }
+
+        if (value?.meta?.decisionMode === true) {
+          if (!Array.isArray(value.decisions) || value.decisions.length < 1 || value.decisions.length > 3) {
+            errors.push("判断資料のdecisionsは1〜3件にしてください");
+          } else {
+            const decisionIds = new Set();
+            const fields = ["id", "title", "recommendation", "impact", "notNow", "reversible"];
+            for (const decision of value.decisions) {
+              for (const field of fields) {
+                if (typeof decision?.[field] !== "string" || decision[field].trim() === "") {
+                  errors.push(`decisionの${field}がありません`);
+                }
+              }
+              if (decisionIds.has(decision.id)) errors.push(`decision id ${decision.id}が重複しています`);
+              decisionIds.add(decision.id);
+            }
+          }
+        } else if (Array.isArray(value?.decisions) && value.decisions.length > 0) {
+          errors.push("decisionsを表示するにはmeta.decisionModeをtrueにしてください");
+        }
+
+        for (const key of arrays) {
+          if (!Array.isArray(value?.[key]) || value[key].length === 0) {
+            errors.push(`${key}が空です`);
+          }
+        }
+        if (errors.length) return errors;
+
+        const ids = (items) => new Set(items.map((item) => item.id));
+        const categoryIds = ids(value.categories);
+        const nodeIds = ids(value.nodes);
+        const edgeIds = ids(value.edges);
+
+        for (const node of value.nodes) {
+          if (!categoryIds.has(node.categoryId)) {
+            errors.push(`${node.id}のcategoryIdが不正です`);
+          }
+        }
+        for (const edge of value.edges) {
+          if (!nodeIds.has(edge.sourceNodeId) || !nodeIds.has(edge.targetNodeId)) {
+            errors.push(`${edge.id}のnode参照が不正です`);
+          }
+        }
+        for (const flow of value.flows) {
+          flow.steps?.forEach((step, index) => {
+            if (step.stepNumber !== index + 1) {
+              errors.push(`${flow.id}のstepNumberが連番ではありません`);
+            }
+            if (!edgeIds.has(step.edgeId)) {
+              errors.push(`${flow.id}が存在しないedgeを参照しています`);
+            }
+          });
+        }
+        return errors;
+      }
+
+      function showError(message) {
+        const box = document.createElement("div");
+        box.className = "error-box";
+        box.setAttribute("role", "alert");
+        box.textContent = `レポートデータを表示できません: ${message}`;
+        elements.diagram.replaceChildren(box);
+      }
+
+      function preparePrint() {
+        state.printStepIndex = state.stepIndex;
+        state.openedDetails = [...document.querySelectorAll(".step-more")]
+          .filter((details) => details.open);
+        for (const details of document.querySelectorAll(".step-more")) details.open = true;
+        state.stepIndex = null;
+        updateView();
+        requestAnimationFrame(drawEdges);
+      }
+
+      function restoreAfterPrint() {
+        for (const details of document.querySelectorAll(".step-more")) {
+          details.open = state.openedDetails.includes(details);
+        }
+        state.stepIndex = state.printStepIndex;
+        updateView();
+      }
+    })();
+  </script>
+</body>
+</html>

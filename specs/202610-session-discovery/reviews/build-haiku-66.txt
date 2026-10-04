@@ -1,0 +1,46 @@
+Based on read-only inspection of frozen66 P1 revision code, specifications, test cases, and implementation:
+
+## PASS
+
+**Conformity verified against P1 scope (D1-D6):**
+
+1. **D1 Authorization & Projection** (spec line 44; discovery.ts 66-68):
+   - ✓ Only permitted registrations projected; credentials/transcript/grants omitted
+   - ✓ Bilateral permission check: `permitted()` verifies both outbound + inbound (registry.ts 15-16)
+
+2. **D2 Git State Distinctions** (spec line 47; git-context.ts 16-51):
+   - ✓ Separates worktree/branch/HEAD/dirty; detached/unborn/no_git/unknown states explicit
+   - ✓ Reads realpath, ignores GIT_* env, disables optional locks & fsmonitor
+   - ✓ No URL or history read; 5s timeout; unknown on failure
+
+3. **D3 Provider Symmetry** (test line 20-24; discovery.ts lines 13-14, 61, 100):
+   - ✓ identity() and rank() functions provider-agnostic
+   - ✓ Tests validate Codex→Claude = Claude→Codex selection logic
+
+4. **D4 Scope & Purpose Contract** (discovery.ts 91, 98, 106; test 46-51):
+   - ✓ current_work=rank≤1; same_repository=rank≤2; any_registered=rank≤3
+   - ✓ scope_conflict returned for explicit target outside scope
+   - ✓ displayName ignored for permissions (test line 68)
+
+5. **D5 Freshness After Waits & Registration Change Rejection** (test line 139, 143; discovery.ts 103-107, 108, 121-126):
+   - ✓ select() refreshes registry AFTER candidate selection (line 103)
+   - ✓ Participant set change detected: length & identity comparison (line 106-107)
+   - ✓ revalidate() re-observes both parties, checks binding state & expiry (line 114-126)
+   - ✓ 60s TTL enforced at wall clock (observation) and monotonic clock (binding lifetime)
+   - ✓ Test line 139: stale outside-scope candidate blocked even with late observation
+   - ✓ Test line 143: registration_changed when participant list mutates during final refresh
+
+6. **D6 Process-Bound Binding & CLI/MCP Parity** (serve.ts 6, mcp.ts 5-6; cli.ts 14-18; io.ts 2-13):
+   - ✓ createServe() and createMcp() share Discovery instance within same process
+   - ✓ CLI single mode: invoke once, no binding persistence
+   - ✓ CLI serve mode: binding state held in process memory (discovery.ts 30)
+   - ✓ MCP sessions/list only; tools/call limited to 'sessions' (no read/send)
+   - ✓ Caller fixed at startup (--caller arg); JSON line input only; bootstrap validation O_NOFOLLOW, 64KiB, mode 0o600
+
+**No violations found:**
+- productionobserver null remains correct (registry.ts 9)
+- Native connectivity undefined (observeGit used exclusively; P2 contract noted in Plans.md 68)
+- No framework additions; Node.js+TypeScript only
+- Manifest verification.json file absent (acceptable per evidence.md line 29: SHA256 in reviews/verification.json after verify.sh run)
+
+**Scope conformity:** Code implements minimum P1 as specified. No read/send operations registered. Observer injection only via test setup; production uses null observer. Binding semantics and re-validation timing correctly enforce freshness + participant stability.

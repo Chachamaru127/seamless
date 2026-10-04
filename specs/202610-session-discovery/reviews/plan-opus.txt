@@ -1,0 +1,112 @@
+**判定: REQUEST_CHANGES**
+
+3文書を読み、関連する `specs/202610-session-interop/Plans.md` と `spec.md` を照合しました。ファイルは編集していません。`src/` はまだ無いので、文書だけのレビューです。D1〜D6 の試験結果を示すものではありません。
+
+## 必要な修正（10件）
+
+### 認可
+
+**1. 未登録と認可なしの扱いが矛盾している**（`spec.md:24`、`spec.md:30`、`acceptance-matrix.md:8`）
+- 問題: `spec.md:24` は「対象未登録」と「認可なし」を区別すると書いています。一方で `spec.md:30` は、存在を漏らさないと書いています。呼び出し側がこの2つを区別できると、応答の差からそのIDが存在すると分かってしまいます。matrix の8行目「未登録と区別して存在を漏らさず」は、文自体が矛盾しています。
+- 修正: 呼び出し側には、未登録と認可なしを同じ `target_unavailable` で返します。コードと項目を同じにし、状態や作業場所は含めません。停止、unknown、stale を区別して返すのは認可済みの対象に限ります。matrix の8行目は「未登録と同一の応答（JSON 一致を試験）」に直します。
+
+**2. 許可の向きと、一覧に出す条件が決まっていない**（`spec.md:15`、`:30`、`:37`、`matrix:7`）
+- 問題: 許可操作と許可相手は登録ごとの項目です。そのため「A が B に send してよい」と「B が A からの send を受け入れる」を書き分けられません。matrix の「A→Bの許可」も、どちら向きの意味か読み取れません。
+- 修正: 許可は「相手の登録キー」「操作」「向き（outbound / inbound）」の3つで表します。判定は `caller.outbound(op, target) ∧ target.inbound(op, caller)` です。sessions に出す条件は、read か send のどちらかが双方で成り立つこととします。公開項目には操作ごとの可否を含めます。許可相手のキーが公開登録キーなら、再登録すると許可が引き継がれます。このことも明記します（binding は `spec.md:33` の規定どおり拒否されます）。
+
+### scope と順位
+
+**3. 適格でない同順位の候補を飛ばすと、自動フォールバックになる**（`spec.md:38` と `spec.md:11` の衝突）
+- 問題: 順位は「適格候補」の中で付けることになっています。このため、順位1の候補が A（適格）と B（unknown）なら A が選ばれます。順位1が unknown だけで順位2に適格な候補があれば、same_repository では順位2が選ばれます。本来の相手は観測が遅れているだけかもしれません。それでも別の会話が選ばれ、`spec.md:11` が除外した「別会話への自動フォールバック」になります。
+- 修正: 順位は、scope 内の認可済み候補で先に決めます。最小順位の集合に unknown、stale、invalid、取得失敗が1件でもあれば選択しません（例: `blocked_unobserved`）。下の順位にも降りません。集合から除いてよいのは、信頼した観測で停止が確定した候補だけです。matrix に2行足します。「順位1の適格1件と stale 1件」と「順位1が stale で順位2が適格」です。
+
+**4. scope と順位の対応、Git 外、detached、unborn の順位が決まっていない**（`spec.md:18`、`:20-21`、`:38`、`matrix:15`）
+- 問題: matrix の15行目は状態を保つとしか書いていません。どの順位に入れるかは実装者任せになっています。
+- 推奨する規則:
+  - scope と順位の対応: current_work は順位1だけ。same_repository は順位1〜2。any_registered は順位1〜3。
+  - Git 外: 双方が Git 外で、論理 workspace の実 path が一致すれば順位1。それ以外は順位3で、same_repository の対象外。
+  - detached: branch の代わりに HEAD の一致を条件にする。片方だけ detached なら順位1にしない。
+  - unborn: 双方が unborn で、同じ symbolic ref を指すときだけ一致とする。
+  - 取得失敗: 順位を付けず、修正3の規則で選択を止める。
+
+### 観測を信頼できるか
+
+**5. 作業場所 path の出所が自己申告のまま**（`spec.md:17`、`:39`、`Plans.md:10`、`:23`）
+- 問題: Git は claudex 自身が実行するので、Git の観測は信頼できます。ただし、どの path を観測するかは bootstrap の申告で決まります。申告された cwd は、bootstrap に書かれた online と同じ自己申告です。正しい path の Git を読めても、その会話がそこで作業している証拠にはなりません。
+- 修正: 観測アダプターの返り値に native の cwd を含めます（`{native_id, generation, cwd, observed_at, source}`）。順位の判定には、アダプターが観測した cwd を起点にした Git 観測だけを使います。申告 path は `declared_workspace` として表示用に分けます。P1 はアダプター未接続なので結果は unknown のままで、変わりません。P2 に渡す契約の穴を塞ぐための修正です。
+
+**6. read-only git の実装条件が足りない**（`Plans.md:10`）
+- `git status` は既定で index を更新し、`index.lock` を取ります。相手の会話が同時に `git commit` すると、lock の衝突で失敗する可能性があります。これは「read-only」と言えません。
+- repo 設定の `core.fsmonitor` があると、git 実行時に任意のコマンドが起動します。
+- 継承した `GIT_DIR`、`GIT_WORK_TREE`、`GIT_INDEX_FILE` があると、別の repo を観測してしまいます。
+- 応答しない git があると、serve ループが止まります。
+- 修正: `--no-optional-locks`、`-c core.fsmonitor=false`、`GIT_*` 環境変数の除去、呼び出しごとの timeout（超えたら unknown）を入れます。dirty に untracked を含めるかも決めます。matrix には「観測の前後で `.git/index` の mtime が変わらない」「`GIT_DIR` を設定しても対象 path を観測する」「timeout なら unknown」を足します。
+
+### CLI プロセスの寿命と binding
+
+**7. 試験用の観測の差し込み口が D6 と矛盾している**（`Plans.md:23`、`matrix:29`、`:31`）
+- 問題: matrix の31行目は、子プロセスの serve で select が成功することを求めています。一方で matrix の29行目と `Plans.md:23` は、CLI や MCP の入力から試験用の観測を有効にすることを禁じています。環境変数で切り替える実装は、この禁止に反します。
+- 修正: serve を `createServe({observer, clock, registry})` の形にします。製品の入口 `src/cli.ts` は、製品用の observer（未接続なら unknown）だけを渡します。試験用の起動ファイルは `tests/support/` に置きます。`src/` が環境変数、引数、ファイルから observer を選べないことも試験します。同じ入力を製品の入口に与え、unknown になることを対で試験します。matrix の31行目の PASS は binding の寿命の証拠であって、稼働の証拠ではないと注記します。
+
+**8. serve の caller の出所と「別 caller」の意味が決まっていない**（`Plans.md:14`、`:19`、`:25`、`matrix:26`）
+- 問題: MCP の sender は起動時に固定すると書かれています。serve の caller については定義がありません。matrix の26行目「別callerのbinding」は、1つのプロセスに複数の caller がいる前提です。これは起動時に固定する方針と衝突します。
+- 修正: serve も起動時に caller を1つ固定します。JSON 行に `caller` や `sender` があれば invalid params とします。binding の ID は `crypto.randomUUID()` で作り、対象 ID から導けないようにします。matrix の26行目は「偽造または未知の binding ID」と「caller の登録差し替え後の旧 binding」に置き換えます。
+- `spec.md:34` に1行足します。起動時の caller キーは認証ではありません（同じ OS ユーザーなら別のキーで起動できます）。P2 の send は、`session-interop/Plans.md:50` の接続ごとの資格で caller を確認してから binding を使います。
+
+**9. MCP で select と binding を出すかが決まっていない**（`Plans.md:13-14`、D6）
+- 問題: 現状、MCP には sessions しかありません。実際の caller である各会話は MCP を使います。binding はプロセスの中にしか存在しないので、P2 で MCP から send するには、MCP プロセスの中で binding を発行する必要があります。
+- 推奨: MCP の `sessions` が purpose、role、target、operation を受け取ります。条件を満たすときは、候補と理由に加えて selection と binding を同じプロセス内で返します。revalidate は tool にしません。MCP stdio サーバーは会話と同じ寿命なので、`Plans.md:25` の「プロセス内だけ」をそのまま満たします。
+- 別案: P1 の MCP は一覧だけと明記し、D6 の27行目で比べる対象を一覧に限ります。
+
+### 秘密
+
+**10. 名簿の保存先と、接続資格を保存するかが決まっていない**（`spec.md:15`、`Plans.md:11`）
+- 問題: P1 は read も send もしないので、接続資格を使う処理がありません。それでも保存すれば、秘密をディスクに置くことになり、Risk Gate に当たります。
+- 修正: P1 では資格情報の項目を保存しません（受け取ったら拒否するか破棄します）。名簿はリポジトリ外の固定 path に置き、mode 0600 にすると明記します。D1 の9行目に「永続化ファイルにも資格情報と transcript が無い」を足します。
+
+## 推奨（ブロックしない）
+
+- dirty の変化を binding の拒否条件に含めないと明記します。`spec.md:17` は作業場所に dirty を含めています。このままだと、編集するたびに binding が失効すると読めてしまいます。
+- 60秒の境界を決めます。ちょうど60秒は fresh、超えたら stale とします。binding の期限は単調時計で、観測時刻は壁時計で測ります。
+- host が一致しない候補は対象外とします。interop の範囲は同じ Mac だけです。
+- `discovery.ts` で provider 名による分岐を禁止します。Codex ephemeral の read 不可（`session-interop/Plans.md:22`）のような能力差は、登録データとして持たせます。
+- matrix の25行目の期待結果を「再照合拒否」と明記します。「固定を維持」のままだと、旧会話には送れると読めます。
+- role を指定した明示 target で role が一致しないときは role_mismatch とし、binding を返しません。JSON Lines は要求 id を返し、逐次処理し、1行の上限を設けます。
+
+## 判断の根拠
+
+文書のまま施工すると、実装者が勝手に決めてしまう点と、試験同士が矛盾する点を必須にしました。既に十分と判断したのは次の点です。
+- 対称性の原則（`:19`）
+- purpose の明示列挙
+- branch 名だけで current_work に繰り上げないこと
+- 稼働と Git の出所を分けること
+- bootstrap の申告を live と見なさないこと
+- 双方の世代と作業場所への固定、取消時の拒否、別プロセスで復元しないこと
+- 検査と送信の間の問題を P2 へ渡すことの明記（`matrix:34`）
+
+## 置いた仮定
+
+- 「A→Bの許可」は「A が B への操作を許す」と読みました。
+- MCP stdio サーバーは会話ごとに起動し、会話と同じ寿命だと仮定しています。
+- dirty の判定には `git status` 系のコマンドを使うと仮定しています。
+- ルートの `GOD_Plans.md` は読んでいません。
+
+## 確信度
+
+- 判定全体: high
+- 1、3、6、7、8: high
+- 2、4、5、9、10: medium（推奨案は1つの選択肢で、別の規則でも整合は取れます）
+
+## 立花が判断すべきこと
+
+1. 修正3で、同じ順位に unknown がいれば止めるか（推奨）。それとも適格な候補だけで選ぶか。
+2. 修正9で、MCP が binding を発行するか（推奨）。それとも P1 は一覧だけにするか。
+3. 修正4の Git 外の規則（推奨案は上記）。
+
+## 次の一手
+
+- 施工側（Codex）が、10件を spec、Plans、matrix に反映します。
+- その差分だけを再レビューします。
+- PASS なら、T0 の完了を `evidence.md` に記録します。
+
+このレビューは計画への指摘です。T5 の独立判定（D1〜D6 の実試験の終了コードを見る判定）の代わりにはなりません。

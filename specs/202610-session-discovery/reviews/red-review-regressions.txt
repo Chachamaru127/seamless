@@ -1,0 +1,341 @@
+TAP version 13
+# Subtest: both providers and actual caller reversal use the same selection conditions
+ok 1 - both providers and actual caller reversal use the same selection conditions
+  ---
+  duration_ms: 1.364833
+  type: 'test'
+  ...
+# Subtest: authorized projection has no grants, credentials, transcript or extra observation fields
+ok 2 - authorized projection has no grants, credentials, transcript or extra observation fields
+  ---
+  duration_ms: 0.2465
+  type: 'test'
+  ...
+# Subtest: one outbound grant is insufficient, and unauthorized targets equal missing targets
+ok 3 - one outbound grant is insufficient, and unauthorized targets equal missing targets
+  ---
+  duration_ms: 0.706292
+  type: 'test'
+  ...
+# Subtest: one-way complete grant exposes send only in its permitted direction
+ok 4 - one-way complete grant exposes send only in its permitted direction
+  ---
+  duration_ms: 0.280791
+  type: 'test'
+  ...
+# Subtest: equal rank ambiguity does not issue a binding
+ok 5 - equal rank ambiguity does not issue a binding
+  ---
+  duration_ms: 0.696041
+  type: 'test'
+  ...
+# Subtest: role exact filter ignores unknown different-role candidates
+ok 6 - role exact filter ignores unknown different-role candidates
+  ---
+  duration_ms: 0.13075
+  type: 'test'
+  ...
+# Subtest: same repository other worktree is visible but outside default scope
+ok 7 - same repository other worktree is visible but outside default scope
+  ---
+  duration_ms: 0.368416
+  type: 'test'
+  ...
+# Subtest: different clone or repository requires any_registered scope
+ok 8 - different clone or repository requires any_registered scope
+  ---
+  duration_ms: 0.156667
+  type: 'test'
+  ...
+# Subtest: logical workspaces sharing parent git root stay distinct
+ok 9 - logical workspaces sharing parent git root stay distinct
+  ---
+  duration_ms: 0.25075
+  type: 'test'
+  ...
+# Subtest: same worktree with mismatched branch or HEAD is not current_work
+ok 10 - same worktree with mismatched branch or HEAD is not current_work
+  ---
+  duration_ms: 0.452291
+  type: 'test'
+  ...
+# Subtest: absent observation prevents selecting
+ok 11 - absent observation prevents selecting
+  ---
+  duration_ms: 0.340875
+  type: 'test'
+  ...
+# Subtest: stale observation prevents selecting
+ok 12 - stale observation prevents selecting
+  ---
+  duration_ms: 0.113083
+  type: 'test'
+  ...
+# Subtest: future observation prevents selecting
+ok 13 - future observation prevents selecting
+  ---
+  duration_ms: 0.117916
+  type: 'test'
+  ...
+# Subtest: failure observation prevents selecting
+ok 14 - failure observation prevents selecting
+  ---
+  duration_ms: 0.1065
+  type: 'test'
+  ...
+# Subtest: generation observation prevents selecting
+ok 15 - generation observation prevents selecting
+  ---
+  duration_ms: 0.071708
+  type: 'test'
+  ...
+# Subtest: offline observation prevents selecting
+ok 16 - offline observation prevents selecting
+  ---
+  duration_ms: 0.06825
+  type: 'test'
+  ...
+# Subtest: stale outside-scope candidate blocks fallback to fresh best candidate
+ok 17 - stale outside-scope candidate blocks fallback to fresh best candidate
+  ---
+  duration_ms: 0.122459
+  type: 'test'
+  ...
+# Subtest: native observed workspace outranks declaration and display-name instructions are inert
+ok 18 - native observed workspace outranks declaration and display-name instructions are inert
+  ---
+  duration_ms: 0.119
+  type: 'test'
+  ...
+# Subtest: self target is rejected
+ok 19 - self target is rejected
+  ---
+  duration_ms: 0.04375
+  type: 'test'
+  ...
+# Subtest: binding rejects offline change
+ok 20 - binding rejects offline change
+  ---
+  duration_ms: 0.235667
+  type: 'test'
+  ...
+# Subtest: binding rejects generation change
+ok 21 - binding rejects generation change
+  ---
+  duration_ms: 0.161708
+  type: 'test'
+  ...
+# Subtest: binding rejects branch change
+ok 22 - binding rejects branch change
+  ---
+  duration_ms: 0.203833
+  type: 'test'
+  ...
+# Subtest: binding rejects head change
+ok 23 - binding rejects head change
+  ---
+  duration_ms: 0.422167
+  type: 'test'
+  ...
+# Subtest: binding rejects workspace change
+ok 24 - binding rejects workspace change
+  ---
+  duration_ms: 0.138291
+  type: 'test'
+  ...
+# Subtest: binding rejects caller change
+ok 25 - binding rejects caller change
+  ---
+  duration_ms: 0.121083
+  type: 'test'
+  ...
+# Subtest: binding rejects revocation change
+ok 26 - binding rejects revocation change
+  ---
+  duration_ms: 0.095667
+  type: 'test'
+  ...
+# Subtest: binding rejects nativeId change
+ok 27 - binding rejects nativeId change
+  ---
+  duration_ms: 0.09025
+  type: 'test'
+  ...
+# Subtest: binding expiry, consumption and supersession are enforced
+ok 28 - binding expiry, consumption and supersession are enforced
+  ---
+  duration_ms: 0.260208
+  type: 'test'
+  ...
+# Subtest: unknown binding is rejected and dirty changes do not invalidate identity
+ok 29 - unknown binding is rejected and dirty changes do not invalidate identity
+  ---
+  duration_ms: 0.19725
+  type: 'test'
+  ...
+# Subtest: parallel revalidation succeeds once
+ok 30 - parallel revalidation succeeds once
+  ---
+  duration_ms: 0.230334
+  type: 'test'
+  ...
+# Subtest: expiration during observer await is checked again
+ok 31 - expiration during observer await is checked again
+  ---
+  duration_ms: 0.135417
+  type: 'test'
+  ...
+# Subtest: production registry has no live observer
+ok 32 - production registry has no live observer
+  ---
+  duration_ms: 0.074167
+  type: 'test'
+  ...
+# Subtest: query and bootstrap reject spoofing, secrets, fake online, identity duplicates and self grants
+ok 33 - query and bootstrap reject spoofing, secrets, fake online, identity duplicates and self grants
+  ---
+  duration_ms: 0.325958
+  type: 'test'
+  ...
+# Subtest: freshness and binding exact 60000ms boundary is accepted
+ok 34 - freshness and binding exact 60000ms boundary is accepted
+  ---
+  duration_ms: 0.161375
+  type: 'test'
+  ...
+# Subtest: unknown role-filtered candidate is not observed or allowed to block
+ok 35 - unknown role-filtered candidate is not observed or allowed to block
+  ---
+  duration_ms: 0.180334
+  type: 'test'
+  ...
+# Subtest: fresh offline candidate is removed but stale offline state cannot be trusted
+ok 36 - fresh offline candidate is removed but stale offline state cannot be trusted
+  ---
+  duration_ms: 0.191083
+  type: 'test'
+  ...
+# Subtest: Git outside, detached and unborn retain explicit matching semantics
+ok 37 - Git outside, detached and unborn retain explicit matching semantics
+  ---
+  duration_ms: 0.448
+  type: 'test'
+  ...
+# Subtest: foreign host target is unavailable and does not get observed
+ok 38 - foreign host target is unavailable and does not get observed
+  ---
+  duration_ms: 0.081625
+  type: 'test'
+  ...
+# Subtest: operation mismatch visible only for otherwise authorized target
+ok 39 - operation mismatch visible only for otherwise authorized target
+  ---
+  duration_ms: 0.05475
+  type: 'test'
+  ...
+# Subtest: new selection during checking supersedes old binding before completion
+ok 40 - new selection during checking supersedes old binding before completion
+  ---
+  duration_ms: 0.274875
+  type: 'test'
+  ...
+# Subtest: registry changes while observations await are rechecked before consume
+ok 41 - registry changes while observations await are rechecked before consume
+  ---
+  duration_ms: 0.224583
+  type: 'test'
+  ...
+# Subtest: sessions rechecks authorization after asynchronous observation
+not ok 42 - sessions rechecks authorization after asynchronous observation
+  ---
+  duration_ms: 0.47325
+  type: 'test'
+  location: '/Users/tachibanashuuta/LocalWork/Code/claudex/tests/discovery.test.ts:130:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    1 !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: 1
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/discovery.test.ts:131:171)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: old generation at current cwd cannot be demoted by different HEAD
+not ok 43 - old generation at current cwd cannot be demoted by different HEAD
+  ---
+  duration_ms: 0.264917
+  type: 'test'
+  location: '/Users/tachibanashuuta/LocalWork/Code/claudex/tests/discovery.test.ts:133:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'selected'
+    - 'blocked_unobserved'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'blocked_unobserved'
+  actual: 'selected'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/discovery.test.ts:134:297)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: fresh matched offline observation excludes candidate even with stale Git context
+not ok 44 - fresh matched offline observation excludes candidate even with stale Git context
+  ---
+  duration_ms: 0.131417
+  type: 'test'
+  location: '/Users/tachibanashuuta/LocalWork/Code/claudex/tests/discovery.test.ts:136:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + 'blocked_unobserved'
+    - 'selected'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'selected'
+  actual: 'blocked_unobserved'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/discovery.test.ts:137:245)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: ID-bearing initialized request does not advance ready state
+not ok 45 - ID-bearing initialized request does not advance ready state
+  ---
+  duration_ms: 0.543333
+  type: 'test'
+  location: '/Users/tachibanashuuta/LocalWork/Code/claudex/tests/mcp.test.ts:6:1'
+  failureType: 'testCodeFailure'
+  error: "Cannot read properties of undefined (reading 'message')"
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///Users/tachibanashuuta/LocalWork/Code/claudex/tests/mcp.test.ts:10:98)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+1..45
+# tests 45
+# suites 0
+# pass 41
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 87.375959

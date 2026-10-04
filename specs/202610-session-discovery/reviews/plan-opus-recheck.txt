@@ -1,0 +1,147 @@
+**判定: REQUEST_CHANGES**
+
+前回の Opus 指摘10件は、すべて文書に反映されていました。残っている問題は7件です。1件は文書同士の矛盾で、6件は実装者が勝手に決めてしまう穴です。どれも数行の追記で直せます。P1 の範囲（登録、探索、宛先の再照合まで。native read / send は後続）は守られています。
+
+読んだのは `specs/202610-session-discovery/` の spec.md、Plans.md、acceptance-matrix.md です。照合のために bootstrap-example.json、tasks.md、reviews/plan-opus.txt、`specs/202610-session-interop/Plans.md` も読みました。ファイルは編集していません。秘密ファイルと元の会話は読んでいません。`src/` はまだ無いので、文書だけのレビューです。D1〜D6 の試験結果を示すものではありません。以下の行番号はすべて `specs/202610-session-discovery/` 配下のファイルです。
+
+## 必要な修正（7件）
+
+### 1. bootstrap に書いた online と観測時刻を「拒否する」のか「無視して unknown にする」のかが矛盾している（`acceptance-matrix.md:30`、`Plans.md:52`、`acceptance-matrix.md:48`、`Plans.md:23`）
+- **問題:** Plans:52 と matrix:48 は、bootstrap の未知項目を拒否すると決めています。bootstrap-example.json にも status や時刻の項目はありません。ところが matrix:30 は「online と新しい時刻を記入 → unknown のまま」を期待しています。これは読込みが成功する前提の期待値なので、拒否とは両立しません。Plans:23 の「bootstrap の status / timestamp」も、項目が存在する前提で書かれています。
+- **修正:**
+  - 稼働状態と観測時刻は bootstrap の項目にしません。書かれていたら、未知項目として bootstrap 全体を拒否します。
+  - matrix:30 の期待結果を「bootstrap_invalid で拒否。稼働の証拠にもならない」に直します。
+  - 「申告を稼働と見なさない」ことは、matrix:29 と matrix:47 がすでに検査しています（正しい bootstrap を製品の入口へ渡すと unknown になる）。
+
+### 2. caller 自身と、同じ会話の二重登録が候補から外れない（`spec.md:63`、`spec.md:66`、`Plans.md:52`）
+- **問題:** caller 自身は、自分から見ると常に順位1になります。今は「自分宛ての grant が無い」という理由だけで除外されています。次の2つの場合、caller が自分を current_work の順位1として選ぶか、本来の相手と ambiguous になります。
+  - 同じ nativeId が、別の登録キーで2回登録されている
+  - bootstrap に、自分宛ての grant が書かれている
+- **修正:**
+  - bootstrap の読込み時に、次の3つを拒否します。
+    - 登録キーの重複
+    - `(provider, host, nativeId)` の重複
+    - 自分を peer にした grant
+  - 探索の候補から caller 自身を外します。明示 target が caller なら binding を返しません。返すコードは `self_target` を推奨します。caller 自身の存在は秘密ではないので、target_unavailable と分けても問題ありません。
+  - matrix の D1 と D4 に、上の3つの場合の行を足します。
+
+### 3. stale や invalid の観測 cwd で順位を決めると、曖昧な状況を見落とす（`spec.md:67`、`spec.md:68`、`acceptance-matrix.md:44`）
+- **問題:** spec:67 は「最小順位に stale があれば止める」と書いています。これは stale の候補にも順位が付く前提です。その順位は、60秒より前の cwd から決まります。Codex は会話の途中で cwd が変わりえます（`specs/202610-session-interop/Plans.md:78` が、上書きできる項目に cwd を挙げています）。
+  - 例: stale の候補 S は、古い cwd では別の repo（順位3）にいました。fresh の候補 F は順位1です。
+  - current_work で探すと、S は scope の外になり、F が選ばれます。
+  - S が今は同じ worktree にいるなら、本当は ambiguous でした。
+  - spec:67 後半の「観測作業場所さえ不明なら止める」との境目も、どちらにも読めます。
+- **修正（spec:67 の書き換え案）:**
+  - 順位を決めてよい cwd は、信頼した観測アダプターが60秒以内に返したものだけにします。
+  - 次の4つは順位を決められない扱いにし、scope に関係なく blocked_unobserved にします: 観測なし / stale / 未来の時刻 / 取得失敗。除外してよいのは、信頼した観測で停止が確定した候補だけです。
+  - 世代が一致しないが fresh な観測は、その cwd で順位を付けます。選択はしません。最小順位にいれば blocked_unobserved にします。
+  - 観測に頼らない絞込み（認可、要求 operation、host、role 指定）を先に済ませます。止めるかどうかの判定は、残った候補にだけ掛けます。役割の違う unknown 候補が、選択全体を止めないようにするためです。
+  - matrix の D4 に1行足します。「stale 候補の古い cwd は scope 外。scope 内に fresh が1件 → blocked_unobserved」。今の文のままだと、この場合の実装が人によって分かれます。
+
+### 4. 製品の serve で、権限の取消と再登録が見えない（`spec.md:33`、`Plans.md:11`、`Plans.md:48`、`acceptance-matrix.md:25`、`acceptance-matrix.md:46`）
+- **問題:** spec:33 は、登録の差替えと権限の取消を、再照合で拒否する理由に挙げています。P1 には保存 API がないので、名簿を変える方法はファイルの編集だけです。しかし、名簿をいつ読むかが決まっていません。起動時に1回だけ読む実装だと、serve の動作中にファイルから grant を消しても、古い binding の再照合は成功します。matrix:25 と matrix:46 も、試験で差し込んだ registry を書き換えたときにしか通りません。
+- **修正:**
+  - select と revalidate のたびに、明示されたファイルを読み直します。0600、通常ファイル、未知項目の拒否の検査も毎回行います。
+  - 読込みに失敗したら、選択を止め、再照合を拒否します。最後に読めた名簿へは戻りません。
+  - caller の登録キーが消えたら、その serve への要求をすべて拒否します。caller の nativeId か世代が変わった場合も同じです。
+  - matrix の D5 に、子プロセスで試す行を2つ足します。「serve 中にファイルから grant を消す → 次の revalidate を拒否」と「ファイルを読めなくする → 拒否」です。
+
+### 5. binding の checking 状態と、期限を判定する時点が決まっていない（`Plans.md:43`、`Plans.md:51`、`spec.md:72`）
+- **問題:**
+  - Plans:43 の状態一覧に、Plans:51 で出てくる checking がありません。
+  - 再照合は、caller と target の観測を待ちます。git の timeout は1回5秒です。55秒目に始めた再照合が65秒目に終わって consumed になりえます。これは spec:72 の「60秒まで有効」に反します。
+  - checking 中に同じ組の新しい select が来たとき、古い binding が superseded と consumed のどちらになるかも決まっていません。
+- **修正:**
+  - 状態を2系統で定義します。`issued → checking → consumed / invalid` と、`issued / checking → expired / superseded` です。
+  - consumed に移すのは、すべての await が終わった後で、次の2条件を満たすときだけにします（compare-and-set: 値が想定どおりのときだけ書き換える操作）。状態がまだ checking のままであること。単調時計で、発行から60,000ms以内であること。
+  - matrix の D5 に2行足します。「55秒目に開始し、観測が10秒遅れる → expired」と「checking 中に同じ組の新しい select → 古い binding は superseded、再照合は拒否」です。serve は1件ずつ処理するので、後者は共通部の単体試験で確かめれば足ります。
+
+### 6. 読込みエラーに、秘密ファイルの中身が出うる（`spec.md:69`、`Plans.md:52`）
+- **問題:**
+  - bootstrap の path は、利用者か AI が指定します。「0600 の通常ファイル」という条件は、`~/.codex/auth.json` や `~/.ssh/id_*` も満たします。つまり spec:69 の「任意の既存秘密ファイルは読まない」は、この条件だけでは保証できません。
+  - Node 20 以降の `JSON.parse` は、エラーメッセージに入力の原文の一部を入れます（`Unexpected token 'x', "xxxxxxxxxx"... is not valid JSON` という形）。schema 検査が値を引用した場合も、同じことが起きます。
+  - CLI の stdout と stderr は、呼び出した AI の会話に入り、外部のサービスへ送られます。
+- **修正:**
+  - 読込みとパースのエラーでは、決まったコードと位置（JSON pointer またはバイト位置）だけを返します。原文、値、例外メッセージは、stdout にも stderr にも出しません。
+  - パースの前にサイズ上限を掛けます（例: 64KiB）。
+  - matrix の D1 に1行足します。「秘密らしい文字列で始まる非 JSON ファイル、または未知キーに値がある JSON を渡す → 応答にも stderr にも元の値の一部が出ない」。試験には偽の値だけを使います。
+
+### 7. matrix:7 の「A→B の許可」が、spec:63 の三つ組（相手、操作、向き）で書かれていない（`acceptance-matrix.md:7`、`spec.md:63`）
+- **問題:** 「A→B の許可のみ」が次のどちらなのか読み取れません。
+  - A の outbound だけがある
+  - A.outbound と B.inbound の両方がある
+
+  後者なら、正しい実装では A の一覧に B が出ます。期待結果の「B は A の一覧に公開しない」と食い違います。
+- **修正:** 2行に分けます。
+  - 「A.outbound(send,B) だけで、B.inbound が無い → A の一覧に B は出ない」
+  - 「A.outbound(send,B) と B.inbound(send,A) だけ → A の一覧に B が send=true、read=false で出る。B の一覧に A は出ない」
+
+## 変更不要と判断した点
+
+| 観点 | 判定 | 根拠 |
+|---|---|---|
+| 両方向で同じ判断になるか | 十分 | provider 名で処理を分けない（spec:70）。caller と target を実際に入れ替える試験がある（matrix:37）。製品の能力差は登録の operations で表す |
+| 認可 | 十分（修正2、7を除く） | 向き付きの grant（spec:63）。未登録と未認可が同じ JSON を返す（spec:64、matrix:8）。明示 target でも認可を省略しない（spec:22） |
+| scope と順位 | 十分（修正3を除く） | scope と順位の対応（spec:65）。Git 外、detached、unborn の規則（spec:66）。branch 名だけでは順位を上げない（spec:38） |
+| 観測の信頼性 | 十分（修正1、3を除く） | 観測した cwd と申告の declaredWorkspace を分けている（spec:68）。製品の入口は unknown を返す observer に固定し、引数や環境変数では切り替えない（Plans:48）。git を読み取りだけで使う条件（Plans:47） |
+| 宛先の再照合 | 十分（修正4、5を除く） | 双方の ID / 世代 / 作業場所 / operation / scope に固定（spec:33、spec:37）。binding ID は randomUUID（spec:71）。再照合と送信の原子性は P2 へ渡すと明記（spec:34、matrix:34） |
+| CLI プロセスの寿命 | 十分 | select と revalidate は serve モードだけ（Plans:14）。別プロセスで復元しない（spec:40、Plans:25）。caller は起動時に固定し、行の中の caller は拒否（Plans:49）。MCP は P1 では一覧だけ（Plans:50） |
+| P1 の範囲 | 守られている | read と send を tool として登録しない（Plans:13、matrix:32）。P1 の完成を通信機能の完成と呼ばない（Plans:3） |
+
+修正1の矛盾は、前回の指摘への対応（未知項目の拒否）を入れた際に、古い matrix:30 が残ったために起きています。
+
+## 推奨（ブロックしない）
+
+- **caller キーの渡し方:** bootstrap-example.json は、名簿と同じファイルに `caller` を持っています。会話ごとに自分用のファイルを持つと、grant を2か所に書くことになり、Codex 側と Claude 側で判断が食い違いえます。名簿ファイルは1つを正本にし、caller は起動引数で渡す形を推奨します。どちらの形でも、spec:71 のとおり認証にはなりません。
+- **未認可の相手は観測しない:** 未登録と未認可の登録には、observer も git も呼ばないと明記します。呼ぶと、git の副作用や応答時間の差から存在が漏れます。試験用 observer の呼出しが0回であることを、D1 で検査できます。
+- **operation が合わない明示 target:** read だけ双方に許可された相手へ send を指定した場合の応答コードを決めます。すでに一覧に見えている相手なので、`operation_not_permitted` を返しても情報は漏れません。binding は返しません。
+- **path の同一判定:** macOS の APFS は、既定で大文字と小文字を区別しません。workspace、worktree、common dir は `fs.realpath.native` か `(dev, ino)` で比べます。D2 に、symlink 経由の cwd と大文字小文字だけ違う cwd の場合を足します。
+- **再照合は曖昧性を見直さない:** 発行から60秒以内に同じ順位の候補が増えても、再照合では拒否しません。この扱いを明記します。
+- **git の副作用:** `git status` は、変更の有無を調べる際に clean filter（git-lfs など）を実行することがあります。`core.fsmonitor=false` ではこれを止められません。dirty は順位にも binding にも使わないので、取れれば取る値（best-effort）と書きます。`--untracked-files=normal` を明示し、timeout 時は子プロセスを kill します。
+- **試験用の fixture:** 「同 branch、別 worktree」は `git worktree add -f` を使わないと作れません。
+- **serve の終わり方と出力:** 次の3点を書きます。stdin が EOF になったら終了し、binding は捨てる。stdout には JSON 行だけを出す。64KiB を超える行には `id: null` のエラーを返して処理を続ける。
+- **matrix:9 の書き方:** 「試験の中で直接組み立てた内部レコード」と書きます。matrix:48 の bootstrap 拒否とは別の経路の試験だと分かるようにするためです。
+
+## なぜ
+
+必須にしたのは、次の3種類です。
+- 試験の期待値同士が矛盾する（1、7）
+- 実装者が決めてしまい、結果が分かれる（2、3、5）
+- spec が明示した要件を、製品の経路では満たせない（4: 権限取消、5: 60秒、6: 秘密を読まない）
+
+推奨にとどめたものは、どう実装しても安全側に倒れるか、効いてくるのが P2 以降です。
+
+## 置いた仮定
+
+- 名簿をいつ読むかは、文書のどこにも書かれていないと判断しました（修正4の前提）。
+- Node の `JSON.parse` がエラーに原文の一部を入れる挙動は、Node 20 以降で知られているものです。この repo が使う 22.22.x では実際に試していません。
+- macOS の realpath(3) が大文字小文字を直すかどうかは確かめていません。推奨にとどめたのはそのためです。
+- 修正3の「Codex は cwd が変わりうる」は、interop/Plans.md:78 からの推定です。
+
+## 確信度
+
+- 判定全体: high
+- 修正1、2、4、6: high
+- 修正5: medium（期限切れの穴は確実です。checking 中の競合は共通部の中だけの話です）
+- 修正3、7: medium（規則の選び方は1案で、別の規則でも整合は取れます）
+
+## トレードオフ
+
+- 修正3の安全側の規則には代償があります。P2 で消えずに残った stale な登録が1つでもあると、停止が確認されるか登録が消されるまで、自動選択がすべて止まります。P1 の製品では観測が常に unknown なので、P1 の使い勝手は変わりません。
+- 修正4で毎回ファイルを読み直すと、要求ごとに小さなファイルを1回読むことになります。
+
+## 立花が判断すべきこと
+
+1. **修正3:** stale を「順位を決められない」として選択全体を止めるか（推奨）、古い cwd で順位を付けるか。
+2. **修正4:** 要求ごとに名簿を読み直すか（推奨）。それとも起動時に固定し、権限の取消には再起動が要ると明記するか。
+
+それ以外は施工側が決めてかまいません。
+
+## 次の一手
+
+- **この回答までに進めた:** 3文書の独立レビュー。前回の10件が反映されていることの確認。
+- **次に AI が続ける:** 施工側が7件を spec、Plans、matrix に反映し、その差分だけを再レビューする。完了条件は、該当行が直り、matrix に追加の行が入っていること。
+- **立花の判断が必要:** 上の2点。推奨案で進めてよければ、返答は不要です。
+- **外部条件待ち:** なし。
+
+再レビューで PASS になれば、T0 の完了を evidence.md に記録します。このレビューは計画への指摘です。T5 の独立判定（D1〜D6 の試験を実際に走らせた終了コードを見る判定）の代わりにはなりません。

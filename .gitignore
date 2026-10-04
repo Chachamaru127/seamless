@@ -1,0 +1,8 @@
+.local/
+node_modules/
+coverage/
+out/
+output/
+docs/reports/agmsg-comparison-evidence/
+experiments/*/results/
+.DS_Store

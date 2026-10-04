@@ -1,0 +1,23 @@
+{
+  "observedAt": "2026-10-02T06:57:45.107059+00:00",
+  "verifyExitCode": 0,
+  "tests": 64,
+  "typecheckExitCode": 0,
+  "files": {
+    "package.json": "e3ef08c4c2f0c73709bc3bcf2f958ae4b1471d4956d15861175090ffda9027a2",
+    "scripts/verify.sh": "80cffe9ed922c05940ec9f8c0d740496e19fe2b98e0bc0c4b3a743fa4de2d37f",
+    "src/cli.ts": "59d57a5c3b963ad093944000921b8b831453f47fd805d2148847c693c8524d43",
+    "src/discovery.ts": "cb788209601d0199a737948ff112a426e9e2239a1a5cbeb55b7b528ef2efeb9f",
+    "src/git-context.ts": "8d979906f18be011e74a7ef372882b8bac51eb07cd97a8782280f2a2d3cecaf6",
+    "src/io.ts": "db98a682bae0f37438186b9311efbf41e2fdced25d01652d7e801ad30523045f",
+    "src/mcp.ts": "fa8b65bb0413aba254f892fa1b5dc056e58e8ccbeb1591c84355b4c60b729784",
+    "src/protocol.ts": "aa5c6607d0e22a7001909bfe0380d6d31a385faa7251ba3bd355f55ea10f1f27",
+    "src/registry.ts": "eab9bee6c2df1556e072aca5cbb3fd31d239c2af98d0f33480533626e035aecc",
+    "src/serve.ts": "56a389ce0cb901348821b80520c99ce0ab9b3c36798c99f94458762f34d8cf98",
+    "tests/discovery.test.ts": "5463b3d01b1b5eccef844ad8a4931a738fb4dfb432de5a11da771110c181886b",
+    "tests/git-context.test.ts": "5e998e55e4c5e32c102f3937fdfa123a3e2c9929fcc3541d230ac92492c9f218",
+    "tests/mcp.test.ts": "a16b4eec0fb91fca2ffbdbb4db06293cdd7725cf63492ebf09f9aa94c63f3c5d",
+    "tests/process.test.ts": "0159fc2e8e7f7014deedbe5e3c1717323bcfc04d88fa76b8e33401cec742658a",
+    "tests/support/serve-fixture.ts": "3f8a80f6a8970bd25309eaa1a0eee935f5cd0a9649fa4058b407185c0e9ed5ea"
+  }
+}

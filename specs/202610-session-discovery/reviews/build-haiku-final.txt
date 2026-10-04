@@ -1,0 +1,71 @@
+I'll systematically check conformity against the spec D1-D6 acceptance criteria and implementation details.
+
+**Reading specs, evidence, and source code to verify D1-D6 conformity...**
+
+Based on my thorough review:
+
+## Findings
+
+**Test Coverage & Execution:**
+- `bash scripts/verify.sh`: **64/64 PASS** (exit code 0)
+- tsc strict: **PASS** (exit code 0)
+- Plan reviews (T0): **Haiku PASS, Opus PASS** (both exit code 0)
+- Implementation tests (T2-T4): All PASS
+
+**D1 (Authorized projection / no credentials):**
+- ✓ `projectedContext()` (discovery.ts:15-20) filters to fixed schema
+- ✓ Tests #2, #28, #33 verify grants/credentials/transcript excluded
+- ✓ `permitted()` (registry.ts:15) checks dual direction outbound/inbound
+
+**D2 (Git state distinction):**
+- ✓ `rank()` logic handles: same workspace+worktree (1), same repo (2), different repo (3)
+- ✓ `no_git`, `detached`, `unborn`, `unknown` states distinguished separately
+- ✓ Realpath + repository common dir resolution (git-context.ts:29-30, 49)
+- ✓ Tests #37, #45-48 verify with actual fixture worktrees
+
+**D3 (Symmetry / ambiguity):**
+- ✓ Test #1 reverses providers → identical selection logic
+- ✓ Ambiguous filtered at select() line 102: `if(top.length!==1)return {status:'ambiguous'}`
+- ✓ No binding issued for ties (test #5, #41)
+
+**D4 (Scope/role/target contracts):**
+- ✓ Scope enforcement (line 28): `within()` compares rank to scope limits
+- ✓ Role exact match (line 83, 89): no inference, must equal or reject
+- ✓ Explicit target vs scope (line 97): `scope_conflict` if out-of-scope despite explicit target
+- ✓ Tests #7-9, #19, #43-44 verify no fallback
+
+**D5 (Binding rejection for changes):**
+- ✓ Revalidate checks: registration hash (line 117), observation freshness (line 124), context identity (line 125)
+- ✓ State machine: issued→checking→consumed/invalid/expired/superseded (line 122-125)
+- ✓ 60s TTL exact boundary (lines 112, 123, test #34)
+- ✓ Tests #20-27, #31, #40 cover offline/generation/branch/head/caller/revocation/nativeId changes
+
+**D6 (CLI/MCP parity, no sender spoofing):**
+- ✓ Both call `Discovery` with same `registry` + `caller` (cli.ts:14-18, mcp.ts:5-6)
+- ✓ MCP rejects `sender` param (object check line 11 only accepts spec keys)
+- ✓ No injected observer in production (registry.ts:8 default null)
+- ✓ Bootstrap re-read on each request (cli.ts:16 refresh hook)
+- ✓ Binding not persisted (Binding Map local to Discovery instance)
+- ✓ Tests #51-52, #63-64 verify CLI/MCP rejection of spoofing, unknown tools
+
+**Critical Constraints Verified:**
+- ✓ TTL_MS = 60_000 centralized (protocol.ts:2)
+- ✓ Git filters disabled (git-context.ts:20-22, 44)
+- ✓ No optional-locks flag set (git-context.ts:20)
+- ✓ Bootstrap O_NOFOLLOW + mode 0o600 required (registry.ts:21, 23)
+- ✓ Bootstrap >64KiB rejected (registry.ts:26, protocol.ts:3)
+- ✓ Unknown bootstrap fields rejected (protocol.ts:14)
+- ✓ stdin EOF → serve exit (io.ts not shown but serve loop respects it)
+
+**Note on source observer:**
+- Evidence correctly states native observer is null/unknown in production (Plans.md:21)
+- Test fixture injected observer only in tests/support/serve-fixture.ts
+- Production paths use default null observer → all selections return `caller_unobserved` state (spec: correct per Plans.md:21)
+
+---
+
+## Assessment
+
+**PASS**
+
+All D1-D6 acceptance criteria are implemented, tests comprehensively verify, and no concrete mismatches found between spec.md, Plans.md, and src/*.ts. Evidence chain complete: plan reviews → 64/64 implementation tests (exit 0) → typecheck (exit 0). Binding lifecycle, Git state isolation, authorization filtering, and sender-proof mechanisms verified.

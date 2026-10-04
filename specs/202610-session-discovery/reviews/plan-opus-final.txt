@@ -1,0 +1,50 @@
+**判定: PASS**
+
+修正必須の 7 件はすべて反映されていました。P1 の着工を止める具体的な矛盾は 3 文書の中に残っていません。ファイルは編集しておらず、秘密ファイルと元の会話も読んでいません。`src/` がまだ無いので、これは文書のレビューです。D1〜D6 の試験結果ではありません。
+
+## 7 件の反映確認
+
+| # | 指摘 | 反映箇所 |
+|---|---|---|
+| 1 | bootstrap に online や時刻が書かれていた場合の扱い | spec.md:76、Plans.md:23、acceptance-matrix.md:30（bootstrap_invalid） |
+| 2 | caller 自身と二重登録の除外 | spec.md:77、acceptance-matrix.md:52（self_target） |
+| 3 | stale 候補の古い cwd で順位を付けない | spec.md:67、acceptance-matrix.md:53 |
+| 4 | 名簿を要求ごとに読み直す | spec.md:79、Plans.md:56、acceptance-matrix.md:54 |
+| 5 | checking 状態と、期限を判定する時点 | spec.md:80、Plans.md:60、acceptance-matrix.md:55 |
+| 6 | エラーで原文を出さない、64KiB 上限 | spec.md:81、acceptance-matrix.md:56 |
+| 7 | 許可を三つ組（相手、操作、向き）で書く | acceptance-matrix.md:7、acceptance-matrix.md:51 |
+
+bootstrap-example.json も確認しました。`caller` の項目も status の項目も無く、spec.md:76 と spec.md:79 に合っています。
+
+## ブロックしない注記（実装者が既存の定義の範囲で決めてよいもの）
+
+1. **エラーコードの使い分け**
+   - spec.md:76-77 は、schema 違反を bootstrap_invalid にすると書いています。spec.md:79 は、要求ごとの再検査の失敗を registry_unavailable にすると書いています。
+   - 推奨: 起動時の読込み失敗は bootstrap_invalid、serve 中の読み直し失敗は registry_unavailable と読みます。
+   - この読み方なら、matrix:30（起動前に不正なファイルを置く）と matrix:54（serve 中に読込みが失敗する）の両方が成り立ちます。
+
+2. **Plans.md:43 と Plans.md:51 の古い状態の書き方**
+   - この 2 行には checking 状態がありません。また「失敗は invalid」と書いてあります。
+   - 後から足した spec.md:80 と matrix:55 では、checking 中に期限が切れたら expired です。こちらを優先します。どちらの書き方でも拒否される点は同じなので、安全側は崩れません。
+
+3. **Plans.md:11 と Plans.md:19 の古い言い回し**
+   - Plans.md:11 の「runtimeごとの名簿」「資格を結び付ける」「永続化」と、Plans.md:19 の「bootstrap側から指定」が残っています。
+   - 後から足した spec.md:69、spec.md:79、Plans.md:56（名簿は 1 ファイル、保存 API なし、`--caller` で起動）が確定値です。
+
+4. **3 文書の外で見つけたもの**
+   - interfaces.md:7 は Registry に upsert / remove を持たせています。これは spec.md:69 の「P1 は保存 API を持たない」と食い違います。
+   - interfaces.md:9 は `operation` の既定値を send にしています。これは spec.md:37 の「操作を明示する」と食い違います。
+   - 試験の中だけで使う API と読めば実害はありません。ただ、施工時にどちらかへ揃えてください。
+
+## 置いた仮定
+- 後から足した節（「独立レビュー反映の確定条件」「着工条件の最終補足」「最終補足の施工方法」「最終補足の追加試験」）を、前の本文より優先する確定値として読みました。
+- 同じ worktree の中で branch や HEAD が食い違う場合（spec.md:31）の応答コードは書かれていません。これは「選択しない」という結果が決まっているので、ブロックしない細部としました。別 host の相手を明示指定した場合（spec.md:65）のコードも同じ扱いです。
+
+## 確信度
+- 判定全体: high
+- 注記 1: medium（時点で使い分ける読み方は、文言から導いた 1 案です）
+
+## 次の一手
+- **次に AI が続ける:** T0 の完了を evidence.md に記録して、施工に入ります。注記 1〜4 は、施工中に契約試験の期待値を決めるときに一本化します。
+- **立花の判断が必要:** なし。
+- **完了条件:** T5 で、別系統のモデルが D1〜D6 の試験を実際に走らせ、その終了コードを見て独立判定します。このレビューはその代わりになりません。

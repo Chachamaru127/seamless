@@ -151,3 +151,21 @@
 - T23（実会話での承認の格上げの観測）: 未実施。立花さんの判断待ち。
 - 2026-10-04 立花さん決定: T23 は段 G で試験専用の新しい Codex 会話を立てて行う（M5 は T22、T24 で完了）。一覧は既定で開いている会話（online）だけを出し、`includeOffline` のときだけ全部出す。claudex は独立したリポジトリにし、名前を seamless に変え、CJ-Plugin へは symlink で取り込む（計画中）。
 - 段 D・E の判定（2回目、Opus）: PASS。重大 0、中 0、軽 5。M4 PASS。全文は `.local/build/m45-review-2.md`。
+
+## 2026-10-04 seamless への切り出し
+
+- 立花さん承認（「推奨でOK」）: ① 外から見える名前をすべて seamless にし、読む側は旧名 claudex も受け付ける。`~/.claudex` の中身は `~/.seamless` へ移す。② 手元の commit まで。GitHub への push とリモートの作成は別に承認を取る。③ CJ-Plugin に symlink と限定配送を足し、配送の予定（plan）の表示で止める。
+- 独立リポジトリ: `git init`（main）。最初の commit eb09f24。除外は `.local/`、`out/`、`output/`、`docs/reports/agmsg-comparison-evidence/`（他社コードの差分 3.3MB）、`experiments/*/results/`（実会話の断片）、`.harness-mem/`。入る 144 ファイルを `sk-`、`ghp_`、`AKIA`、`PRIVATE KEY`、`xox[abp]-`、`Bearer` で走査して 0 件。route-live の実行フォルダ `20260926T132907-3ae7aa62/` は `.local/live/` へ移した。
+- 第9便（Codex Astra low ultrafast）: 改名と、一覧の既定を online だけにする変更。施工の環境では listen の EPERM で4件が落ちる（既知）。リーダーの環境で 269 試験 PASS、`verify: exit=0`。commit 23a43a2。
+- 第9便の判定（Opus 5.5、別家系）: PASS。重大 0、中 2、軽 6。全文は `.local/build/b9-review-1.md`。
+  - 中-1（世代が変わった会話が既定の一覧から1回だけ消える）: 推奨 B で直した。隠すのは走査が「動いていない」と見た会話だけ。既存の試験を既定の一覧で確かめる形に戻した。
+  - 中-2（`~/.claudex` の実データ）: 決定①どおり `cp -Rp` で `~/.seamless` へ写した（reservations 17件、key、seen.json。権限 0700 と 0600 を保持。key は cmp で一致）。旧 `~/.claudex` は消さずに残した。
+  - 軽-2: 似た道具名と server 名を拒む試験を足した。軽-1、3、4 は未対応（後述の残り）。
+  - 修正後 275 試験 PASS、`verify: exit=0`。commit 7a8af2e。
+- フォルダの移動: `~/LocalWork/Code/claudex` → `~/LocalWork/Code/seamless`。旧パスは `claudex -> seamless` の symlink で残した。親の Code リポジトリはこのフォルダを追跡していない（`git ls-files` 0件）。
+  - 移動前: この Claude 会話 f8352827 を呼ぶ側として特定。online は Claude 44043390 と Codex 01a0f59d、隠した数 39。
+  - 移動後: 実体のパスと旧名の symlink の両方から同じ結果（呼ぶ側 f8352827、cwd は `/Users/tachibanashuuta/LocalWork/Code/seamless`、online 2件、隠した数 39）。両側で realpath を取って比べているため（`src/native-runtime.ts` 30行、`src/caller.ts` 72行、`src/sessions-scan.ts` 35行）。移動後も 275 試験 PASS。
+- CJ-Plugin（ブランチ seamless-mcp、未 commit）: `plugins/seamless -> ../../seamless`、`integrations/seamless/`（delivery.py、test_delivery.py、README.md）、`bin/wire.sh` の `--seamless-mcp` 分岐と check の一覧への seamless の追加。fixture 試験 11 件 OK。
+  - 実環境の plan: ok。書く先は registry-recovery、registry（`~/.claude.json`）、codex（`~/.codex/config.toml`）、codex-owner。起動は `~/.local/share/mise/installs/node/24/bin/node /Users/tachibanashuuta/LocalWork/Code/seamless/src/cli.ts mcp`。Grok は書かない（Claude 互換で見える。呼ばれても呼ぶ側の照合で止まる）。plan の全文は `.local/build/seamless-plan.json`。
+- CJ-Plugin の配送の部品の判定（Codex Astra、別家系）: 1回目 FAIL（重大 0、中 2、軽 2。守りの弱化は無し、試験が性質を確かめきれていない）。引数拒否の試験に `assert_not_called()`、OWNED_DRIFT、完全一致した未所有定義を所有しない、事前検査後の CONCURRENT_CHANGE、設定の symlink の UNSAFE_PATH、wire.sh の不正引数の拒否を足し、README の「秘密を読まず」を実装に合わせた。fixture 17 件 OK。2回目 PASS（新しい指摘なし）。全文は `.local/build/cj-review-1.md`、`cj-review-2.md`。
+- 残り: 第9便の判定の軽-1（受信で `_test` の名前空間を拒む試験）、軽-3（CLI の `--include-offline` が JSON 側の値を検証せず上書き）、軽-4（`read --include-offline` が SyntaxError で拒まれる）。apply（立花さんの承認待ち）。push とリモートの作成（別承認）。

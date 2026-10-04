@@ -1,4 +1,4 @@
-# claudex
+# seamless
 
 CodexとClaudeが、許可された元セッションを同じ条件で探す共通処理です。
 登録、一覧、候補選択、元会話のread/sendと返信相関を実装しています。
@@ -11,7 +11,7 @@ Node.js 22.22.xを使います。追加パッケージ、会話本文の保存�
 
 ```sh
 bash scripts/verify.sh
-node src/cli.ts context /Users/tachibanashuuta/LocalWork/Code/claudex
+node src/cli.ts context /Users/tachibanashuuta/LocalWork/Code/seamless
 node src/cli.ts sessions --registry specs/202610-session-discovery/bootstrap-example.json --caller codex-example
 node src/cli.ts sessions --registry specs/202610-session-discovery/bootstrap-example.json --caller claude-example
 ```
@@ -106,4 +106,4 @@ sendの`submitted`はnative書込み受付です。相手が処理した証拠�
 
 対応版: Codex Desktop `26.928.31416+12553`、`26.928.40906+12694`。Claude Desktop同梱Code `2.1.284`、peerProtocol 1。公開安定SDKではない接続部分があり、他版の利用は未検証です。
 
-重複抑止の保存先は `~/.claudex/reservations/`（0700）です。1依頼につきhash、status、時刻だけを0600のファイルへ原子的に予約します。本文、会話履歴、秘密は保存しません。同じ元会話とIDの予約は、別の窓口プロセスや再起動後も使います。書込み前に予約した状態が残ればunknownとし、再配送しません。SQLiteや配送待ちキューではありません。
+重複抑止の保存先は `~/.seamless/reservations/`（0700）です。1依頼につきhash、status、時刻だけを0600のファイルへ原子的に予約します。本文、会話履歴、秘密は保存しません。同じ元会話とIDの予約は、別の窓口プロセスや再起動後も使います。書込み前に予約した状態が残ればunknownとし、再配送しません。SQLiteや配送待ちキューではありません。

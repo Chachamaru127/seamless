@@ -196,3 +196,11 @@ test('codex reader rejects unsupported versions, owner changes, and separates of
   assert.equal((await createReader({codex:createCodexReader({...opts,socketPath:join(home,'none.sock')})})(t)).status,'unavailable');
  }finally{await d.close();await rm(home,{recursive:true,force:true});}
 });
+
+test('codex projection reads seamless and seamless_test peer namespaces',()=>{
+ const snapshot=state();
+ for(const turn of snapshot.turns)for(const item of turn.items){if('namespace' in item&&typeof item.namespace==='string')item.namespace=item.namespace.replace('claudex','seamless');}
+ const out=projectCodex(snapshot);
+ assert.deepEqual(out.map(x=>`${x.nativeItemId}:${x.role}`),['x1:user','x4:assistant','x5:peer','x7:peer']);
+ assert.equal(out[2].peer?.namespace,'seamless');assert.equal(out[2].peer?.envelope?.id,'m1');assert.equal(out[3].peer?.namespace,'seamless_test');
+});

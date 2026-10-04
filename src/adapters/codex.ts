@@ -15,10 +15,10 @@ import { parseEnvelope } from './read.ts';
 import { readdir } from 'node:fs/promises';
 const run=promisify(execFile);
 // Desktop IPC is not a public SDK. Only versions whose owner snapshot and full-history read were measured.
-export const CLIENT_TYPE='claudex-read';
-export const PEER_NAMESPACES:readonly string[]=['claudex_test','claudex'];
+export const CLIENT_TYPE='seamless-read';
+export const PEER_NAMESPACES:readonly string[]=['seamless_test','seamless','claudex_test','claudex'];
 const MAX_FRAME=256*1024*1024,STEP_MS=40_000;
-const OMITTED=['reasoning','commandExecution','mcpToolCall','fileChange','webSearch','non_claudex_tool_output','images','subagents'];
+const OMITTED=['reasoning','commandExecution','mcpToolCall','fileChange','webSearch','non_seamless_tool_output','images','subagents'];
 export type CodexOptions=CompatibilityOptions&{codexHome?:string;socketPath?:string;version?:()=>Promise<string|null>;timeoutMs?:number};
 export type CodexSessionMeta={ownerId:string;cwd:string|null;generation:string;version:string};
 type Frame=Record<string,any>;
@@ -191,7 +191,7 @@ export async function readCodexStructure(target:Registration,options:CodexOption
 export function projectCodexSentIds(state:Frame,ids:string[],recipient:SendRecipient):string[]{
  const found=new Set<string>();
  for(const turn of turns(state))for(const item of turn.items??[]){
-  if(item?.type!=='mcpToolCall'||item.server!=='claudex'||item.tool!=='send')continue;
+  if(item?.type!=='mcpToolCall'||!['seamless','claudex'].includes(item.server)||item.tool!=='send')continue;
   let args=item.arguments;if(typeof args==='string'){try{args=JSON.parse(args);}catch{continue;}}
   if(typeof args?.id==='string'&&ids.includes(args.id)&&sentTo(args,recipient))found.add(args.id);
  }

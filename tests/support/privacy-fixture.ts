@@ -11,7 +11,7 @@ import {writeLimits,unrestricted} from '../../src/limits.ts';
 const markers=['BODY_PRIVATE_7','THOUGHT_PRIVATE_7','AUTH_PRIVATE_7'];
 const home=await mkdtemp(join(tmpdir(),'cldx-private-'));
 try{
- const dir=join(home,'.claudex');await mkdir(dir,{mode:0o700});
+ const dir=join(home,'.seamless');await mkdir(dir,{mode:0o700});
  const caller={provider:'codex' as const,nativeId:'a',generation:'g',cwd:home,socket:'unused',source:'codex-turn-metadata' as const};
  const target={provider:'claude' as const,nativeId:'b',generation:'g',cwd:home,socket:'unused'};
  const now=1700000000000;
@@ -54,6 +54,6 @@ try{
  if((await sending('send',{ticket,id:'normal',text:markers.join(' ')})).status!=='submitted')throw Error('normal send failed');
  failure=true;
  if((await sending('send',{ticket,id:'failure',text:markers.join(' ')+' failed'})).status!=='unknown')throw Error('failed send mismatch');
- await walk(join(sendHome,'.claudex'));if(leaks)throw Error('send storage leak');
+ await walk(join(sendHome,'.seamless'));if(leaks)throw Error('send storage leak');
  console.log('privacy passed');
 }finally{await rm(home,{recursive:true,force:true});}

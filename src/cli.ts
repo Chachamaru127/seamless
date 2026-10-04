@@ -10,7 +10,7 @@ import { observeGit } from './git-context.ts';
 import { createServe } from './serve.ts';
 import { createMcp } from './mcp.ts';
 import { runLines } from './io.ts';
-import { ContractError } from './protocol.ts';
+import { ContractError, object } from './protocol.ts';
 export async function runCli(argv:string[],automatic:Automatic=createAutomatic(),limitsPath?:string):Promise<void>{
  const [mode,...rawArgs]=argv;
  if(mode==='status'){if(!(rawArgs.length===1||rawArgs.length===3&&rawArgs[1]==='--wait'))throw new ContractError('invalid_arguments');const waitSeconds=rawArgs.length===3?Number(rawArgs[2]):0;if(!Number.isFinite(waitSeconds)||waitSeconds<0||waitSeconds>600)throw new ContractError('invalid_arguments');console.log(JSON.stringify(await automatic('send',{track:rawArgs[0],waitSeconds})));return;}
@@ -20,12 +20,14 @@ export async function runCli(argv:string[],automatic:Automatic=createAutomatic()
  const native=rawArgs.includes('--native');const args=rawArgs.filter(a=>a!=='--native');
  if(rawArgs.filter(a=>a==='--native').length>1)throw new ContractError('invalid_arguments');
  if(mode==='context'&&!native&&args.length===1){console.log(JSON.stringify(await observeGit(args[0])));return;}
+ const includeOffline=mode==='sessions'&&args.includes('--include-offline');
+ if(includeOffline){if(args.filter(a=>a==='--include-offline').length!==1||args.includes('--registry'))throw new ContractError('invalid_arguments');args.splice(args.indexOf('--include-offline'),1);}
  if(!args.includes('--registry')){
   if(args.includes('--caller'))throw new ContractError('invalid_arguments');
   if(mode==='mcp'&&args.length===0){await runLines(createMcp({automatic}),()=>({jsonrpc:'2.0',id:null,error:{code:-32700,message:'parse_error'}}));return;}
   if(mode==='serve'&&args.length===0){await runLines(createServe({automatic}));return;}
   if(mode==='limits'){const [action,file,...rest]=args;if(rest.length||!['get','set','clear'].includes(action)||(action==='set'?!file:!!file))throw new ContractError('invalid_arguments');const input=action==='set'?{action,value:JSON.parse(await readFile(file,'utf8'))}:{action};console.log(JSON.stringify(await automatic('limits',input)));return;}
-  if(['sessions','read','send','select','revalidate'].includes(mode)&&args.length<=1){const input=args.length?JSON.parse(args[0]):{};console.log(JSON.stringify(await automatic(mode,input)));return;}
+  if(['sessions','read','send','select','revalidate'].includes(mode)&&args.length<=1){const input=args.length?JSON.parse(args[0]):{};console.log(JSON.stringify(await automatic(mode,includeOffline?{...object(input,['operation','scope','target','includeOffline']),includeOffline:true}:input)));return;}
   throw new ContractError('invalid_arguments');
  }
  if(!['sessions','serve','mcp'].includes(mode)||args.length!==4)throw new ContractError('invalid_arguments');

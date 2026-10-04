@@ -14,7 +14,7 @@ export type LimitsRead=
  | {status:'unusable'};
 export type LimitsWrite={status:'ok';hash:string|null}|{status:'conflict'|'unusable'};
 export type LimitsWriteOptions={lockTimeoutMs?:number;beforeRename?:()=>Promise<void>};
-export function defaultLimitsPath():string{return join(homedir(),'.claudex','limits.json');}
+export function defaultLimitsPath():string{return join(homedir(),'.seamless','limits.json');}
 export function validLimits(value:unknown):value is Limits{
  if(!value||typeof value!=='object'||Array.isArray(value))return false;
  const v=value as Record<string,unknown>;

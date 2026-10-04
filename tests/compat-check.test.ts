@@ -18,7 +18,7 @@ async function fixture(t:{after:(f:()=>Promise<void>)=>void}){
  return {home,options,caller,target,path:join(home,'test-limits.json'),reads:()=>reads,set:(s:SessionIdentity[])=>sessions=s};
 }
 test('compat-check rejects default limits, unrestricted copies and unreadable settings before any read',async t=>{
- const f=await fixture(t),value={...unrestricted,exclude:[{nativeId:'other'}]};const path=join(f.home,'.claudex','limits.json');await writeLimits(value,null,path);
+ const f=await fixture(t),value={...unrestricted,exclude:[{nativeId:'other'}]};const path=join(f.home,'.seamless','limits.json');await writeLimits(value,null,path);
  assert.equal((await compatibilityCheck(path,f.options)).status,'compat_check_requires_test_limits');
  await writeLimits(unrestricted,null,f.path);assert.equal((await compatibilityCheck(f.path,f.options)).status,'compat_check_requires_test_limits');
  assert.equal((await compatibilityCheck(join(f.home,'absent'),f.options)).status,'compat_check_requires_test_limits');assert.equal(f.reads(),0);
@@ -45,7 +45,7 @@ test('test mode exposes no write or limits mutation operation',async t=>{
 });
 
 test('compat-check rejects a hard link to default limits',async t=>{
- const f=await fixture(t),path=join(f.home,'.claudex','limits.json');await writeLimits({...unrestricted,exclude:[{nativeId:'other'}]},null,path);await link(path,f.path);
+ const f=await fixture(t),path=join(f.home,'.seamless','limits.json');await writeLimits({...unrestricted,exclude:[{nativeId:'other'}]},null,path);await link(path,f.path);
  assert.equal((await compatibilityCheck(f.path,f.options)).status,'compat_check_requires_test_limits');assert.equal(f.reads(),0);
 });
 test('compat-check refuses an extra metadata candidate before any owner connection',async t=>{
@@ -55,7 +55,7 @@ test('compat-check refuses an extra metadata candidate before any owner connecti
 });
 
 test('CLI compat-check rejects default test-home limits before caller discovery',async t=>{
- const f=await fixture(t),path=join(f.home,'.claudex','limits.json');await writeLimits({...unrestricted,exclude:[{nativeId:'other'}]},null,path);
+ const f=await fixture(t),path=join(f.home,'.seamless','limits.json');await writeLimits({...unrestricted,exclude:[{nativeId:'other'}]},null,path);
  const {spawnSync}=await import('node:child_process');
  const result=spawnSync(process.execPath,['src/cli.ts','compat-check','--limits',path],{env:{...process.env,HOME:f.home},encoding:'utf8'});
  assert.equal(result.status,0,result.stderr);assert.equal(JSON.parse(result.stdout).status,'compat_check_requires_test_limits');
@@ -77,7 +77,7 @@ test('compat-check target narrows the pair before any owner connection',async t=
 
 test('compat-check does not write seen and unrelated failures omit compatibilityStatus',async t=>{
  const f=await fixture(t);await writeLimits({...unrestricted,exclude:[{nativeId:'other'}]},null,f.path);
- await compatibilityCheck(f.path,f.options);await assert.rejects(readFile(join(f.home,'.claudex','seen.json')),{code:'ENOENT'});
+ await compatibilityCheck(f.path,f.options);await assert.rejects(readFile(join(f.home,'.seamless','seen.json')),{code:'ENOENT'});
  f.set([f.caller]);const result=await compatibilityCheck(f.path,f.options);assert.equal(result.status,'compat_check_failed');assert.equal('compatibilityStatus' in result,false);
  const missing=await compatibilityCheck(f.path,{...f.options,caller:async()=>({status:'caller_unobserved',reason:'test'})});assert.equal('compatibilityStatus' in missing,false);
 });

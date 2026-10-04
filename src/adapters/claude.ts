@@ -114,7 +114,7 @@ export function projectClaudeStructure(lines:string[],nativeId:string):Structure
  for(const line of lines.filter(line=>line.trim()).slice(-200)){
   let r;try{r=JSON.parse(line);}catch{continue;}
   if(r?.sessionId!==nativeId||r.isSidechain||typeof r.uuid!=='string')continue;
-  const peer=projectClaude([line],nativeId).find(n=>n.role==='peer'&&n.peer?.declaredSender==='claudex')?.peer?.envelope;
+  const peer=projectClaude([line],nativeId).find(n=>n.role==='peer'&&['seamless','claudex'].includes(n.peer?.declaredSender??''))?.peer?.envelope;
   result.push({id:r.uuid,type:r.type,parentUuid:typeof r.parentUuid==='string'?r.parentUuid:null,at:typeof r.timestamp==='string'?r.timestamp:null,...(peer?{peer:{id:peer.id,sender:{provider:peer.sender.id.split(':')[0],nativeId:peer.sender.nativeId},...(peer.replyTo?{replyTo:peer.replyTo}:{})}}:{})});
  }
  return result.slice(-200);
@@ -134,7 +134,7 @@ export function projectClaudeSentIds(lines:string[],nativeId:string,ids:string[]
   if(r?.sessionId!==nativeId||r.isSidechain||r.type!=='assistant'||!Array.isArray(r.message?.content))continue;
   for(const item of r.message.content){
    if(item?.type!=='tool_use'||typeof item.name!=='string')continue;
-   const sendTool=/^(?:mcp__)?claudex(?:__|\.)send$/.test(item.name);
+   const sendTool=/^(?:mcp__)?(?:seamless|claudex)(?:__|\.)send$/.test(item.name);
    const input=sendTool?item.input:item.name==='Bash'?bashSendInput(item.input?.command):null;
    if(input&&typeof input.id==='string'&&ids.includes(input.id)&&sentTo(input,recipient))found.add(input.id);
   }

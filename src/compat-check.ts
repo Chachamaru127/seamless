@@ -7,9 +7,9 @@ import {createAutomatic,type AutomaticOptions,type CallContext} from './automati
 // target narrows the test pair to the caller and one named conversation, so no other conversation is contacted under an unverified version.
 export async function compatibilityCheck(path:string,options:AutomaticOptions={},context:CallContext={kind:'cli'},target?:string){
  const home=options.home??homedir(),canonical=async(p:string)=>realpath(p).catch(()=>resolve(p));
- const defaultPath=join(home,'.claudex','limits.json'),[actual,standard]=await Promise.all([stat(path).catch(()=>null),stat(defaultPath).catch(()=>null)]);
+ const defaultPath=join(home,'.seamless','limits.json'),[actual,standard]=await Promise.all([stat(path).catch(()=>null),stat(defaultPath).catch(()=>null)]);
  if(actual&&standard&&actual.dev===standard.dev&&actual.ino===standard.ino)return {status:'compat_check_requires_test_limits'};
- if(await canonical(path)===await canonical(join(home,'.claudex','limits.json')))return {status:'compat_check_requires_test_limits'};
+ if(await canonical(path)===await canonical(join(home,'.seamless','limits.json')))return {status:'compat_check_requires_test_limits'};
  const limits=await readLimits(path);
  if(limits.status!=='ok'||limits.value.exclude.length===0||limits.value.operations?.read===false)return {status:'compat_check_requires_test_limits'};
  const automatic=createAutomatic({...options,limitsPath:path,compatTest:true,compatTarget:target,testLimitsHash:limits.hash,scanOptions:{...options.scanOptions,allowChecking:true,claude:{...options.scanOptions?.claude,allowChecking:true}}});

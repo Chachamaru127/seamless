@@ -8,4 +8,4 @@ const state=async()=>JSON.parse(await readFile(join(home,'state.json'),'utf8'));
 const caller:Caller={provider:'codex',nativeId:'a',generation:'g',cwd:home,socket:'unused',source:'codex-turn-metadata'};
 const target=async()=>({provider:'claude' as const,nativeId:'b',generation:(await state()).generation,cwd:home,socket:'unused'});
 const automatic=createAutomatic({home,caller:async()=>({status:'ok',caller}),scan:async()=>({sessions:[await target()],codexWorkspace:'observed'}),inspect:async()=>target(),scanOptions:{git:async cwd=>({state:'no_git',workspace:cwd})},adapter:{read:async()=>({status:'ok'}),send:async()=>{throw new Error('unexpected write');}}});
-await runCli(args,automatic,join(home,'.claudex','limits.json'));
+await runCli(args,automatic,join(home,'.seamless','limits.json'));

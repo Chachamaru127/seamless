@@ -6,3 +6,4 @@ output/
 docs/reports/agmsg-comparison-evidence/
 experiments/*/results/
 .DS_Store
+.harness-mem/

@@ -35,3 +35,9 @@ test('Codex failure response after native frame is unknown',async()=>{
 });
 
 test('Claude revoked authorization after transport connect prevents write',async()=>{const s=new TestSocket();const p=sendClaudeFrame(s as unknown as Socket,async()=>false,'payload','m');s.emit('connect');assert.deepEqual(await p,{status:'rejected'});assert.equal(s.writes,0);});
+
+for(const namespace of ['seamless','claude-peer'])test(`native inbound accepts seamless sender via ${namespace}`,async()=>{
+ const envelope={id:'native-id',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:'codex',nativeId:'session',generation:'owner'},text:'hello'};
+ const {adapter}=createNativeRuntime({read:async()=>({status:'ok',items:[{role:'peer',text:'hello',peer:{namespace,declaredSender:'seamless',messageId:'native-id',envelope}}]})});
+ assert.deepEqual(await adapter.inbound!(r),[envelope]);
+});

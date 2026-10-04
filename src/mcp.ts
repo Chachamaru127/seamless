@@ -20,7 +20,7 @@ export function createMcp(options:{registry?:Registry;caller?:string;refresh?:()
    let result:unknown;
    if(r.method==='initialize'){
     const p=object(r.params,['protocolVersion','capabilities','clientInfo','_meta']);if(typeof p.protocolVersion!=='string')throw new ContractError();
-    initialized=true;ready=false;result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'claudex-discovery',version:'0.1.0'}};
+    initialized=true;ready=false;result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'seamless',version:'0.1.0'}};
    }else if(!ready)return error(-32000,'not_initialized');
    else if(r.method==='ping')result={};
    else if(r.method==='tools/list'&&automatic){if(r.params!==undefined)object(r.params,[]);result={tools:automaticTools};}
@@ -34,4 +34,4 @@ export function createMcp(options:{registry?:Registry;caller?:string;refresh?:()
 }
 
 const scopeSchema={type:'string',enum:['current_work','same_repository','any']};
-const automaticTools=['sessions','read','send','limits'].map(name=>({name,description:({sessions:'List active sessions without reading conversation bodies.',read:'Read a discovered conversation.',send:'Send to the exact session selected by its ticket.',limits:'Get, replace or clear optional restrictions.'} as Record<string,string>)[name],inputSchema:{type:'object',additionalProperties:false,properties:name==='limits'?{action:{type:'string',enum:['get','set','clear']},value:{type:'object'}}:name==='send'?{track:{type:'string'},waitSeconds:{type:'number',minimum:0,maximum:600},ticket:{type:'string'},id:{type:'string'},text:{type:'string'},replyTo:{type:'string'},scope:scopeSchema}:name==='read'?{target:{type:'string'},cursor:{type:'string'},limit:{type:'integer',minimum:1,maximum:100},scope:scopeSchema}:{operation:{type:'string',enum:['read','send']},target:{type:'string'},scope:scopeSchema},required:name==='limits'?['action']:[]}}));
+const automaticTools=['sessions','read','send','limits'].map(name=>({name,description:({sessions:'List active sessions without reading conversation bodies.',read:'Read a discovered conversation.',send:'Send to the exact session selected by its ticket.',limits:'Get, replace or clear optional restrictions.'} as Record<string,string>)[name],inputSchema:{type:'object',additionalProperties:false,properties:name==='limits'?{action:{type:'string',enum:['get','set','clear']},value:{type:'object'}}:name==='send'?{track:{type:'string'},waitSeconds:{type:'number',minimum:0,maximum:600},ticket:{type:'string'},id:{type:'string'},text:{type:'string'},replyTo:{type:'string'},scope:scopeSchema}:name==='read'?{target:{type:'string'},cursor:{type:'string'},limit:{type:'integer',minimum:1,maximum:100},scope:scopeSchema}:{includeOffline:{type:'boolean'},operation:{type:'string',enum:['read','send']},target:{type:'string'},scope:scopeSchema},required:name==='limits'?['action']:[]}}));

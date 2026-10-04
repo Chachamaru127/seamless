@@ -58,3 +58,12 @@ test('Codex JSON arguments and explicit target require exact recipient',()=>{
  assert.deepEqual(projectCodexSentIds(call(JSON.stringify({id:'x',target:'codex:b'})),['x'],recipient),['x']);
  assert.deepEqual(projectCodexSentIds(call({id:'x',target:'claude:b'}),['x'],recipient),[]);
 });
+
+for(const name of ['mcp__seamless__send','seamless.send','seamless__send','mcp__seamless.send'])test(`Claude sent IDs accept ${name}`,()=>{
+ const line=JSON.stringify({sessionId:'a',type:'assistant',uuid:'u',message:{content:[{type:'tool_use',name,input:{id:'one',ticket,text:'hidden'}}]}});
+ assert.deepEqual(projectClaudeSentIds([line],'a',['one'],recipient),['one']);
+});
+test('Codex sent IDs accept seamless server',()=>{
+ const item={type:'mcpToolCall',server:'seamless',tool:'send',arguments:JSON.stringify({id:'one',ticket,text:'hidden'})};
+ assert.deepEqual(projectCodexSentIds({turns:[{items:[item]}]},['one'],recipient),['one']);
+});

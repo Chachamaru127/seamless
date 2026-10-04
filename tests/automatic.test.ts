@@ -194,7 +194,7 @@ for(const exclude of [{workspace:true},{provider:true,workspace:true}])test(`wor
 test('automatic generation display follows fresh generation without manual registry edits',async t=>{
  const f=await fixture(t);assert.equal((await f.automatic('sessions',{})).candidates[0].change,'unknown');
  assert.equal((await f.automatic('sessions',{})).candidates[0].change,'none');f.target.generation='next';
- const list=await f.automatic('sessions',{});assert.equal(list.candidates[0].change,'generation_changed');
+ const list=await f.automatic('sessions',{includeOffline:true});assert.equal(list.candidates[0].change,'generation_changed');
  assert.equal((await f.automatic('send',{ticket:list.candidates[0].ticket,id:'next-gen',text:'hi'})).status,'submitted');
 });
 
@@ -202,4 +202,37 @@ test('ID exclusion with a different workspace never reports an expired exclusion
  const f=await fixture(t);await writeLimits({...unrestricted,exclude:[{nativeId:'b',workspace:join(f.home,'elsewhere')}]},null,f.path);
  await f.automatic('sessions',{});f.target.nativeId='next-b';
  assert.deepEqual((await f.automatic('sessions',{})).excludeExpired,[]);
+});
+
+test('sessions default hides offline and unknown, counts hidden and observes every candidate',async t=>{
+ const f=await fixture(t);
+ const sessions=[f.caller,...(['online','offline','unknown',undefined] as const).map((status,i)=>({...f.target,nativeId:String(i),status}))];
+ const automatic=createAutomatic({home:f.home,caller:async()=>({status:'ok',caller:f.caller}),scan:async()=>({sessions,codexWorkspace:'observed'}),scanOptions:{git:async cwd=>({state:'no_git',workspace:cwd})},adapter:{read:async()=>null,send:async()=>({status:'rejected'})}});
+ const result=await automatic('sessions',{});
+ assert.deepEqual(result.candidates.map((n:any)=>n.nativeId),['0','3']);assert.equal(result.offlineHidden,2);
+ const seen=JSON.parse(await readFile(join(f.home,'.seamless','seen.json'),'utf8'));assert.deepEqual(seen.map((n:any)=>n.nativeId),sessions.map(n=>n.nativeId));
+ const all=await automatic('sessions',{includeOffline:true});assert.equal(all.candidates.length,4);assert.equal(all.offlineHidden,0);
+ const filtered=await automatic('sessions',{includeOffline:false});assert.equal(filtered.candidates.length,2);assert.equal(filtered.offlineHidden,2);
+});
+test('sessions includeOffline rejects non-booleans through automatic and MCP',async t=>{
+ const f=await fixture(t),call=await mcp(f.automatic);
+ for(const includeOffline of [null,0,1,'true',[],{}]){
+  await assert.rejects(f.automatic('sessions',{includeOffline}),/invalid_params/);
+  assert.equal((await call('sessions',{includeOffline})).code,-32602);
+ }
+ assert.equal((await f.automatic('sessions',{})).offlineHidden,0);
+});
+test('CLI sessions --include-offline exposes unknown candidates and preserves JSON arguments',async t=>{
+ const f=await fixture(t);f.target.status='unknown';
+ assert.equal((await cli(f.automatic,['sessions'])).offlineHidden,1);
+ const all=await cli(f.automatic,['sessions','--include-offline',JSON.stringify({scope:'any'})]);assert.equal(all.candidates.length,1);assert.equal(all.offlineHidden,0);
+ await assert.rejects(cli(f.automatic,['sessions','--include-offline','--include-offline']),/invalid_arguments/);
+ await assert.rejects(cli(f.automatic,['read','--include-offline']));
+});
+test('MCP advertises seamless server and boolean sessions includeOffline',async t=>{
+ const f=await fixture(t),handle=createMcp({automatic:f.automatic});
+ const init:any=await handle({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18'}});assert.equal(init.result.serverInfo.name,'seamless');
+ await handle({jsonrpc:'2.0',method:'notifications/initialized'});
+ const list:any=await handle({jsonrpc:'2.0',id:2,method:'tools/list'});
+ assert.deepEqual(list.result.tools.find((n:any)=>n.name==='sessions').inputSchema.properties.includeOffline,{type:'boolean'});
 });

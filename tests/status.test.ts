@@ -53,8 +53,8 @@ async function fixture(t:{after:(fn:()=>Promise<void>)=>void}){
 test('restart reconstructs stages from private reservation; owner-only track and read restriction',async t=>{
  const f=await fixture(t);assert.equal((await f.auto('send',{ticket:issueTicket(f.target),id:'request',text:'PRIVATE BODY'})).status,'submitted');
  const restart=createAutomatic(f.options),r=await restart('send',{track:'request'});assert.deepEqual(observed(r.stages),['accepted','reached','processing']);assert.ok(!JSON.stringify(r).includes('PRIVATE BODY'));
- const stored=await requests(join(f.home,'.claudex','reservations'));assert.equal(stored[0].recipient.nativeId,'b');assert.equal(stored[0].at,10000);assert.ok(!JSON.stringify(stored).includes('PRIVATE BODY'));assert.equal((await stat(join(f.home,'.claudex','key'))).mode&0o777,0o600);
- await writeLimits({...unrestricted,operations:{read:false,send:true}},null,join(f.home,'.claudex','limits.json'));f.reads.length=0;
+ const stored=await requests(join(f.home,'.seamless','reservations'));assert.equal(stored[0].recipient.nativeId,'b');assert.equal(stored[0].at,10000);assert.ok(!JSON.stringify(stored).includes('PRIVATE BODY'));assert.equal((await stat(join(f.home,'.seamless','key'))).mode&0o777,0o600);
+ await writeLimits({...unrestricted,operations:{read:false,send:true}},null,join(f.home,'.seamless','limits.json'));f.reads.length=0;
  assert.deepEqual(observed((await restart('send',{track:'request'})).stages),['accepted']);assert.equal(f.reads.length,0);
  f.setCaller({...f.caller,nativeId:'stranger'});assert.deepEqual(await restart('send',{track:'request'}),await restart('send',{track:'missing'}));
 });
@@ -86,7 +86,7 @@ test('different IDs from separate processes share one native write and store no 
  const script=`import {createAutomatic,issueTicket} from './src/automatic.ts';import {appendFile} from 'node:fs/promises';const home=process.argv[1],id=process.argv[2];const caller={provider:'claude',nativeId:'a',generation:'g',cwd:home,socket:'unused',source:'claude-ancestor'},target={provider:'codex',nativeId:'b',generation:'g',cwd:home,socket:'unused'};const a=createAutomatic({home,caller:async()=>({status:'ok',caller}),inspect:async()=>target,scanOptions:{git:async cwd=>({state:'no_git',workspace:cwd})},adapter:{read:async()=>null,send:async()=>{await appendFile(home+'/writes','write\\n');return {status:'unknown'};}}});console.log(JSON.stringify(await a('send',{ticket:issueTicket(target),id,text:'PRIVATE BODY'})));`;
  const run=(id:string)=>new Promise<any>((resolve,reject)=>{const child=spawn(process.execPath,['--input-type=module','-e',script,home,id]);let out='',err='';child.stdout.on('data',d=>out+=d);child.stderr.on('data',d=>err+=d);child.on('error',reject);child.on('exit',code=>code===0?resolve(JSON.parse(out)):reject(Error(err)));});
  const results=await Promise.all([run('one'),run('two')]);assert.deepEqual(results.map(r=>r.status).sort(),['duplicate_of_unknown','unknown']);assert.equal(await readFile(join(home,'writes'),'utf8'),'write\n');
- const dir=join(home,'.claudex','reservations');for(const name of await readdir(dir))assert.ok(!(await readFile(join(dir,name),'utf8')).includes('PRIVATE BODY'));
+ const dir=join(home,'.seamless','reservations');for(const name of await readdir(dir))assert.ok(!(await readFile(join(dir,name),'utf8')).includes('PRIVATE BODY'));
 });
 
 test('status disconnect keeps observed acceptance and returns unobserved native stages',async t=>{
@@ -96,7 +96,7 @@ test('status disconnect keeps observed acceptance and returns unobserved native 
 });
 test('status honors target exclusion without reading its records',async t=>{
  const f=await fixture(t);await f.auto('send',{ticket:issueTicket(f.target),id:'request',text:'body'});
- await writeLimits({...unrestricted,exclude:[{provider:'codex',nativeId:'b'}]},null,join(f.home,'.claudex','limits.json'));
+ await writeLimits({...unrestricted,exclude:[{provider:'codex',nativeId:'b'}]},null,join(f.home,'.seamless','limits.json'));
  const result=await f.auto('send',{track:'request'});assert.deepEqual(observed(result.stages),['accepted']);assert.ok(!f.reads.includes('b'));
 });
 test('send distinguishes missing reply record, invalid reply and offline target; absent Claude is not_found',async t=>{
@@ -162,11 +162,18 @@ test('excluded Claude read is not_found without opening activity records',async 
  const fs=await import('node:fs/promises');const {syncBuiltinESMExports}=await import('node:module');
  await mkdir(join(f.home,'.claude','sessions'),{recursive:true});
  await writeFile(join(f.home,'.claude','sessions','41.json'),JSON.stringify({pid:41,sessionId:'excluded',cwd:f.home,startedAt:1,version:'future'}));
- await writeLimits({...unrestricted,exclude:[{provider:'claude',nativeId:'excluded'}]},null,join(f.home,'.claudex','limits.json'));
+ await writeLimits({...unrestricted,exclude:[{provider:'claude',nativeId:'excluded'}]},null,join(f.home,'.seamless','limits.json'));
  let activityReads=0;const original=fs.default.readdir;
  t.mock.method(fs.default,'readdir',(...args:Parameters<typeof original>)=>{if(String(args[0])===join(f.home,'.claude','sessions'))activityReads++;return original(...args);});
  syncBuiltinESMExports();t.after(()=>{t.mock.restoreAll();syncBuiltinESMExports();});
  const auto=createAutomatic({...f.options,adapter:undefined});
  const excluded=await auto('read',{target:'claude:excluded'});assert.deepEqual(excluded,{status:'not_found'});assert.equal(activityReads,0);
  assert.deepEqual(await auto('read',{target:'claude:missing'}),excluded);assert.ok(activityReads>0);
+});
+
+test('Claude structure recognizes seamless declared sender',()=>{
+ const line=JSON.stringify({sessionId:'b',uuid:'peer',type:'user',origin:{kind:'peer',from:'seamless'},message:{content:payload}});
+ const data=projectClaudeStructure([line],'b');
+ assert.equal(data[0].peer?.id,'request');assert.equal(data[0].peer?.sender?.nativeId,'a');
+ assert.ok(!JSON.stringify(data).includes('PRIVATE BODY'));
 });

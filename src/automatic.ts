@@ -36,7 +36,7 @@ function registrations(sessions:SessionIdentity[]):Registration[]{
 }
 export function createAutomatic(options:AutomaticOptions={}){
  const home=options.home??homedir(),scanOptions={includeUnavailable:!options.compatTest,...options.scanOptions,home};
- const limitsPath=options.limitsPath??join(home,'.claudex','limits.json');
+ const limitsPath=options.limitsPath??join(home,'.seamless','limits.json');
  const caller=(ctx:CallContext)=>options.caller?options.caller(ctx):identifyCaller(ctx,{...scanOptions,...options.callerOptions,home});
  const scan=options.scan??((cwd:string,s:AutoScope)=>scanSessions(cwd,s,scanOptions));
  const inspect=options.inspect??(async(n:SessionIdentity)=>n.provider==='codex'?codexIdentity(n.nativeId,scanOptions):findClaudeIdentity(n.nativeId,home,{...scanOptions,...scanOptions.claude}));
@@ -65,11 +65,12 @@ export function createAutomatic(options:AutomaticOptions={}){
   const loaded=await readLimits(limitsPath);if(loaded.status==='unusable')return {status:'limits_unusable'};
   if(options.compatTest&&(loaded.status!=='ok'||loaded.hash!==options.testLimitsHash))return {status:'compat_check_limits_changed'};
   const l=loaded.status==='ok'?loaded.value:unrestricted;
-  const status=createStatus({dir:options.reservationDir??join(home,'.claudex','reservations'),adapter,caller:{...c,id:idOf(c)},clock:options.clock,canRead:async n=>{const current=await caller(context);if(current.status!=='ok'||idOf(current.caller)!==idOf(c)||current.caller.generation!==c.generation)return false;const limits=await readLimits(limitsPath);return limits.status!=='unusable'&&!await policy(n,c,limits.status==='ok'?limits.value:unrestricted,'read','any');}});
+  const status=createStatus({dir:options.reservationDir??join(home,'.seamless','reservations'),adapter,caller:{...c,id:idOf(c)},clock:options.clock,canRead:async n=>{const current=await caller(context);if(current.status!=='ok'||idOf(current.caller)!==idOf(c)||current.caller.generation!==c.generation)return false;const limits=await readLimits(limitsPath);return limits.status!=='unusable'&&!await policy(n,c,limits.status==='ok'?limits.value:unrestricted,'read','any');}});
   if(method==='send'&&input&&typeof input==='object'&&'track' in input){const p=object(input,['track','waitSeconds']);return status.track(p.track,p.waitSeconds);}
-  const keys=method==='sessions'||method==='select'?['operation','scope','target']:method==='read'?['target','scope','cursor','limit']:method==='send'?['ticket','id','text','replyTo','scope']:method==='revalidate'?['ticket','operation','scope']:[];
+  const keys=method==='sessions'?['operation','scope','target','includeOffline']:method==='select'?['operation','scope','target']:method==='read'?['target','scope','cursor','limit']:method==='send'?['ticket','id','text','replyTo','scope']:method==='revalidate'?['ticket','operation','scope']:[];
   if(!keys.length)throw new ContractError('unknown_method');
   const p=object(input??{},keys),s=scope(p.scope);
+  if(p.includeOffline!==undefined&&typeof p.includeOffline!=='boolean')throw new ContractError();
   const op:Operation=method==='read'||(method==='sessions'||method==='select')&&p.operation===undefined?'read':(p.operation??'send') as Operation;
   if(!['read','send'].includes(op)||p.target!==undefined&&typeof p.target!=='string')throw new ContractError();
   if(l.operations?.[op]===false)return {status:'operation_not_permitted'};
@@ -90,7 +91,7 @@ export function createAutomatic(options:AutomaticOptions={}){
    const denied=await validate();if(denied)return {status:denied,...(unsupportedVersion?{version:unsupportedVersion}:{})};
    if(method==='revalidate')return {status:'validated',target:idOf(ticket)};
    const records=registrations([c,target]),registry=new Registry(records);
-   const delivery=new Delivery(registry,idOf(c),adapter,{tracking:{keyPath:join(home,'.claudex','key'),now:options.clock?.now},fixedTarget:records[1],validate,reservationDir:options.reservationDir??join(home,'.claudex','reservations')});
+   const delivery=new Delivery(registry,idOf(c),adapter,{tracking:{keyPath:join(home,'.seamless','key'),now:options.clock?.now},fixedTarget:records[1],validate,reservationDir:options.reservationDir??join(home,'.seamless','reservations')});
    const result=await delivery.send({target:idOf(ticket),id:p.id,text:p.text,replyTo:p.replyTo,scope:'any_registered'});
    return unsupportedVersion?{...result as object,version:unsupportedVersion}:result;
   }
@@ -101,7 +102,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   if(options.compatTest){if(found.codexWorkspace!=='observed'||found.codexTruncated)return {status:'compat_check_pair_required'};const pair=[];for(const n of found.sessions)if(!await policy(n,c,l,'read',s))pair.push(n);if(pair.length!==2||!pair.some(n=>idOf(n)===idOf(c)))return {status:'compat_check_pair_required'};}
   for(const n of found.sessions){if(idOf(n)!==idOf(c)&&!await policy(n,c,l,op,s)&&(!p.target||idOf(n)===p.target))visible.push(n);}
   if(method==='sessions'){
-   const seen=options.compatTest?{disappeared:[],changes:new Map()}:await observeSeen(join(home,'.claudex','seen.json'),found.sessions,options.clock?.now()??Date.now());
+   const seen=options.compatTest?{disappeared:[],changes:new Map()}:await observeSeen(join(home,'.seamless','seen.json'),found.sessions,options.clock?.now()??Date.now());
    const expired:string[]=[];
    for(const old of seen.disappeared){if(await excluded(old,{...l,exclude:l.exclude.filter(e=>e.nativeId!==undefined)})&&visible.some(n=>n.provider===old.provider&&n.cwd===old.cwd&&seen.changes.get(idOf(n))?.change==='new'))expired.push(old.nativeId);}
    const excludeExpired=[...new Set(expired)];
@@ -114,7 +115,9 @@ export function createAutomatic(options:AutomaticOptions={}){
      }});
     }catch{}
    }
-   return {status:'ok',inbound,caller:{provider:c.provider,nativeId:c.nativeId,generation:c.generation,cwd:c.cwd,source:c.source},codexWorkspace:found.codexWorkspace,...(found.codexTruncated?{codexTruncated:found.codexTruncated}:{}),excludeExpired,candidates:await Promise.all(visible.map(async n=>({id:idOf(n),provider:n.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,...seen.changes.get(idOf(n)),status:n.status??(seen.changes.get(idOf(n))?.change==='generation_changed'?'unknown':'online'),reason:n.reason??(seen.changes.get(idOf(n))?.change==='generation_changed'?'generation_changed':null),requests:options.compatTest?[]:await status.recent({...n,id:idOf(n)}),operations:{read:l.operations?.read??true,send:l.operations?.send??true},ticket:n.status&&n.status!=='online'?null:await ticketFor(n)})))};
+   const candidates=await Promise.all(visible.map(async n=>({id:idOf(n),provider:n.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,...seen.changes.get(idOf(n)),status:n.status??(seen.changes.get(idOf(n))?.change==='generation_changed'?'unknown':'online'),reason:n.reason??(seen.changes.get(idOf(n))?.change==='generation_changed'?'generation_changed':null),requests:options.compatTest?[]:await status.recent({...n,id:idOf(n)}),operations:{read:l.operations?.read??true,send:l.operations?.send??true},ticket:n.status&&n.status!=='online'?null:await ticketFor(n)})));
+   const listed=p.includeOffline===true?candidates:candidates.filter(n=>n.status==='online');
+   return {status:'ok',inbound,caller:{provider:c.provider,nativeId:c.nativeId,generation:c.generation,cwd:c.cwd,source:c.source},codexWorkspace:found.codexWorkspace,...(found.codexTruncated?{codexTruncated:found.codexTruncated}:{}),excludeExpired,offlineHidden:candidates.length-listed.length,candidates:listed};
   }
   if(visible.length!==1)return {status:visible.length?'ambiguous':'target_unavailable'};
   const n=visible[0];

@@ -9,7 +9,7 @@ export const statusPanelTool = {
  description:'Codex の会話の右パネルに、seamless のやりとりの状態を出す（読み取りだけ）',
  inputSchema:{type:'object',properties:{},additionalProperties:false},
  annotations:{readOnlyHint:true,openWorldHint:false},
- _meta:{ui:{resourceUri:statusResource.uri,visibility:['app']},'openai/ui':{entrypoints:[{type:'thread'}]}}
+ _meta:{ui:{resourceUri:statusResource.uri,visibility:['app']},'ui/resourceUri':statusResource.uri,'openai/ui':{entrypoints:[{type:'thread'}]}}
 };
 export const statusHtml = readFileSync(new URL('./status-panel.html',import.meta.url),'utf8')
  .replace('<!-- CODEX -->',logoSvg('codex','currentColor').replace(/ xmlns="[^"]*"/,''))

@@ -24,7 +24,7 @@ test('status resource and tool contract preserve existing tools',async()=>{
  const tools=(await call('tools/list')).result.tools;
  assert.deepEqual(tools.map((t:any)=>t.name),['sessions','read','send','limits','status_panel']);
  assert.deepEqual(tools[4],statusPanelTool);
- assert.deepEqual(tools[4]._meta,{ui:{resourceUri:'ui://seamless/status',visibility:['app']},'openai/ui':{entrypoints:[{type:'thread'}]}});
+ assert.deepEqual(tools[4]._meta,{ui:{resourceUri:'ui://seamless/status',visibility:['app']},'ui/resourceUri':'ui://seamless/status','openai/ui':{entrypoints:[{type:'thread'}]}});
  assert.deepEqual(tools[4].annotations,{readOnlyHint:true,openWorldHint:false});
  for(const t of tools.slice(0,4)){assert.equal(t._meta,undefined);assert.equal(t.inputSchema.additionalProperties,false);}
 });

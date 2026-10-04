@@ -36,14 +36,15 @@ function render(data){
 window.addEventListener('message',event=>{
  if(event.source!==window.parent)return;
  const message=event.data;if(!message||message.jsonrpc!=='2.0')return;
- if(message.method==='ui/notifications/tool-result'){render(message.params?.structuredContent);return;}
+ if(message.method==='ui/notifications/tool-result'){const data=message.params?.structuredContent;if(data&&typeof data.status==='string')render(data);else el('reason').textContent='状態を確認できませんでした（道具の結果が空でした）';return;}
+ if(typeof message.method==='string'){if(message.id!==undefined)window.parent.postMessage(message.method==='ping'||message.method==='ui/resource-teardown'?{jsonrpc:'2.0',id:message.id,result:{}}:{jsonrpc:'2.0',id:message.id,error:{code:-32601,message:'unknown_method'}},'*');return;}
  const task=pending.get(message.id);if(!task)return;
  pending.delete(message.id);clearTimeout(task.timer);
  if(message.error)task.reject(new Error('host error'));else task.resolve(message.result);
 });
 el('refresh').addEventListener('click',async()=>{
  if(!ready)return;el('refresh').disabled=true;
- try{const result=await request('tools/call',{name:'status_panel',arguments:{}});render(result.structuredContent);}
+ try{const result=await request('tools/call',{name:'status_panel',arguments:{}});if(result?.structuredContent&&typeof result.structuredContent.status==='string')render(result.structuredContent);else el('reason').textContent='状態を確認できませんでした（道具の結果が空でした）';}
  catch{el('reason').textContent='再読み込みに失敗しました';}
  finally{el('refresh').disabled=false;}
 });

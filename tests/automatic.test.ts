@@ -120,9 +120,9 @@ test('automatic read succeeds and honors read-only limits without enabling send'
  assert.equal((await f.automatic('read',{target:'claude:b',limit:10})).status,'ok');
  assert.equal((await f.automatic('send',{ticket:issueTicket(f.target),id:'no',text:'no'})).status,'operation_not_permitted');assert.equal(f.count().reads,1);assert.equal(f.count().writes,0);
 });
-test('automatic MCP advertises four tools and no caller override',async t=>{
+test('automatic MCP advertises five tools and no caller override',async t=>{
  const f=await fixture(t),handle=createMcp({automatic:f.automatic});await handle({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18'}});await handle({jsonrpc:'2.0',method:'notifications/initialized'});
- const result:any=await handle({jsonrpc:'2.0',id:2,method:'tools/list'});assert.deepEqual(result.result.tools.map((t:any)=>t.name),['sessions','read','send','limits']);
+ const result:any=await handle({jsonrpc:'2.0',id:2,method:'tools/list'});assert.deepEqual(result.result.tools.map((t:any)=>t.name),['sessions','read','send','limits','status_panel']);
  assert.equal(JSON.stringify(result.result.tools).includes('caller'),false);assert.ok('ticket' in result.result.tools[2].inputSchema.properties);assert.ok('track' in result.result.tools[2].inputSchema.properties);assert.equal('oneOf' in result.result.tools[2].inputSchema,false);
 });
 
@@ -239,7 +239,7 @@ test('MCP advertises seamless server and boolean sessions includeOffline',async 
 test('automatic MCP tools/list accepts typed cursor and _meta params and rejects others',async t=>{
  const f=await fixture(t),handle=createMcp({automatic:f.automatic});await handle({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18'}});await handle({jsonrpc:'2.0',method:'notifications/initialized'});
  // {_meta:{progressToken:0}} is what Codex 0.160 sends on startup (observed 2026-10-04).
- for(const params of [{},{cursor:'next'},{_meta:{progressToken:0}},{_meta:{progressToken:'t',extra:true}}]){const r:any=await handle({jsonrpc:'2.0',id:2,method:'tools/list',params});assert.equal(r.result.tools.length,4);}
+ for(const params of [{},{cursor:'next'},{_meta:{progressToken:0}},{_meta:{progressToken:'t',extra:true}}]){const r:any=await handle({jsonrpc:'2.0',id:2,method:'tools/list',params});assert.equal(r.result.tools.length,5);}
  for(const params of [{caller:'x'},{cursor:null},{cursor:123},{_meta:false},{_meta:null},{_meta:[]},{_meta:{progressToken:true}},null,[]]){const bad:any=await handle({jsonrpc:'2.0',id:3,method:'tools/list',params});assert.equal(bad.error.code,-32602,JSON.stringify(params));}
 });
 

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>seamless の状態</title>
+<style>
+:root{color-scheme:dark}body{margin:0;padding:18px;background:#1d1d1b;color:#e9e7e2;font:13px -apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;line-height:1.7}header{display:flex;align-items:center;justify-content:space-between;gap:12px}h1{font-size:16px;font-weight:500}button{background:#2a2a27;color:#e9e7e2;border:1px solid #8d8b85;border-radius:8px;padding:6px 10px;cursor:pointer}button:disabled{opacity:.5}#caller{overflow-wrap:anywhere;color:#8d8b85}#reason{font-size:20px}#companies{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.badge{display:flex;align-items:center;gap:7px;border-radius:999px;padding:4px 12px;background:#2a2a27;font-weight:600}.badge svg{width:18px;height:18px}.peer{border-top:1px solid #2e2e2b;padding:12px 0;overflow-wrap:anywhere}footer,.note{color:#8d8b85;font-size:11px}footer{margin-top:16px}
+</style></head><body>
+<header><h1>seamless の状態</h1><button id="refresh" disabled>再読み込み</button></header>
+<div id="caller">呼ぶ側を確認しています</div><div id="reason" role="status"></div>
+<div id="companies"></div><div id="peers"></div>
+<p class="note">回数は直近24時間の記録です。送った依頼は相手ごとに最大10件です。</p><footer id="observed"></footer>
+<template id="codex-logo"><!-- CODEX --></template><template id="claude-logo"><!-- CLAUDE --></template>
+<script>
+'use strict';
+const el=id=>document.getElementById(id);
+const names={codex:'Codex',claude:'Claude'};
+const colors=new Set(['#38c68e','#f9a437','#fe3a52','#8d8b85']);
+let nextId=0,ready=false;
+const pending=new Map();
+function request(method,params){return new Promise((resolve,reject)=>{const id=++nextId;const timer=setTimeout(()=>{pending.delete(id);reject(new Error('timeout'));},20000);pending.set(id,{resolve,reject,timer});window.parent.postMessage({jsonrpc:'2.0',id,method,params},'*');});}
+function text(tag,value){const node=document.createElement(tag);node.textContent=value;return node;}
+function color(node,value){node.style.color=colors.has(value)?value:'#8d8b85';}
+function render(data){
+ if(!data||typeof data.status!=='string')return;
+ el('companies').replaceChildren();el('peers').replaceChildren();
+ const c=data.caller;
+ el('caller').textContent=c?'呼ぶ側: '+(names[c.provider]||c.provider)+' '+c.nativeIdShort+'（'+c.source+'）':'呼ぶ側: 未確認';
+ el('reason').textContent=data.status==='ok'?'':data.status==='caller_unobserved'?'この会話を特定できませんでした':'状態を確認できませんでした';
+ if(data.status!=='ok'&&data.reason)el('reason').append(text('div','理由: '+data.reason));
+ if(data.status==='ok'){
+  for(const c of data.companies||[]){const badge=text('div','');badge.className='badge';color(badge,c.color);const template=el(c.name==='Codex'?'codex-logo':'claude-logo');badge.append(template.content.cloneNode(true),text('span',c.name+' '+c.count));el('companies').append(badge);}
+  for(const p of data.peers||[]){const row=text('div','');row.className='peer';row.append(text('div',(names[p.provider]||p.provider)+' '+p.nativeIdShort+' / '+(p.folder||'作業場所は未確認')),text('div','接続: '+p.status));const state=text('div',p.latest.label);color(state,p.latest.color);row.append(state);el('peers').append(row);}
+  if(!data.peers?.length)el('peers').append(text('p','やりとりの記録はありません'));
+ }
+ el('observed').textContent='観測時刻: '+data.observedAt;
+}
+window.addEventListener('message',event=>{
+ if(event.source!==window.parent)return;
+ const message=event.data;if(!message||message.jsonrpc!=='2.0')return;
+ if(message.method==='ui/notifications/tool-result'){render(message.params?.structuredContent);return;}
+ const task=pending.get(message.id);if(!task)return;
+ pending.delete(message.id);clearTimeout(task.timer);
+ if(message.error)task.reject(new Error('host error'));else task.resolve(message.result);
+});
+el('refresh').addEventListener('click',async()=>{
+ if(!ready)return;el('refresh').disabled=true;
+ try{const result=await request('tools/call',{name:'status_panel',arguments:{}});render(result.structuredContent);}
+ catch{el('reason').textContent='再読み込みに失敗しました';}
+ finally{el('refresh').disabled=false;}
+});
+request('ui/initialize',{appInfo:{name:'seamless-status',version:'0.1.0'},appCapabilities:{},protocolVersion:'2026-01-26'}).then(()=>{
+ window.parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/initialized',params:{}},'*');ready=true;el('refresh').disabled=false;
+}).catch(()=>{el('reason').textContent='パネルを初期化できませんでした';});
+</script></body></html>

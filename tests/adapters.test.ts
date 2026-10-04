@@ -184,7 +184,7 @@ test('codex reader rejects unsupported versions, owner changes, and separates of
  const home=await mkdtemp(join(tmpdir(),'claudex-codex-'));
  try{
   const t=reg({provider:'codex',nativeId:tid,generation:'OWN'});
-  assert.deepEqual(await createReader({codex:createCodexReader({socketPath:d.path,version:async()=>'1.0+1'})})(t),{status:'unsupported_version',reason:'1.0+1'});
+  assert.deepEqual(await createReader({codex:createCodexReader({socketPath:d.path,version:async()=>'1.0+1',strictVersions:true})})(t),{status:'unsupported_version',reason:'1.0+1'});
   assert.equal(fake.frames.length,0);
   assert.equal((await createReader({codex:createCodexReader({socketPath:d.path,...supported})})(t)).status,'generation_mismatch');
   fake.owner=null;const opts={socketPath:d.path,codexHome:home,timeoutMs:300,...supported};

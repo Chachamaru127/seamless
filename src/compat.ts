@@ -7,13 +7,22 @@ export const COMPATIBILITY:readonly CompatibilityEntry[]=[
  {product:'codex',version:'26.928.40906+12694',connection:'desktop',status:'verified',checkedAt:'2026-10-02',checks:['owner','read','send','reply']},
  {product:'codex',version:'26.930.31730+12947',connection:'desktop',status:'verified',checkedAt:'2026-10-04',checks:['owner','read','full-history','send']},
 ];
-export type CompatibilityOptions={compatibility?:readonly CompatibilityEntry[];allowChecking?:boolean};
-export function isVersionAllowed(product:CompatibilityEntry['product'],version:string,options:CompatibilityOptions={},connection:CompatibilityEntry['connection']='desktop'):boolean{
+export type CompatibilityOptions={compatibility?:readonly CompatibilityEntry[];allowChecking?:boolean;strictVersions?:boolean};
+export type VersionStatus='verified'|'checking'|'fix_required'|'unverified'|'invalid';
+export function versionStatus(product:CompatibilityEntry['product'],version:string|null|undefined,options:CompatibilityOptions={},connection:CompatibilityEntry['connection']='desktop'):VersionStatus{
+ if(!version)return 'unverified';
  const entries=(options.compatibility??COMPATIBILITY).filter(e=>e.product===product&&e.version===version&&e.connection===connection);
- return entries.length===1&&(entries[0].status==='verified'||options.allowChecking===true&&entries[0].status==='checking');
+ if(!entries.length)return 'unverified';
+ if(entries.length!==1)return 'invalid';
+ const status=entries[0].status;
+ return status==='verified'||status==='checking'||status==='fix_required'?status:'invalid';
+}
+export function isVersionAllowed(product:CompatibilityEntry['product'],version:string|null|undefined,options:CompatibilityOptions={},connection:CompatibilityEntry['connection']='desktop'):boolean{
+ const status=versionStatus(product,version,options,connection);
+ return status==='verified'||status==='checking'&&(options.strictVersions!==true||options.allowChecking===true)||status==='unverified'&&options.strictVersions!==true;
 }
 export const CLAUDE_COMPATIBILITY=COMPATIBILITY.filter(e=>e.product==='claude-code');
-export function isClaudeVersionAllowed(version:string,options:CompatibilityOptions={}):boolean{return isVersionAllowed('claude-code',version,options);}
+export function isClaudeVersionAllowed(version:string|null|undefined,options:CompatibilityOptions={}):boolean{return isVersionAllowed('claude-code',version,options);}
 export function compatibilityMarkdown():string{
- return '# 対応の組\n\n生成元: `src/compat.ts`。更新: `node src/cli.ts compat-md`。\n\n通常利用は verified の組だけです。表にない組は未確認です。checking の試験合格は通常利用の承認になりません。更新後の動作は保証しません。\n\n| product | version | connection | status | checkedAt | checks |\n|---|---|---|---|---|---|\n'+COMPATIBILITY.map(e=>`| ${e.product} | ${e.version} | ${e.connection} | ${e.status} | ${e.checkedAt??'未確認'} | ${e.checks.join(', ')||'未確認'} |`).join('\n')+'\n';
+ return '# 対応の組\n\n生成元: `src/compat.ts`。更新: `node src/cli.ts compat-md`。\n\n表にない版も既定で使い、未確認と表示します。checking と版が読めない場合も同様です。strictVersions:true のときだけ verified に限ります（compat-check は checking も試験できます）。fix_required と未知の状態は常に止めます。更新後の動作は保証しません。\n\n| product | version | connection | status | checkedAt | checks |\n|---|---|---|---|---|---|\n'+COMPATIBILITY.map(e=>`| ${e.product} | ${e.version} | ${e.connection} | ${e.status} | ${e.checkedAt??'未確認'} | ${e.checks.join(', ')||'未確認'} |`).join('\n')+'\n';
 }

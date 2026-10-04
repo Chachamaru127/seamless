@@ -242,3 +242,44 @@ test('automatic MCP tools/list accepts typed cursor and _meta params and rejects
  for(const params of [{},{cursor:'next'},{_meta:{progressToken:0}},{_meta:{progressToken:'t',extra:true}}]){const r:any=await handle({jsonrpc:'2.0',id:2,method:'tools/list',params});assert.equal(r.result.tools.length,4);}
  for(const params of [{caller:'x'},{cursor:null},{cursor:123},{_meta:false},{_meta:null},{_meta:[]},{_meta:{progressToken:true}},null,[]]){const bad:any=await handle({jsonrpc:'2.0',id:3,method:'tools/list',params});assert.equal(bad.error.code,-32602,JSON.stringify(params));}
 });
+
+for(const provider of ['claude','codex'] as const)for(const version of ['future','',null])test(`automatic strict caller gate ${provider} ${version} and default version display`,async t=>{
+ const f=await fixture(t,[provider,provider]);f.caller.version=version;
+ const listed=await f.automatic('sessions',{});assert.equal(listed.status,'ok');assert.equal(listed.caller.version,version||null);assert.equal(listed.caller.versionStatus,'unverified');
+ assert.equal((await f.automatic('read',{target:`${provider}:b`})).status,'ok');
+ await writeLimits({...unrestricted,strictVersions:true},null,f.path);const before=f.count();
+ for(const [method,args] of [['sessions',{}],['read',{target:`${provider}:b`}],['send',{ticket:issueTicket(f.target),id:'blocked',text:'blocked'}]] as const){
+  const denied=await f.automatic(method,args);assert.equal(denied.status,'unsupported_version');assert.equal(denied.version,version??'unknown');assert.equal(denied.reason,version??'unknown');
+ }
+ assert.deepEqual(f.count(),before);
+});
+for(const provider of ['claude','codex'] as const)test(`automatic strict target gate ${provider}, default read/send and verified/unverified display`,async t=>{
+ const f=await fixture(t,[provider,provider]);f.caller.version=provider==='claude'?'2.1.286':'26.930.31730+12947';f.target.version='future';
+ const normal=await f.automatic('sessions',{});assert.equal(normal.caller.versionStatus,'verified');assert.equal(normal.candidates[0].version,'future');assert.equal(normal.candidates[0].versionStatus,'unverified');
+ const ticket=normal.candidates[0].ticket;
+ assert.equal((await f.automatic('read',{target:`${provider}:b`})).status,'ok');assert.equal((await f.automatic('send',{ticket,id:'allowed',text:'hello'})).status,'submitted');
+ await writeLimits({...unrestricted,strictVersions:true},null,f.path);
+ const listed=await f.automatic('sessions',{includeOffline:true});assert.equal(listed.candidates[0].status,'unknown');assert.equal(listed.candidates[0].reason,'unsupported_version');assert.equal(listed.candidates[0].ticket,null);
+ assert.equal((await f.automatic('sessions',{})).offlineHidden,1);
+ const before=f.count();
+ assert.equal((await f.automatic('read',{target:`${provider}:b`})).status,'unsupported_version');assert.equal((await f.automatic('send',{ticket,id:'blocked',text:'no'})).status,'unsupported_version');assert.equal(f.count().reads,before.reads);assert.equal(f.count().writes,before.writes);
+ const current=await readLimits(f.path);assert.equal(current.status,'ok');if(current.status!=='ok')return;
+ await writeLimits({...unrestricted,strictVersions:false},current.hash,f.path);
+ assert.equal((await f.automatic('read',{target:`${provider}:b`})).status,'ok');
+});
+
+test('automatic sessions report verified and checking candidates and strict rejects checking',async t=>{
+ const f=await fixture(t,['claude','claude']);f.caller.version='2.1.286';f.target.version='2.1.284';
+ let list=await f.automatic('sessions',{});assert.equal(list.candidates[0].version,'2.1.284');assert.equal(list.candidates[0].versionStatus,'verified');
+ f.target.version='2.1.287';list=await f.automatic('sessions',{});assert.equal(list.candidates[0].versionStatus,'checking');assert.equal(list.candidates[0].status,'online');
+ assert.equal((await f.automatic('read',{target:'claude:b'})).status,'ok');
+ await writeLimits({...unrestricted,strictVersions:true},null,f.path);
+ list=await f.automatic('sessions',{includeOffline:true});assert.equal(list.candidates[0].versionStatus,'checking');assert.equal(list.candidates[0].reason,'unsupported_version');
+ const before=f.count();assert.equal((await f.automatic('read',{target:'claude:b'})).status,'unsupported_version');assert.equal((await f.automatic('send',{ticket:issueTicket(f.target),id:'checking',text:'no'})).status,'unsupported_version');assert.equal(f.count().reads,before.reads);assert.equal(f.count().writes,before.writes);
+});
+test('strictVersions enabled at write-time blocks an unverified target',async t=>{
+ const f=await fixture(t,['claude','claude']);f.caller.version='2.1.286';f.target.version='future';
+ f.beforeWrite(async()=>{await writeLimits({...unrestricted,strictVersions:true},null,f.path);});
+ const result=await f.automatic('send',{ticket:issueTicket(f.target),id:'strict-race',text:'no'});
+ assert.equal(result.status,'unsupported_version');assert.equal(result.version,'future');assert.equal(f.count().writes,0);
+});

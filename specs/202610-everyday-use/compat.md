@@ -2,7 +2,7 @@
 
 生成元: `src/compat.ts`。更新: `node src/cli.ts compat-md`。
 
-通常利用は verified の組だけです。表にない組は未確認です。checking の試験合格は通常利用の承認になりません。更新後の動作は保証しません。
+表にない版も既定で使い、未確認と表示します。checking と版が読めない場合も同様です。strictVersions:true のときだけ verified に限ります（compat-check は checking も試験できます）。fix_required と未知の状態は常に止めます。更新後の動作は保証しません。
 
 | product | version | connection | status | checkedAt | checks |
 |---|---|---|---|---|---|

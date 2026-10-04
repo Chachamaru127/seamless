@@ -29,10 +29,10 @@ export async function inScope(cwd:string,callerCwd:string,scope:AutoScope,git:No
 }
 export async function codexIdentity(id:string,options:ScanOptions={}):Promise<SessionIdentity|null>{
  const home=options.home??homedir(),version=await (options.version??desktopVersion)();
- if(!version||!isVersionAllowed('codex',version,options))return null;
+ if(!isVersionAllowed('codex',version,options))return null;
  const row=(await (options.rows??(()=>readThreadRows(home)))())?.find(r=>r.id===id&&r.archived===0);if(!row)return null;
  const owner=await (options.owner??((id:string)=>findCodexOwner(id,home,8000,options.version,options)))(id);if(!owner)return null;
- try{return {provider:'codex',nativeId:id,generation:owner,owner,cwd:await realpath(row.cwd),socket:join(home,'.codex','ipc','ipc.sock')};}catch{return null;}
+ try{return {version:version||null,provider:'codex',nativeId:id,generation:owner,owner,cwd:await realpath(row.cwd),socket:join(home,'.codex','ipc','ipc.sock')};}catch{return null;}
 }
 const run=promisify(execFile);
 // Worktree roots the scope can match: the caller's own worktree, or every worktree of its repository. null = no path filter.
@@ -59,9 +59,9 @@ export async function scanSessions(callerCwd:string,scope:AutoScope='current_wor
  const scoped=new Map<string,Promise<boolean>>();
  const within=(cwd:string)=>{let v=scoped.get(cwd);if(!v){v=(async()=>{if(roots){let real:string;try{real=await realpath(cwd);}catch{return false;}if(!roots.some(r=>real===r||real.startsWith(r+'/')))return false;}return inScope(cwd,callerCwd,scope,git);})();scoped.set(cwd,v);}return v;};
  let names:string[]=[];try{names=await readdir(join(home,'.claude','sessions'));}catch{}
- for(const name of names){if(!/^\d+\.json$/.test(name))continue;const n=await findClaudeIdentityByPid(Number(name.slice(0,-5)),home,{...options,...options.claude});if(n&&await within(n.cwd)&&(!options.include||await options.include({...n,provider:'claude'})))sessions.push({...n,provider:'claude'});else if(!n&&options.includeUnavailable){try{const {privateJson}=await import('./request-store.ts');const raw=await privateJson(join(home,'.claude','sessions',name));if(typeof raw?.sessionId!=='string')continue;const {findClaudeSession}=await import('./adapters/claude.ts');const record=await findClaudeSession(raw.sessionId,{home});if(!record||record==='unreadable'||!await within(record.cwd))continue;const candidate:SessionIdentity={provider:'claude',nativeId:record.sessionId,generation:record.generation,cwd:record.cwd,socket:record.messagingSocketPath??'',status:'unknown',reason:'unreachable'};if(!isVersionAllowed('claude-code',record.version,{...options,...options.claude})){candidate.reason='unsupported_version';}else{const {processStart}=await import('./adapters/claude.ts');const started=await (options.processStart??processStart)(record.pid);if(started===null){candidate.status='offline';candidate.reason='process_exited';}else if(Math.abs(started-record.startedAt)>=2000){candidate.status='offline';candidate.reason='process_exited';}}if(!options.include||await options.include(candidate))sessions.push(candidate);}catch{}}}
+ for(const name of names){if(!/^\d+\.json$/.test(name))continue;const n=await findClaudeIdentityByPid(Number(name.slice(0,-5)),home,{...options,...options.claude});if(n&&await within(n.cwd)&&(!options.include||await options.include({...n,provider:'claude'})))sessions.push({...n,provider:'claude'});else if(!n&&options.includeUnavailable){try{const {privateJson}=await import('./request-store.ts');const raw=await privateJson(join(home,'.claude','sessions',name));if(typeof raw?.sessionId!=='string')continue;const {findClaudeSession}=await import('./adapters/claude.ts');const record=await findClaudeSession(raw.sessionId,{home});if(!record||record==='unreadable'||!await within(record.cwd))continue;const candidate:SessionIdentity={version:record.version==='unknown'?null:record.version||null,provider:'claude',nativeId:record.sessionId,generation:record.generation,cwd:record.cwd,socket:record.messagingSocketPath??'',status:'unknown',reason:'unreachable'};if(!isVersionAllowed('claude-code',record.version,{...options,...options.claude})){candidate.reason='unsupported_version';}else{const {processStart}=await import('./adapters/claude.ts');const started=await (options.processStart??processStart)(record.pid);if(started===null){candidate.status='offline';candidate.reason='process_exited';}else if(Math.abs(started-record.startedAt)>=2000){candidate.status='offline';candidate.reason='process_exited';}}if(!options.include||await options.include(candidate))sessions.push(candidate);}catch{}}}
  const version=await (options.version??desktopVersion)();
- const supported=!!version&&isVersionAllowed('codex',version,options);
+ const supported=isVersionAllowed('codex',version,options);
  if(!supported&&!options.includeUnavailable)return {sessions,codexWorkspace:'unknown'};
  const rows=await (options.rows??(()=>readThreadRows(home)))();if(!rows)return {sessions,codexWorkspace:'unknown'};
  const candidates:ThreadRow[]=[];
@@ -72,7 +72,7 @@ export async function scanSessions(callerCwd:string,scope:AutoScope='current_wor
  const owner=options.owner??((id:string)=>findCodexOwner(id,home,1500,options.version,options)),list=scope==='any'?candidates.slice(0,50):candidates;
  for(let i=0;i<list.length;i+=16){
   const wave=await Promise.all(list.slice(i,i+16).map(async r=>({r,owner:supported?await owner(r.id):null})));
-  for(const {r,owner} of wave){if(!owner&&!options.includeUnavailable)continue;try{sessions.push({provider:'codex',nativeId:r.id,generation:owner??'',...(owner?{owner}:{status:'unknown' as const,reason:supported?'unreachable' as const:'unsupported_version' as const}),cwd:await realpath(r.cwd),socket:join(home,'.codex','ipc','ipc.sock')});}catch{}}
+  for(const {r,owner} of wave){if(!owner&&!options.includeUnavailable)continue;try{sessions.push({version:version||null,provider:'codex',nativeId:r.id,generation:owner??'',...(owner?{owner}:{status:'unknown' as const,reason:supported?'unreachable' as const:'unsupported_version' as const}),cwd:await realpath(r.cwd),socket:join(home,'.codex','ipc','ipc.sock')});}catch{}}
  }
  return {sessions,codexWorkspace:supported?'observed':'unknown',...(candidates.length>list.length?{codexTruncated:candidates.length-list.length}:{})};
 }

@@ -1,4 +1,4 @@
-import {isClaudeVersionAllowed} from './compat.ts';
+import {isClaudeVersionAllowed,isVersionAllowed} from './compat.ts';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {homedir} from 'node:os';
@@ -67,7 +67,9 @@ export async function identifyCaller(context:{kind:'cli'|'mcp';meta?:unknown},op
    const m=value as Record<string,unknown>;id=m.thread_source==='subagent'?m.thread_id:m.session_id;source='codex-turn-metadata';
   }else{return fail('codex_cli_unsupported');}
   if(typeof id!=='string'||!id)return fail('missing_native_id');
-  const n=await codexIdentity(id,options);if(!n)return fail('native_identity_unobserved');
+  const version=await (options.version??(await import('./adapters/codex.ts')).desktopVersion)();
+  if(!isVersionAllowed('codex',version,options))return {status:'unsupported_version',reason:version??'unknown',version:version??'unknown'};
+  const n=await codexIdentity(id,{...options,version:async()=>version});if(!n)return fail('native_identity_unobserved');
   const cwd=await (options.processCwd??processCwd)(options.pid??process.pid);
   if(!cwd||await realpath(cwd)!==n.cwd)return fail('caller_workspace_mismatch');
   return {status:'ok',caller:{...n,source}};

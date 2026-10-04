@@ -68,7 +68,7 @@ function request(method:string,params:unknown,client:string,version:number,targe
 async function exchange(ipc:Ipc,frame:Frame){ipc.send(frame);return ipc.until(f=>f.type==='response'&&f.requestId===frame.requestId?f:undefined);}
 async function session(nativeId:string,options:CodexOptions):Promise<Failure|Live>{
  const version=await (options.version??desktopVersion)();
- if(!version||!isVersionAllowed('codex',version,options))return {status:'unsupported_version' as const,reason:version??'unknown'};
+ if(!isVersionAllowed('codex',version,options))return {status:'unsupported_version' as const,reason:version??'unknown'};
  let ipc:Ipc;
  try{ipc=await Ipc.connect(options.socketPath??join(homedir(),'.codex','ipc','ipc.sock'),options.timeoutMs??8000);}catch{return {status:'unavailable' as const,reason:'ipc_connect'};}
  try{
@@ -77,7 +77,7 @@ async function session(nativeId:string,options:CodexOptions):Promise<Failure|Liv
   const client:string=init.result.clientId;
   const owner=await exchange(ipc,request('thread-owner-discovery',{hostId:'local',conversationId:nativeId},client,1)).catch(()=>null);
   if(owner?.resultType!=='success'||typeof owner.handledByClientId!=='string'){await ipc.close();const exists=await rolloutExists(nativeId,options);return exists===null?{status:'unavailable',reason:'rollout_unreadable'}:exists?{status:'unavailable',reason:'owner_offline'}:{status:'not_found',reason:'no_owner_no_rollout'};}
-  return {ipc,client,owner:owner.handledByClientId as string,version};
+  return {ipc,client,owner:owner.handledByClientId as string,version:version??'unknown'};
  }catch{await ipc.close();return {status:'unavailable' as const,reason:'ipc_protocol'};}
 }
 // File names only; rollout bodies are never opened. null = a directory could not be listed, so absence is unproven.

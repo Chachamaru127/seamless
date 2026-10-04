@@ -113,3 +113,15 @@ test('workspace exclusions reject relative paths on read and write',async t=>{
  for(const key of ['version','exclude','scope','operations']){const value:Record<string,unknown>={...empty,markUnapproved:true};delete value[key];assert.equal(validLimits(value),false);}
  assert.equal(validLimits({...empty,markUnapproved:true,unknown:false}),false);
  });
+
+test('strictVersions is optional and accepts only booleans',async t=>{
+ const {path}=await fixture(t);
+ for(const value of [empty,{...empty,strictVersions:true},{...empty,strictVersions:false}]){
+  assert.equal(validLimits(value),true);
+  await writeFile(path,JSON.stringify(value),{mode:0o600});
+  const loaded=await readLimits(path);assert.equal(loaded.status,'ok');
+  if(loaded.status==='ok')assert.deepEqual(loaded.value,value);
+ }
+ for(const strictVersions of ['true','false',0,1,null,undefined])assert.equal(validLimits({...empty,strictVersions}),false);
+ assert.equal(validLimits({...empty,strictVersions:true,unknown:false}),false);
+});

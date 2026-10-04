@@ -30,7 +30,7 @@ test('reused Claude PID with different process start is rejected',async t=>{
 test('Claude metadata mode, version, cwd and owner validation fail closed',async t=>{
  const f=await fixture(t);await f.save();const path=join(f.home,'.claude','sessions','41.json');
  await chmod(path,0o666);assert.equal(await findClaudeIdentityByPid(41,f.home,f.options.claude),null);await chmod(path,0o600);
- await f.save({...f.record,version:'unknown'});assert.equal(await findClaudeIdentityByPid(41,f.home,f.options.claude),null);
+ await f.save({...f.record,version:'unknown'});assert.equal(await findClaudeIdentityByPid(41,f.home,{...f.options.claude,strictVersions:true}),null);
  await f.save({...f.record,cwd:'/missing-fixture-cwd'});assert.equal(await findClaudeIdentityByPid(41,f.home,f.options.claude),null);
  await f.save();const uid=process.getuid!();t.mock.method(process as NodeJS.Process&{getuid:()=>number},'getuid',()=>uid+1);assert.equal(await findClaudeIdentityByPid(41,f.home,f.options.claude),null);
 });
@@ -83,7 +83,7 @@ test('any scope limits newest Codex candidates to fifty before owner discovery',
 });
 test('unsupported Desktop and missing columns report unobserved workspace without owner calls',async t=>{
  const f=await fixture(t);let calls=0;const owner=async()=>{calls++;return 'g';};
- assert.equal((await scanSessions(f.cwd,'any',{...f.options,version:async()=> 'new-version',owner})).codexWorkspace,'unknown');
+ assert.equal((await scanSessions(f.cwd,'any',{...f.options,version:async()=> 'new-version',strictVersions:true,owner})).codexWorkspace,'unknown');
  assert.equal((await scanSessions(f.cwd,'any',{...f.options,rows:async()=>null,owner})).codexWorkspace,'unknown');assert.equal(calls,0);
 });
 test('scope compares worktree for current_work and common repository for same_repository',async()=>{
@@ -152,12 +152,12 @@ for(const team of [null,'2DC432GLL2','Q6L2SF6YDW'])test(`Claude signature team $
 
 for(const reason of ['process_exited','generation_changed','unsupported_version','unreachable'] as const)test(`unavailable Claude metadata candidate reports ${reason==='generation_changed'?'process_exited for reused PID':reason}`,async t=>{
  const f=await fixture(t);await f.save({...f.record,procStart:'not-current',...(reason==='unsupported_version'?{version:'future'}:{})});
- const result=await scanSessions(f.cwd,'current_work',{...f.options,rows:async()=>[],includeUnavailable:true,processStart:async()=>reason==='process_exited'?null:reason==='generation_changed'?9000:100});
+ const result=await scanSessions(f.cwd,'current_work',{...f.options,rows:async()=>[],strictVersions:true,includeUnavailable:true,processStart:async()=>reason==='process_exited'?null:reason==='generation_changed'?9000:100});
  assert.equal(result.sessions.length,1);assert.equal(result.sessions[0].reason,reason==='generation_changed'?'process_exited':reason);assert.equal(result.sessions[0].status,['process_exited','generation_changed'].includes(reason)?'offline':'unknown');
 });
 test('unavailable Codex candidates distinguish unsupported version and unreachable owner',async t=>{
  const f=await fixture(t);
- for(const supported of [true,false]){const result=await scanSessions(f.cwd,'current_work',{...f.options,includeUnavailable:true,version:async()=>supported?'26.928.40906+12694':'future',owner:async()=>null});assert.equal(result.sessions.length,2);assert.equal(result.sessions[0].reason,supported?'unreachable':'unsupported_version');}
+ for(const supported of [true,false]){const result=await scanSessions(f.cwd,'current_work',{...f.options,strictVersions:true,includeUnavailable:true,version:async()=>supported?'26.928.40906+12694':'future',owner:async()=>null});assert.equal(result.sessions.length,2);assert.equal(result.sessions[0].reason,supported?'unreachable':'unsupported_version');}
 });
 
 for(const accepted of [null,'2DC432GLL2','Q6L2SF6YDW'])test(`codesign anchored requirement uses injected executor: ${accepted}`,async()=>{
@@ -172,7 +172,36 @@ for(const accepted of [null,'2DC432GLL2','Q6L2SF6YDW'])test(`codesign anchored r
 });
 test('unobserved Claude caller version returns unsupported_version after identity validation',async t=>{
  const f=await fixture(t);await f.save({...f.record,version:'9.9.999'});
- assert.deepEqual(await identifyCaller({kind:'cli'},f.options),{status:'unsupported_version',reason:'9.9.999',version:'9.9.999'});
+ assert.deepEqual(await identifyCaller({kind:'cli'},{...f.options,strictVersions:true}),{status:'unsupported_version',reason:'9.9.999',version:'9.9.999'});
  await f.save({...f.record,version:'9.9.999',procStart:'old'});
  assert.equal((await identifyCaller({kind:'cli'},f.options)).status,'caller_unobserved');
+});
+
+for(const version of ['2.1.287','future','',null])test(`default Claude identity and caller accept unverified version ${version}`,async t=>{
+ const f=await fixture(t);await f.save({...f.record,version} as typeof f.record);
+ const identity=await findClaudeIdentityByPid(41,f.home,f.options.claude);assert.ok(identity);
+ assert.equal((await identifyCaller({kind:'cli'},f.options)).status,'ok');
+ const strict={...f.options,strictVersions:true};
+ assert.equal((await identifyCaller({kind:'cli'},strict)).status,'unsupported_version');
+ await f.save({...f.record,version,peerProtocol:2} as typeof f.record);
+ assert.equal(await findClaudeIdentityByPid(41,f.home,f.options.claude),null);
+});
+for(const v of ['future','',null])test(`default Codex scan accepts unverified version ${v} and strict never calls owner`,async t=>{
+ const f=await fixture(t);let owners=0;const options={...f.options,version:async()=>v,owner:async()=>{owners++;return 'owner';}};
+ const normal=await scanSessions(f.cwd,'any',options);assert.equal(normal.sessions.length,2);assert.equal(owners,2);assert.equal(normal.sessions[0].version,v||null);
+ owners=0;const strict=await scanSessions(f.cwd,'any',{...options,strictVersions:true,includeUnavailable:true});assert.equal(owners,0);assert.equal(strict.sessions.length,2);
+ for(const n of strict.sessions){assert.equal(n.status,'unknown');assert.equal(n.reason,'unsupported_version');}
+});
+
+import {createAutomatic} from '../src/automatic.ts';
+import {writeLimits,unrestricted} from '../src/limits.ts';
+for(const v of ['future','',null])test(`automatic native Codex caller ${v} is rejected before owner lookup under strict limits`,async t=>{
+ const f=await fixture(t);let owners=0,scans=0;
+ const options={...f.options,version:async()=>v,owner:async()=>{owners++;return 'owner';}};
+ const context={kind:'mcp' as const,meta:{'x-codex-turn-metadata':{session_id:'codex-a'}}};
+ assert.equal((await identifyCaller(context,options)).status,'ok');assert.equal(owners,1);owners=0;
+ const limitsPath=join(f.home,'limits.json');await writeLimits({...unrestricted,strictVersions:true},null,limitsPath);
+ const automatic=createAutomatic({home:f.home,limitsPath,callerOptions:options,scan:async()=>{scans++;return {sessions:[],codexWorkspace:'observed'};}});
+ assert.deepEqual(await automatic('sessions',{},context),{status:'unsupported_version',reason:v??'unknown',version:v??'unknown'});
+ assert.equal(owners,0);assert.equal(scans,0);
 });

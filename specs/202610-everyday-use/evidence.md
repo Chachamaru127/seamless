@@ -221,3 +221,4 @@
 - 第11便（Codex Astra）: track の scope を受け付けて無視する、wait_limit を道具のエラーにしない、送った本文の SHA-256 を依頼の記録に残し enqueue の本文の SHA-256 と一致したときだけ reached にする（本文を封筒として解釈しない）。commit fd3e961。判定（Opus 5.5）PASS、軽5件。
 - 軽2（send の返事にハッシュが載る）を 2b251b5 と b37c26d で直した。判定（Codex Astra）1回目 FAIL（拒否で早めに返す経路に残る）、2回目 PASS。296 試験 PASS、`verify: exit=0`。
 - 残り（軽、次の候補）: ハッシュが鍵なしの SHA-256（記録を読める人は短い本文を推測して当否を確かめられる。既存の hash は鍵付きの HMAC）、enqueue の合成 id が同じ時刻で重なりうる、`isRecord` が payloadSha256 の型を見ない。
+- GitHub: 非公開のリポジトリ https://github.com/Chachamaru127/seamless を作り、main（925125d まで、17 commit、144 ファイル）を push。送る前に追跡中のファイルと全履歴を秘密のパターンで走査し、当たりは evidence.md の走査パターンの説明文だけ（値ではない）。

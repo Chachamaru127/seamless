@@ -1,0 +1,277 @@
+<title>純正とseamlessの会話探し</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Zen+Kaku+Gothic+Antique:wght@500;700;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* 配置: 1段組の読み物。冒頭に実測の数、続いて二つの道の流れ、比較表、判断材料の順 */
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --ink:#1c2230; --muted:#5d6577; --line:#dfe3ea;
+  --native:#2d6f6a; --native-soft:#e3f0ee;
+  --seam:#3d46b8; --seam-soft:#e7e9fb;
+  --warn:#8a5a00; --warn-soft:#fbf1dc;
+  --f-display:"Zen Kaku Gothic Antique","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+  --f-body:"BIZ UDPGothic","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12151c; --surface:#1a1e27; --ink:#e6e9f0; --muted:#9aa2b3; --line:#2c323f;
+  --native:#6cc3b9; --native-soft:#17302e;
+  --seam:#9aa3ff; --seam-soft:#20244a;
+  --warn:#f0bf62; --warn-soft:#33280f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12151c; --surface:#1a1e27; --ink:#e6e9f0; --muted:#9aa2b3; --line:#2c323f;
+  --native:#6cc3b9; --native-soft:#17302e;
+  --seam:#9aa3ff; --seam-soft:#20244a;
+  --warn:#f0bf62; --warn-soft:#33280f; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15.5px;line-height:1.85;margin:0}
+.wrap{max-width:900px;margin:0 auto;padding-inline:20px;padding-block:40px 72px;display:grid;gap:52px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.35;margin:0}
+h1{font-size:clamp(28px,5vw,40px);font-weight:900;letter-spacing:.01em}
+h2{font-size:22px;font-weight:700}
+h3{font-size:16px;font-weight:700}
+p{margin:0}
+code,.mono{font-family:var(--f-mono);font-size:.86em}
+.eyebrow{font-size:12px;letter-spacing:.12em;color:var(--muted);font-weight:700}
+section{display:grid;gap:18px}
+.lead{font-size:17px;max-width:62ch}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:1px 9px;border-radius:999px;letter-spacing:.04em}
+.tag.n{background:var(--native-soft);color:var(--native)}
+.tag.s{background:var(--seam-soft);color:var(--seam)}
+.n-ink{color:var(--native)} .s-ink{color:var(--seam)}
+
+/* 実測の数 */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 18px 16px;display:grid;gap:8px;min-width:0}
+.stat.n{border-top:4px solid var(--native)} .stat.s{border-top:4px solid var(--seam)}
+.stat .num{font-family:var(--f-display);font-size:44px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums}
+.stat .num small{font-size:16px;font-weight:700;margin-left:4px}
+.stat .what{font-size:13px;color:var(--muted)}
+.bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line)}
+.bar span{display:block;height:100%}
+.legend{display:grid;gap:2px;font-size:13px;font-variant-numeric:tabular-nums}
+.legend div{display:flex;justify-content:space-between;gap:8px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:baseline}
+.note{font-size:13.5px;color:var(--muted)}
+
+/* 二つの道 */
+.lanes{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:720px){.lanes{grid-template-columns:1fr}}
+.lane{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:grid;gap:12px;align-content:start;min-width:0}
+.lane ol{margin:0;padding:0;list-style:none;display:grid;gap:10px;counter-reset:s}
+.lane li{counter-increment:s;display:grid;grid-template-columns:28px 1fr;gap:10px;font-size:14.5px;line-height:1.7}
+.lane li::before{content:counter(s);font-family:var(--f-display);font-weight:900;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;margin-top:1px}
+.lane.n li::before{background:var(--native-soft);color:var(--native)}
+.lane.s li::before{background:var(--seam-soft);color:var(--seam)}
+.shared{border:1.5px dashed var(--line);border-radius:10px;padding:14px 16px;font-size:14.5px;display:grid;gap:4px;background:var(--surface)}
+.shared strong{font-family:var(--f-display)}
+
+/* 比較表 */
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px;line-height:1.7}
+th,td{padding:11px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+thead th{font-family:var(--f-display);font-size:13px;letter-spacing:.06em;background:var(--bg)}
+thead th.n{color:var(--native)} thead th.s{color:var(--seam)}
+tbody th{font-family:var(--f-display);font-weight:700;width:9.5em;white-space:nowrap}
+td.same{background:var(--native-soft)}
+
+/* 同じ一言 */
+.scenario{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:720px){.scenario{grid-template-columns:1fr}}
+.say{font-family:var(--f-display);font-weight:700;font-size:18px;padding:14px 18px;border-left:4px solid var(--ink);background:var(--surface);border-radius:0 8px 8px 0}
+.case{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:grid;gap:10px;min-width:0}
+.case ul{margin:0;padding-left:1.1em;display:grid;gap:6px;font-size:14.5px}
+.verdict{font-weight:700;font-size:14px}
+
+/* 判断材料と注意 */
+.judge{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.judge div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:6px;font-size:14.5px;min-width:0}
+.judge h3{font-size:14px;color:var(--muted);letter-spacing:.04em}
+.caveats{background:var(--warn-soft);border-radius:10px;padding:16px 18px;display:grid;gap:8px}
+.caveats h3{color:var(--warn)}
+.caveats ul{margin:0;padding-left:1.1em;display:grid;gap:6px;font-size:14px}
+.side{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:grid;gap:8px;font-size:14.5px}
+footer{font-size:12.5px;color:var(--muted);display:grid;gap:4px;border-top:1px solid var(--line);padding-top:16px}
+a{color:var(--seam)}
+</style>
+
+<div class="wrap">
+
+<header style="display:grid;gap:14px">
+  <p class="eyebrow">2026-10-04 実測 / このMac</p>
+  <h1>純正とseamlessの会話探し</h1>
+  <p class="lead">Claude 純正の会話探し（<code>ListAgents</code> と <code>SendMessage</code>）は、Claude の会話へ短い伝言を渡すための仕組みです。seamless は、Claude と Codex の会話を作業フォルダで絞って見つけ、中身を読み、頼み、返事まで追うための仕組みです。</p>
+  <p class="lead">Claude 宛ての配達は、どちらも同じ受け口（会話ごとに開く Unix ソケット）を通ります。違いは「誰を見つけられるか」と「届けた後に何が分かるか」にあります。</p>
+</header>
+
+<section>
+  <h2>同じ会話から一覧を取った結果</h2>
+  <p>この会話（seamless の作業フォルダ）から、純正の一覧と seamless の一覧を続けて取りました。並ぶ件数が25倍以上違います。</p>
+  <div class="stats">
+    <div class="stat n">
+      <span class="tag n">純正 ListAgents</span>
+      <div class="num n-ink">109<small>件</small></div>
+      <div class="bar" aria-hidden="true"><span style="width:12.8%;background:var(--native)"></span><span style="width:21.1%;background:color-mix(in srgb,var(--native) 55%,var(--line))"></span><span style="width:66.1%;background:color-mix(in srgb,var(--native) 25%,var(--line))"></span></div>
+      <div class="legend">
+        <div><span><i class="dot" style="background:var(--native)"></i>このMacの Claude</span><b>14</b></div>
+        <div><span><i class="dot" style="background:color-mix(in srgb,var(--native) 55%,var(--line))"></i>クラウドの Claude</span><b>23</b></div>
+        <div><span><i class="dot" style="background:color-mix(in srgb,var(--native) 25%,var(--line))"></i>別の機械（Remote Control）</span><b>72</b></div>
+        <div><span>Codex</span><b>0</b></div>
+      </div>
+      <p class="what">作業フォルダでは絞らない。止まった会話も offline として並ぶ。</p>
+    </div>
+    <div class="stat s">
+      <span class="tag s">seamless sessions（既定）</span>
+      <div class="num s-ink">4<small>件</small></div>
+      <div class="bar" aria-hidden="true"><span style="width:50%;background:var(--seam)"></span><span style="width:50%;background:color-mix(in srgb,var(--seam) 45%,var(--line))"></span></div>
+      <div class="legend">
+        <div><span><i class="dot" style="background:var(--seam)"></i>同じ作業フォルダの Claude</span><b>2</b></div>
+        <div><span><i class="dot" style="background:color-mix(in srgb,var(--seam) 45%,var(--line))"></i>同じ作業フォルダの Codex</span><b>2</b></div>
+        <div><span>止まっている等で隠した数</span><b>57</b></div>
+      </div>
+      <p class="what">既定は「同じ作業フォルダかその中」で、動いている会話だけ。</p>
+    </div>
+    <div class="stat s">
+      <span class="tag s">seamless sessions（範囲 any）</span>
+      <div class="num s-ink">16<small>件</small></div>
+      <div class="bar" aria-hidden="true"><span style="width:87.5%;background:var(--seam)"></span><span style="width:12.5%;background:color-mix(in srgb,var(--seam) 45%,var(--line))"></span></div>
+      <div class="legend">
+        <div><span><i class="dot" style="background:var(--seam)"></i>このMacの Claude</span><b>14</b></div>
+        <div><span><i class="dot" style="background:color-mix(in srgb,var(--seam) 45%,var(--line))"></i>Codex</span><b>2</b></div>
+      </div>
+      <p class="what">範囲を広げても、このMacの外の会話は出ない。</p>
+    </div>
+  </div>
+  <p class="note">このMacで動いている Claude の会話は、純正でも seamless の範囲 any でも 14件で一致しました。両方とも同じ受け口の有無を見ているためです。</p>
+</section>
+
+<section>
+  <h2>それぞれ、どうやって相手を見つけているか</h2>
+  <div class="lanes">
+    <div class="lane n">
+      <span class="tag n">Claude 純正</span>
+      <ol>
+        <li><span>Claude Code は会話を始めると、その会話専用の受け口（Unix ソケット）を開く。</span></li>
+        <li><span><code>ListAgents</code> は、受け口を開いている会話を並べる。Remote Control に接続中なら、クラウドと別の機械の会話も Anthropic のサーバー経由で加わる。</span></li>
+        <li><span>宛先は名前で指す（例: 「シームレス [29ace3]」）。同じ名前が複数あると、角括弧の短い識別子で区別する。</span></li>
+        <li><span><code>SendMessage</code> が伝言（文字だけ）を相手の受け口へ送る。</span></li>
+      </ol>
+    </div>
+    <div class="lane s">
+      <span class="tag s">seamless</span>
+      <ol>
+        <li><span>道具を呼んだ会話を実測で特定する。Claude は親プロセスと署名、Codex は道具の呼出しに付く会話ID（<code>_meta</code>）で決める。</span></li>
+        <li><span>Claude は稼働記録 <code>~/.claude/sessions/&lt;pid&gt;.json</code> を読み、プロセスが生きているか、受け口の持ち主、実際の作業フォルダを照合する。Codex は Codex Desktop の会話記録を読み、Desktop に持ち主を問い合わせる。</span></li>
+        <li><span>作業フォルダで絞る。止まっている会話は隠して件数だけ返す。一覧を作るときに本文は読まない。</span></li>
+        <li><span>送るときは、Claude へは純正と同じ受け口、Codex へは Codex Desktop の内部の接続を使う。</span></li>
+      </ol>
+    </div>
+  </div>
+  <div class="shared">
+    <strong>二つの道が重なる所</strong>
+    <span>seamless が Claude へ送る依頼は、純正の受け口に入ります。そのため、届いた後の扱い（待機中なら新しいターン、作業中なら道具の呼出しの合間に読む）と、受け手側の受け入れ設定 <code>crossSessionInbound</code> は、純正の伝言と同じに効きます。</span>
+  </div>
+</section>
+
+<section>
+  <h2>項目ごとの違い</h2>
+  <p class="note">色付きの欄は、両者で同じ仕組みを使っている所です。</p>
+  <div class="tablebox">
+    <table>
+      <thead><tr><th>項目</th><th class="n">Claude 純正</th><th class="s">seamless</th></tr></thead>
+      <tbody>
+        <tr><th>探せる相手</th><td>Claude Code の会話だけ。このMac、クラウド、別の機械まで</td><td>Claude と Codex の会話。このMacだけ</td></tr>
+        <tr><th>絞り方</th><td>絞らずに全部並べる。宛先は名前で指す</td><td>作業フォルダで絞る（既定 <code>current_work</code>、<code>same_repository</code>、<code>any</code>）。止まった会話は既定で隠す</td></tr>
+        <tr><th>一覧に出る情報</th><td>名前、種類（このMac、クラウド、Remote Control）、待機中か作業中か、開始時期</td><td>製品、会話ID、世代、作業フォルダ、稼働状態とその理由、読む送るの可否</td></tr>
+        <tr><th>相手の中身を読む</th><td>できない。公式の説明では、伝言は文字だけで送り主の会話履歴は渡らない</td><td><code>read</code> で相手の見える発言（利用者、AI、別の会話からの依頼）を読める。思考と道具の出力は返さない</td></tr>
+        <tr><th>Claude への届け方</th><td class="same" colspan="2">会話ごとの受け口。待機中なら新しいターンを始め、作業中なら道具の呼出しの合間に読む（実行中の道具は止めない）</td></tr>
+        <tr><th>Codex への届け方</th><td>無い（Codex は受け口を持たないので一覧に出ない）</td><td>Codex Desktop の内部の接続で、外部の道具の結果として届ける</td></tr>
+        <tr><th>届いたかの確認</th><td>送れたか、送れなかったか（<code>Not sent</code>）まで。相手が次に待機へ戻った時に1回知らせる <code>notify_when_idle</code> がある</td><td>段階で追う。受理、到達、処理開始、返答完了、不明。<code>track</code> と <code>waitSeconds</code> で返事を待てる</td></tr>
+        <tr><th>送り主の確かさ</th><td>Claude Code が「別の会話から」と示し、送り主の名前を付ける</td><td>送り主の会話の記録に同じ依頼IDの送信があるかを読み、確認済みか名乗っただけかを分けて示す</td></tr>
+        <tr><th>受け手側の制御</th><td><code>crossSessionInbound</code>（受ける、保留、断る）。伝言は承認にならず、設定も変えさせない</td><td>Claude 宛ては純正の制御がそのまま効く。加えて任意の <code>~/.seamless/limits.json</code> で除外、範囲、操作を制限できる（既定は制限なし）</td></tr>
+        <tr><th>二重送信と再送</th><td>同じ文の短時間の連打を落とす。受け手が溜めるのは50件まで</td><td>依頼ごとに予約を残す。結果が不明になっても自動で再送しない</td></tr>
+        <tr><th>版が上がった時</th><td>Claude Code 自身の機能なので、版に合わせて動く</td><td>表に無い新しい版も既定で動き、一覧に「未確認」（<code>versionStatus: unverified</code>）と出す。止まるのは、壊れていると分かった版と、記録や受け口の形が合わないとき。確認済みの版だけに限る設定 <code>strictVersions</code> も選べる（既定は OFF）</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>同じ一言を頼んだら、どう動くか</h2>
+  <p class="say">「同じ作業場所の Codex に、さっきの変更を確認してもらって」</p>
+  <div class="scenario">
+    <div class="case">
+      <span class="tag n">純正だけの場合</span>
+      <ul>
+        <li><code>ListAgents</code> の109件に Codex は1件も無い。</li>
+        <li>宛先が見つからず、ここで止まる。</li>
+      </ul>
+      <p class="verdict n-ink">届かない</p>
+    </div>
+    <div class="case">
+      <span class="tag s">seamless の場合</span>
+      <ul>
+        <li><code>sessions</code> で同じ作業フォルダの4件から Codex を選ぶ（2件あれば選択肢を示して止まる）。</li>
+        <li><code>read</code> で、その Codex が直前に何をしていたかを読む。</li>
+        <li><code>send</code> に <code>track</code> を付けて送り、返答完了まで段階を追う。</li>
+      </ul>
+      <p class="verdict s-ink">届いて、返事まで確かめられる</p>
+    </div>
+  </div>
+  <p>相手が Claude なら、純正でも届きます。その場合の差は、109件から名前で選ぶか、作業フォルダで4件に絞ってから選ぶか、そして届けた後に相手の作業を読めるかどうかです。純正の一覧の結果には作業フォルダが入らないので、純正だけでは名前が唯一の手がかりになります。</p>
+</section>
+
+<section>
+  <div class="side">
+    <h3>Desktop アプリには三つ目の道もある</h3>
+    <p>Claude Desktop の中の Claude は、アプリの道具 <code>list_sessions</code> と <code>search_session_transcripts</code> も使えます。<code>list_sessions</code> は Desktop の会話をタイトル、作業フォルダ、ブランチ、PR 付きで並べます（今回も先頭5件にフォルダとブランチが出ました）。<code>search_session_transcripts</code> は他の会話の記録を全文検索し、一致した所の抜粋を返します。対象は Desktop の Claude 会話だけで、Codex は入りません。送信はアプリの説明上 <code>SendMessage</code> を勧めています。</p>
+  </div>
+</section>
+
+<section>
+  <h2>なぜ二つに分かれているのか</h2>
+  <p>純正の仕組みは、ある会話で分かった発見や決定を、別の会話へ伝えるために作られています。権限は会話ごとに閉じていて、伝言で相手の権限を借りることはできません。履歴ごと引き継ぎたいときは会話の再開を使う、というのが公式の説明です。</p>
+  <p>seamless は、Codex を相手に含めることと、元の会話をそのまま読むことを目的に作りました。Codex の会話は Claude の受け口を開かないので、純正の一覧には仕組みの上で出てきません。そこで seamless は、Claude 側は純正の受け口に乗り、Codex 側は Codex Desktop の接続に乗る形を取っています。</p>
+</section>
+
+<section>
+  <h2>判断材料</h2>
+  <div class="judge">
+    <div><h3>本質</h3><p>Claude 同士の配達は、純正と seamless で同じ受け口を使う。seamless が足しているのは、Codex を含めること、相手の中身を読むこと、作業フォルダで絞ること、返事まで追うことの四つ。</p></div>
+    <div><h3>何が変わるか</h3><p>前: 純正だけなら、Claude にだけ伝言を送れる。<br>後: seamless を足すと、Codex にも送れ、相手の作業を読み、返事の到着を確かめられる。</p></div>
+    <div><h3>立花さんから見て</h3><p>「Claude に伝えて」はどちらで頼んでも同じ受け口に届く。「Codex に」「何してたか見て」「返事来た？」は seamless でしかできない。</p></div>
+    <div><h3>仕様への影響</h3><p>今すぐ変える所は無い。候補として、Claude 同士の送信を純正に任せて seamless を読む追うに絞る案はある。推奨は現状維持（seamless で送ると追跡と送り主の照合が付くため）。後から戻せる。</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>追加で確かめた2点</h2>
+  <div class="judge">
+    <div><h3>純正の一覧に作業フォルダは出るか</h3><p><b>出ない。</b>Remote Control に接続していない試験用の会話（Claude Code 2.1.289、<code>claude -p</code>）で <code>ListAgents</code> を呼び、生の結果を取り出しました。15件のどの行にも作業フォルダはありませんでした。Remote Control の有無とは関係なく、道具の結果に作業フォルダが入らない作りです。同じ名前の会話が複数あるときに出るかは試していません。</p></div>
+    <div><h3>seamless の依頼は保留されるか</h3><p><b>受け手が権限確認を飛ばす設定のときだけ保留される。</b>seamless が送る1行には、送り主の権限モードを名乗る欄がありません。道具も MCP も持たない試験用の Claude を2つ立てて、同じ形の1行を送りました。</p>
+      <ul style="margin:0;padding-left:1.1em;font-size:14px">
+        <li>通常の権限モード（default）の受け手: 届いて、返事 <code>PONG-A1</code> が出た。</li>
+        <li>権限確認を飛ばす受け手（bypassPermissions）: 届かずに保留。記録は <code>peer_message_hold</code>、理由は <code>no-mode-asserted</code>（送り主が権限モードを名乗っていない）。</li>
+      </ul>
+      <p>Desktop の会話がふだん使う auto、acceptEdits、default では保留されません。権限確認を飛ばす会話に届けたいときは、受け手側で <code>crossSessionInbound</code> を <code>accept</code> にします。送り主が「権限確認を飛ばしている」と偽って名乗れば届きますが、seamless は名乗りを偽らない方針です。</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="caveats">
+    <h3>確かめきれていないこと</h3>
+    <ul>
+      <li>seamless の範囲 any は、Codex の会話を新しい順に50件だけ確かめます。今回は残りの 8,730件を確かめていません。</li>
+      <li>この会話は Desktop 同梱の Claude Code 2.1.286（対応表で確認済み）で動いています。対応表に無い CLI 2.1.289 の会話からも、更新後の seamless は止まらずに一覧を返しました（呼ぶ側は「未確認」と表示）。</li>
+      <li>純正の挙動は、公式文書と今回の実行結果に基づきます。純正の受け口の内部の形は、公開された取決めではありません。</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <span>出典: Claude Code 公式文書「Message your other Claude Code sessions」（code.claude.com/docs/en/cross-session-messaging）、seamless の <span class="mono">src/sessions-scan.ts</span> と <span class="mono">src/native-runtime.ts</span>、2026-10-04 夕方の <span class="mono">ListAgents</span>、<span class="mono">list_sessions</span>、<span class="mono">sessions</span> の実行結果。</span>
+  <span>会話の本文は載せていません。会話の名前は、宛先の指し方の例として1件だけ使っています。</span>
+</footer>
+
+</div>

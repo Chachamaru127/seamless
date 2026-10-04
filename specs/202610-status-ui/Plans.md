@@ -95,3 +95,5 @@ seamless の依頼の記録は本文を持たない（保存しない方針）�
 | C2 本実装 | C1 が通ったら、帯と同じ中身（今していること、相手ごとの回数と色、やりとりの一覧）をパネルに出す。更新は手動の再読み込みから始める | C1 の結果を見て決める |
 
 C1 で表示されない、または呼ぶ側を特定できないときは、Codex 側は見送る（app.asar の改造や内部フラグの変更はしない）。
+
+2026-10-05 追記（C1 の実機の観察、evidence.md）: config.toml に直接登録した MCP のままでは、会話の右パネルの候補（「プラグインを使用」）に出なかった。C1b として、右パネルの画面を手元のプラグインに包む（`.codex-plugin/plugin.json`、`.mcp.json`、手元の marketplace の `.agents/plugins/marketplace.json`）。導入は `codex plugin marketplace add <手元のフォルダ>` と Codex アプリの「プラグイン」からの導入で、Codex の設定を変える。配線は CJ-Plugin の wire.sh の作法に合わせる。立花さんの承認（導入1回）が要る。

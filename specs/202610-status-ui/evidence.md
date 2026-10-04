@@ -44,3 +44,12 @@
 - 第16便（Codex Astra）: seamless の自動方式の MCP に、資源 `ui://seamless/status` と読み取りだけの道具 `status_panel`（entrypoints thread）を足した（07aee7a）。判定（Claude Opus）PASS、軽7件。
 - リーダーの直し（cff306d と次の commit）: 旧形式のキー `ui/resourceUri` を足した（同梱の code-review と同じ）。Codex からの要求への返事、結果が空のときの理由の表示、`resources/templates/list` の空の一覧。時々落ちていた試験（受信の並び順に頼っていた）を依頼 ID ごとの照合にした。判定（Codex Astra）PASS、軽3件のうち2件を直した。残り: 今回の直しの回帰試験。
 - 実機の確認（C1）は未実施。Codex で新しい会話を開き、右パネルに「seamless の状態」のタブが出るか、出たら呼ぶ側の行が `codex-turn-metadata` になるかを見る。
+
+## 2026-10-05 C1 の実機の観察（Codex アプリ 26.930.31730）
+
+- 立花さんの承認（画面の占有の許可）を得て、画面の操作で確かめた。新しい会話は作らず、メッセージも送っていない。既存の会話「シームレスチェック」（seamless の作業フォルダ）を開いただけ。
+- 会話の右上のパネルには、作業フォルダ「seamless」、「変更」、「ソース」（seamless、すべて表示）が出た。「ソース」の「+」を押すと「プラグインを使用」と「ファイルまたはフォルダーを添付」が出た。
+- 「プラグインを使用」の候補は、導入済みのプラグインの一覧（Cloud Environment、Writing Style、Code Review、Browser など）だった。見えた範囲に seamless は無かった。検索欄への入力は反映されず、一覧の全体は確かめていない。
+- 「seamless の状態」のタブは出なかった。
+- 見立て（確信度 medium）: 会話の横の画面の入口は「プラグイン」として導入されたものから選ぶ作りで、config.toml に MCP サーバーとして直接登録した seamless は候補に入らない。また、この会話はメッセージを送っていないので、seamless の MCP が新しいコードで起動し直したかも分からない。
+- 次の手: seamless の右パネルを、手元のプラグイン（`.codex-plugin/plugin.json` と `.mcp.json`）として包み、手元の marketplace から導入して確かめる。Codex の設定を変える操作なので、立花さんの承認が要る（Plans の C 段に追記）。

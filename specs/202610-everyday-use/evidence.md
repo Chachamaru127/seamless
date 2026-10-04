@@ -213,3 +213,11 @@
 - `codex exec -s read-only` から上書きなしで seamless の sessions を呼べた（前回は「MCP tool call requires approval, but approval policy is never」で止まっていた）。返事は caller_unobserved（exec の会話は Desktop の持ち物ではないため。設計どおり）。
 - この Claude の会話は立ち上げ直しで中の ID が b2188eef に変わり、MCP の道具 mcp__seamless__sessions から呼ぶ側 `claude-ancestor` として特定できた。候補は claude 859d7cf9、claude 44043390、codex 01a10594、codex 01a0f59d（すべて online）、offlineHidden 53。
 - 改善の候補: 配送が書く seamless の欄の後に空行が無く、手で行を足すと次の欄に入りやすい（共通の書き出しの癖）。
+
+## 2026-10-04 欄の空行と軽い指摘3件（立花さん「1と2を推奨で進めて3まで完了」）
+
+- CJ-Plugin#18（c149631、squash merge）: 配送が書く seamless の欄の後に空行を入れる。判定（Codex Astra）1回目 FAIL（複数行の文字列の中の見出し風の行で値を変える）、空行の候補ごとに設定全体を読み直して同じときだけ入れる形に直し、2回目 PASS。fixture 23 件 OK、全体の `wire.sh check` FAIL 0。
+- 作業中の Claude への到着（実測）: 受け手が作業中だと、Claude Code は届いた瞬間に `queue-operation enqueue`（uuid も peer の印も無い、content は送った本文そのもの）だけを書き、会話に取り込んだ時に `attachment queued_command` を書く（時刻は届いた時刻のまま）。前回は 06:26:03 に enqueue、06:26:51 に attachment で、Codex の追跡（06:26:07〜06:26:38）は reached を見られなかった。enqueue の content は送った `JSON.stringify(payload)` とバイト単位で一致した。
+- 第11便（Codex Astra）: track の scope を受け付けて無視する、wait_limit を道具のエラーにしない、送った本文の SHA-256 を依頼の記録に残し enqueue の本文の SHA-256 と一致したときだけ reached にする（本文を封筒として解釈しない）。commit fd3e961。判定（Opus 5.5）PASS、軽5件。
+- 軽2（send の返事にハッシュが載る）を 2b251b5 と b37c26d で直した。判定（Codex Astra）1回目 FAIL（拒否で早めに返す経路に残る）、2回目 PASS。296 試験 PASS、`verify: exit=0`。
+- 残り（軽、次の候補）: ハッシュが鍵なしの SHA-256（記録を読める人は短い本文を推測して当否を確かめられる。既存の hash は鍵付きの HMAC）、enqueue の合成 id が同じ時刻で重なりうる、`isRecord` が payloadSha256 の型を見ない。

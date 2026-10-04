@@ -188,3 +188,11 @@
 - 受信側（f8352827）の照合: inbound に `sender: verified`。新方式の宛名で届いた依頼の照合を初めて観測した。
 - 軽の発見: ① track に scope を付けると invalid_params（send の道具の説明には scope があるので、呼ぶ側が付けやすい）。② `wait_limit` が MCP の道具のエラー（isError）として返る。
 - 未観測: Desktop の新しい Codex の会話からの経路（T26 の `_meta`、Codex → Claude の送信）。Codex の会話の記録に、新しい会話はまだ無い。
+
+## 2026-10-04 段 F: Desktop の新しい Codex の会話との往復
+
+- Codex Desktop の新しい会話 01a10594-266e（作業場所 seamless、generation 48665a1d）が seamless の sessions を呼べた。呼ぶ側は source `codex-turn-metadata` で特定（T26: Desktop の Codex も `_meta` の session_id を付ける）。
+- Claude（f8352827、CLI 経由）→ Codex 01a10594（id `seamless-f-claude-to-codex-1`）: submitted。track で accepted 06:24:56、reached 06:24:57、processing 06:24:57 を観測。Codex 側の inbound は `sender: declared`（送信を `node src/cli.ts send "$(cat 依頼.json)"` で行い、依頼 ID がコマンドの文字列に無いため。照合の設計どおり）。
+- Codex は依頼を受けたが、`humanApproval: false` を理由に送信を止め、立花さんに許可を求めた。立花さんが許可した後に送信。
+- Codex 01a10594 → Claude f8352827（id `seamless-f-codex-to-claude-1`）: この会話に届き、inbound は `sender: verified`。Codex 側の30秒の track は accepted のみ観測、reached は未観測で wait_limit。届いたのは、この会話が作業中で、依頼が順番待ち（作業の合間の割り込み）として渡った時。到達の照合が、この渡り方を数えていない可能性がある（未確認）。
+- 立花さんの指示（2026-10-04）: 「配線を作るだけで、この辺の制約は機能としては残すけどデフォはOFFで」。Codex の道具の承認を seamless の配送で既定「承認なし」にする変更は、Claude Code の自動判定に危険と判断されて止まった（変更は入れていない）。受信側が人の許可を待つ動き（不変条件3）を既定で外すかは、仕様の変更として立花さんに確認中。

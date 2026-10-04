@@ -53,3 +53,12 @@ for(const status of ['submitted','unknown'] as const)test(`write receipt ${statu
  assert.deepEqual(await delivery.send(request),{status});assert.equal(writes,1);
  const restarted=setup(reservationDir);assert.deepEqual(await restarted.delivery.send(request),{status});assert.equal(restarted.writes(),0);
 });
+
+test('receipts never carry the payload hash, including write-time rejection',async()=>{
+ for(const status of ['submitted','rejected'] as const){
+  const s=setup(),reservationDir=mkdtempSync(join(tmpdir(),'cldx-hash-'));let checks=0;
+  const delivery=new Delivery(s.registry,'a',{read:async()=>null,send:async(_r,_e,authorize)=>{if(status==='rejected')await authorize!();return {status,payloadSha256:'f'.repeat(64)};}},{reservationDir,fixedTarget:s.registry.get('b')!,refresh:async()=>{if(status==='rejected'&&++checks>1)throw new Error('refresh failed');}});
+  const receipt=await delivery.send({target:'b',id:'hash-'+status,text:'hello'}) as Record<string,unknown>;
+  assert.equal('payloadSha256' in receipt,false,status);assert.equal(receipt.status,status);
+ }
+});

@@ -82,6 +82,8 @@ export class Delivery {
   let denied:string|null=null,recheckRejected=false;
   const authorize=async()=>{denied=await this.validate?.()??null;if(denied){recheckRejected=true;return false;}try{await this.refreshHook();}catch{recheckRejected=true;return false;}const currentSender=this.registry.get(sender.id),currentTarget=this.registry.get(target.id);const allowed=!!currentSender&&!!currentTarget&&JSON.stringify(currentSender)===JSON.stringify(sender)&&JSON.stringify(currentTarget)===JSON.stringify(target)&&permitted(currentSender,currentTarget,'send');if(!allowed)recheckRejected=true;return allowed;};
   let receipt:Receipt;try{receipt=await authorize()?await this.adapter.send(target,envelope,authorize):{status:'rejected'};}catch{receipt={status:'unknown'};}
+  // The payload hash stays in the private record only; no returned receipt carries it.
+  const {payloadSha256,...visible}=receipt;receipt=visible;
   if(receipt.status==='rejected'&&recheckRejected){
    try{await unlink(path);}catch{return {status:'unknown'};}
    this.attempts.delete(p.id as string);
@@ -89,10 +91,8 @@ export class Delivery {
   }
   // A lost process leaves pending; another process never retries that reservation.
   const temporary=path+'.'+randomUUID();let state;
-  try{state=await open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await state.writeFile(JSON.stringify({hash,status:receipt.status,at:Date.now(),...metadata,...(receipt.payloadSha256?{payloadSha256:receipt.payloadSha256}:{})}));await state.sync();await state.close();state=undefined;await rename(temporary,path);}catch{receipt={status:'unknown'};}finally{await state?.close();}
+  try{state=await open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await state.writeFile(JSON.stringify({hash,status:receipt.status,at:Date.now(),...metadata,...(payloadSha256?{payloadSha256}:{})}));await state.sync();await state.close();state=undefined;await rename(temporary,path);}catch{receipt={status:'unknown'};}finally{await state?.close();}
   if(receipt.status==='rejected'&&!denied)denied=await this.validate?.()??null;
-  // The payload hash stays in the private record only; the caller's transcript never gets it.
-  const {payloadSha256:_,...visible}=receipt;
-  return denied&&receipt.status==='rejected'?{status:denied}:visible;
+  return denied&&receipt.status==='rejected'?{status:denied}:receipt;
  }
 }

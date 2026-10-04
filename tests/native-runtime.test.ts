@@ -41,3 +41,44 @@ for(const namespace of ['seamless','claude-peer'])test(`native inbound accepts s
  const {adapter}=createNativeRuntime({read:async()=>({status:'ok',items:[{role:'peer',text:'hello',peer:{namespace,declaredSender:'seamless',messageId:'native-id',envelope}}]})});
  assert.deepEqual(await adapter.inbound!(r),[envelope]);
 });
+
+for(const humanApproval of [undefined,false,true,'false',null])test(`native inbound approval marker ${typeof humanApproval}:${String(humanApproval)}`,async()=>{
+ const envelope={schemaVersion:1,...(humanApproval===undefined?{}:{humanApproval}),id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'hello'};
+ const {adapter}=createNativeRuntime({read:async()=>({status:'ok',items:[{role:'peer',text:JSON.stringify(envelope),peer:{namespace:'seamless',messageId:'m'}}]})});
+ assert.deepEqual(await adapter.inbound!(r),humanApproval===undefined||humanApproval===false?[envelope]:[]);
+});
+
+import net from 'node:net';
+import fs from 'node:fs/promises';
+import {syncBuiltinESMExports} from 'node:module';
+import {readLimits,unrestricted} from '../src/limits.ts';
+for(const provider of ['claude','codex'] as const)for(const mark of [undefined,false,true,'legacy'] as const)test(`${provider} outbound envelope marker with markUnapproved=${String(mark)}`,async t=>{
+ const home=await mkdtemp(join(tmpdir(),'marker-')),path=join(home,'limits.json');
+ if(mark!==undefined&&mark!=='legacy')await fs.writeFile(path,JSON.stringify({...unrestricted,markUnapproved:mark}),{mode:0o600});
+ let payload:Record<string,unknown>|undefined;
+ class Transport extends EventEmitter{
+  destroyed=false;setTimeout(){return this;}destroy(){this.destroyed=true;return this;}end(){return this;}
+  write(frame:string|Buffer,callback?:(error?:Error|null)=>void){
+   if(provider==='claude'){payload=JSON.parse(JSON.parse(String(frame)).message.content);callback?.();return true;}
+   const bytes=frame as Buffer,request=JSON.parse(bytes.subarray(4).toString());
+   if(request.method==='thread-follower-start-turn')payload=JSON.parse(request.params.turnStart.request.toolOutput.output);
+   const body=Buffer.from(JSON.stringify({type:'response',requestId:request.requestId,handledByClientId:'owner',resultType:'success',result:request.method==='initialize'?{clientId:'client'}:{}}));
+   const prefix=Buffer.alloc(4);prefix.writeUInt32LE(body.length);queueMicrotask(()=>this.emit('data',Buffer.concat([prefix,body])));return true;
+  }
+ }
+ const connection=t.mock.method(net,'createConnection',()=>{const socket=new Transport();setImmediate(()=>socket.emit('connect'));return socket;});
+ const realLstat=fs.lstat;
+ const stat=t.mock.method(fs,'lstat',async(p:Parameters<typeof fs.lstat>[0],...args:unknown[])=>{
+  if(String(p).endsWith('/ipc.sock'))return {isSocket:()=>true,uid:process.getuid?.(),mode:0o600};
+  if(String(p).endsWith('/ipc'))return {isDirectory:()=>true,uid:process.getuid?.(),mode:0o700};
+  return (realLstat as Function)(p,...args);
+ });
+ syncBuiltinESMExports();t.after(()=>{connection.mock.restore();stat.mock.restore();syncBuiltinESMExports();});
+ const target={...r,provider};
+ const identity=async()=>({nativeId:r.nativeId,generation:r.generation,cwd:home,socket:join(home,'.codex','ipc','ipc.sock')});
+ const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',claudeVersion:async()=>'2.1.284',codexIdentity:identity,claudeIdentity:identity,...(mark==='legacy'?{}:{markUnapproved:async()=>{const l=await readLimits(path);return l.status==='ok'&&l.value.markUnapproved===true;}})});
+ const receipt=await adapter.send(target,{id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'test'});
+ assert.equal(receipt.status,'submitted');assert.ok(payload);
+ assert.equal(Object.hasOwn(payload,'humanApproval'),mark===true);
+ if(mark===true)assert.equal(payload.humanApproval,false);
+});

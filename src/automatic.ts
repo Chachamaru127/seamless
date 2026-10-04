@@ -40,7 +40,7 @@ export function createAutomatic(options:AutomaticOptions={}){
  const caller=(ctx:CallContext)=>options.caller?options.caller(ctx):identifyCaller(ctx,{...scanOptions,...options.callerOptions,home});
  const scan=options.scan??((cwd:string,s:AutoScope)=>scanSessions(cwd,s,scanOptions));
  const inspect=options.inspect??(async(n:SessionIdentity)=>n.provider==='codex'?codexIdentity(n.nativeId,scanOptions):findClaudeIdentity(n.nativeId,home,{...scanOptions,...scanOptions.claude}));
- const runtime=createNativeRuntime({...scanOptions,desktopVersion:scanOptions.version,home,codexIdentity:id=>codexIdentity(id,scanOptions)});
+ const runtime=createNativeRuntime({...scanOptions,markUnapproved:async()=>{const current=await readLimits(limitsPath);if(current.status==='unusable')throw new Error('limits_unusable');return current.status==='ok'&&current.value.markUnapproved===true;},desktopVersion:scanOptions.version,home,codexIdentity:id=>codexIdentity(id,scanOptions)});
  const adapter=options.adapter??runtime.adapter;
  const branch=async(cwd:string)=>{const git=await (scanOptions.git??observeGit)(cwd);return git.state==='git'?git.branch:git.state==='no_git'?null:undefined;};
  const ticketFor=async(n:SessionIdentity)=>{const observed=await branch(n.cwd);return observed===undefined?null:issueTicket({...n,branch:observed});};

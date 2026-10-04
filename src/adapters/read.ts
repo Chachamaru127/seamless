@@ -16,7 +16,7 @@ function party(v:any):Party|null{return v&&typeof v==='object'&&str(v.id)&&str(v
 // Call only on records the native product already marked as peer origin; never on ordinary user text.
 export function parseEnvelope(raw:string):Envelope|null{
  let v;try{v=JSON.parse(raw);}catch{return null;}
- if(!v||typeof v!=='object'||v.schemaVersion!==1||v.humanApproval!==false||!str(v.id)||typeof v.text!=='string'||v.replyTo!==undefined&&!str(v.replyTo))return null;
+ if(!v||typeof v!=='object'||v.schemaVersion!==1||(Object.hasOwn(v,'humanApproval')&&v.humanApproval!==false)||!str(v.id)||typeof v.text!=='string'||v.replyTo!==undefined&&!str(v.replyTo))return null;
  const sender=party(v.sender),recipient=party(v.recipient);if(!sender||!recipient)return null;
  return {id:v.id,sender,recipient,text:v.text,...(v.replyTo===undefined?{}:{replyTo:v.replyTo})};
 }

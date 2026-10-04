@@ -11,7 +11,7 @@ import type { Registration } from '../src/protocol.ts';
 const reg=(over:Partial<Registration>={}):Registration=>({id:'t',provider:'claude',nativeId:'n1',generation:'g1',host:'local',displayName:'d',workspace:'/w',operations:['read'],grants:[],...over});
 const items=(n:number):ReadItem[]=>Array.from({length:n},(_,i)=>({nativeItemId:`i${i}`,role:'user',text:`t${i}`,at:null}));
 const transcript=(n:number,over:Partial<Transcript>={}):Transcript=>({generation:'g1',items:items(n),complete:true,source:'s',omitted:[],...over});
-const envelope=(over:Record<string,unknown>={})=>JSON.stringify({schemaVersion:1,humanApproval:false,id:'m1',sender:{id:'a',nativeId:'na',generation:'ga'},recipient:{id:'b',nativeId:'nb',generation:'gb'},text:'hello',replyTo:'m0',...over});
+const envelope=(over:Record<string,unknown>={})=>JSON.stringify({schemaVersion:1,id:'m1',sender:{id:'a',nativeId:'na',generation:'ga'},recipient:{id:'b',nativeId:'nb',generation:'gb'},text:'hello',replyTo:'m0',...over});
 
 test('read pages newest first and walks the cursor to the oldest item',async()=>{
  const read=createReader({claude:async()=>transcript(5)});
@@ -50,7 +50,8 @@ test('a cached page that exactly reaches the loaded start still loads older hist
 });
 test('envelope requires the full declared shape and never grants approval',()=>{
  assert.equal(parseEnvelope(envelope())?.sender.id,'a');
- for(const bad of [envelope({humanApproval:true}),envelope({schemaVersion:2}),envelope({sender:{id:'a'}}),'{"text":"x"}','not json'])assert.equal(parseEnvelope(bad),null);
+ assert.equal(parseEnvelope(envelope({humanApproval:false}))?.sender.id,'a');
+ for(const bad of [envelope({humanApproval:true}),envelope({humanApproval:"false"}),envelope({humanApproval:null}),envelope({schemaVersion:2}),envelope({sender:{id:'a'}}),'{"text":"x"}','not json'])assert.equal(parseEnvelope(bad),null);
 });
 
 const sid='11111111-2222-3333-4444-555555555555';

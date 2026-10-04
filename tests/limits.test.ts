@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fork} from 'node:child_process';
 import {once} from 'node:events';
-import {readLimits,writeLimits,clearLimits,type Limits} from '../src/limits.ts';
+import {readLimits,writeLimits,clearLimits,validLimits,type Limits} from '../src/limits.ts';
 const empty:Limits={version:1,exclude:[],scope:null,operations:null};
 async function fixture(t:{after:(fn:()=>Promise<void>)=>void}){
  const dir=await mkdtemp(join(tmpdir(),'cldx-limits-'));t.after(()=>rm(dir,{recursive:true,force:true}));return {dir,path:join(dir,'limits.json')};
@@ -100,3 +100,16 @@ test('workspace exclusions reject relative paths on read and write',async t=>{
   if(current.status==='ok')assert.equal((await writeLimits(current.value,current.hash,path)).status,'ok');
  }
 });
+
+ test('markUnapproved is optional and accepts only booleans',async t=>{
+ const {path}=await fixture(t);
+ for(const value of [empty,{...empty,markUnapproved:true},{...empty,markUnapproved:false}]){
+  assert.equal(validLimits(value),true);
+  await writeFile(path,JSON.stringify(value),{mode:0o600});
+  const loaded=await readLimits(path);assert.equal(loaded.status,'ok');
+  if(loaded.status==='ok')assert.deepEqual(loaded.value,value);
+ }
+ for(const markUnapproved of ['yes',0,1,null,undefined])assert.equal(validLimits({...empty,markUnapproved}),false);
+ for(const key of ['version','exclude','scope','operations']){const value:Record<string,unknown>={...empty,markUnapproved:true};delete value[key];assert.equal(validLimits(value),false);}
+ assert.equal(validLimits({...empty,markUnapproved:true,unknown:false}),false);
+ });

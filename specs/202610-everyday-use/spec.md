@@ -1,5 +1,7 @@
 # 普段使いへの改善（6観点）
 
+> 2026-10-04 に claudex から seamless へ改名した（独立リポジトリ）。本文の claudex、`~/.claudex`、実行したコマンドは記録当時の旧名のまま残す。
+
 更新: 2026-10-02 JST
 状態: 2026-10-03 立花さん承認（改訂版の承認1回目）。Open decision 3 は案B。
 リーダー: Claude（claudex 作業場所の Desktop 会話）。相談相手: Codex 会話 01a0f59d…。

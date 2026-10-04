@@ -1,5 +1,7 @@
 # claudex 実装計画
 
+> 2026-10-04 に claudex から seamless へ改名した（独立リポジトリ）。本文の claudex、`~/.claudex`、実行したコマンドは記録当時の旧名のまま残す。
+
 更新: 2026-10-01 JST
 対象: 同じMacで稼働する、本人が登録したCodexとClaude Codeの会話。
 状態: CLI実会話17項目、追加の境界観測7項目、既存Desktopの相互読取りと両方向配送を反映。Grok独立再判定APPROVE。今回の方式検証と実装計画は完了。

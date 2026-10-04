@@ -1,5 +1,7 @@
 # 会話の上に出す状態の帯
 
+> 2026-10-04 に claudex から seamless へ改名した（独立リポジトリ）。本文の claudex、`~/.claudex`、実行したコマンドは記録当時の旧名のまま残す。
+
 更新: 2026-10-03 JST
 状態: 2026-10-03 立花さん承認（承認1回目）。
 リーダー: Claude。見本: [Claude の帯](../../out/ask-pro/20261003-claude-band/sheet.png)、[受信カードと Codex のカード](../../out/ask-pro/20261002-status-ui/README.md)。

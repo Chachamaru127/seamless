@@ -67,3 +67,11 @@ test('Codex sent IDs accept seamless server',()=>{
  const item={type:'mcpToolCall',server:'seamless',tool:'send',arguments:JSON.stringify({id:'one',ticket,text:'hidden'})};
  assert.deepEqual(projectCodexSentIds({turns:[{items:[item]}]},['one'],recipient),['one']);
 });
+for(const name of ['mcp__seamless_test__send','mcp__seamlessx__send','mcp__claudex_test__send','mcp__seamless__sendx','xseamless.send'])test(`Claude sent IDs reject look-alike tool ${name}`,()=>{
+ const line=JSON.stringify({sessionId:'a',type:'assistant',uuid:'u',message:{content:[{type:'tool_use',name,input:{id:'one',ticket,text:'hidden'}}]}});
+ assert.deepEqual(projectClaudeSentIds([line],'a',['one'],recipient),[]);
+});
+test('Codex sent IDs reject test and look-alike servers',()=>{
+ const item=(server:string)=>({type:'mcpToolCall',server,tool:'send',arguments:JSON.stringify({id:'one',ticket,text:'hidden'})});
+ assert.deepEqual(projectCodexSentIds({turns:[{items:['seamless_test','claudex_test','seamlessx','Seamless'].map(item)}]},['one'],recipient),[]);
+});

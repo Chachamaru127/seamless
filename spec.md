@@ -1,5 +1,7 @@
 # claudex
 
+> 2026-10-04 に claudex から seamless へ改名した（独立リポジトリ）。本文の claudex、`~/.claudex`、実行したコマンドは記録当時の旧名のまま残す。
+
 Status: 実会話の相互読取り、両方向配送、busy、既存Desktop接続を実証済み。製品実装の計画は specs/202610-session-interop/Plans.md。
 Updated: 2026-10-02 JST
 

@@ -194,7 +194,7 @@ for(const exclude of [{workspace:true},{provider:true,workspace:true}])test(`wor
 test('automatic generation display follows fresh generation without manual registry edits',async t=>{
  const f=await fixture(t);assert.equal((await f.automatic('sessions',{})).candidates[0].change,'unknown');
  assert.equal((await f.automatic('sessions',{})).candidates[0].change,'none');f.target.generation='next';
- const list=await f.automatic('sessions',{includeOffline:true});assert.equal(list.candidates[0].change,'generation_changed');
+ const list=await f.automatic('sessions',{});assert.equal(list.candidates[0].change,'generation_changed');assert.equal(list.offlineHidden,0);
  assert.equal((await f.automatic('send',{ticket:list.candidates[0].ticket,id:'next-gen',text:'hi'})).status,'submitted');
 });
 

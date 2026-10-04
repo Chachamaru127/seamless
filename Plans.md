@@ -1,5 +1,7 @@
 # claudex
 
+> 2026-10-04 に claudex から seamless へ改名した（独立リポジトリ）。本文の claudex、`~/.claudex`、実行したコマンドは記録当時の旧名のまま残す。
+
 元のCodex会話とClaude会話を、共通のsessions/read/sendでつなぐ。
 共有SQLiteなし。agmsgのforkなし。既存の会話と実行体を維持する。
 

@@ -116,7 +116,8 @@ export function createAutomatic(options:AutomaticOptions={}){
     }catch{}
    }
    const candidates=await Promise.all(visible.map(async n=>({id:idOf(n),provider:n.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,...seen.changes.get(idOf(n)),status:n.status??(seen.changes.get(idOf(n))?.change==='generation_changed'?'unknown':'online'),reason:n.reason??(seen.changes.get(idOf(n))?.change==='generation_changed'?'generation_changed':null),requests:options.compatTest?[]:await status.recent({...n,id:idOf(n)}),operations:{read:l.operations?.read??true,send:l.operations?.send??true},ticket:n.status&&n.status!=='online'?null:await ticketFor(n)})));
-   const listed=p.includeOffline===true?candidates:candidates.filter(n=>n.status==='online');
+   // Hide only sessions the scan saw as not running; a changed generation is still reachable.
+   const listed=p.includeOffline===true?candidates:candidates.filter((_,i)=>(visible[i].status??'online')==='online');
    return {status:'ok',inbound,caller:{provider:c.provider,nativeId:c.nativeId,generation:c.generation,cwd:c.cwd,source:c.source},codexWorkspace:found.codexWorkspace,...(found.codexTruncated?{codexTruncated:found.codexTruncated}:{}),excludeExpired,offlineHidden:candidates.length-listed.length,candidates:listed};
   }
   if(visible.length!==1)return {status:visible.length?'ambiguous':'target_unavailable'};

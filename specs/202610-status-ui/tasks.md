@@ -8,8 +8,10 @@
 | U4 | 開いた状態 | 手順の履歴と相手ごとの一覧 | U2、U3 | 同上 | 開いた状態の描画の試験が通る |
 | U5 | 安全 | 制御文字と不可視文字の除去、表示だけ | U2、U3 | 同上 | 除去の試験が通り、validate の calls が ui、clock、state、agent.list、process.run だけ |
 | U6 | 試験 | `claude plugin test` と validate を verify.sh に組み込む | U1〜U5 | 同上。U1〜U6 完了（第13、14便、判定2回目 PASS） | verify.sh 終了 0 |
-| U7 | 実地 | ターミナルの1セッションで撮影 | U6 | リーダーと立花さん | evidence.md に撮影と観測 |
+| U7 | 実地 | Desktop の Code タブで撮影（2026-10-05 改訂。ターミナルは対象外）。Desktop の同梱 Claude Code が 2.1.287 以上になってから | U6、Desktop の更新 | リーダーと立花さん | evidence.md に撮影と観測 |
 | U8 | 導入 | 普段のセッションへ（G5） | U7 | リーダー（承認後） | 新しいセッションの `/plugin` に `seamless-band` |
-| U9 | Code タブ | Desktop の Claude Code が 2.1.287 以上になってから確認 | U8 | 外部条件待ち | Code タブの撮影 |
+| U9 | 見た目の直し | 第15便の判定の中（実画面の高さ、区切り線、ターン終わりの目的）と軽を、実画面を見て直す | U7 | Codex Astra | 実画面の撮影で閉じた状態が1行 |
 
 残りの軽（判定2回目）: MCP の sessions が inputSchema に無い peek を受け付ける、使われていない plural、turn.step の finally で内側の return が reject したときの戻し。必須ではなく、次に帯を触る便でまとめて直す。
+
+2026-10-05: U10 として見た目を見本に合わせた（第15便、判定 PASS）。ターン終わりに目的を消すことと、Bash の description を見出しに残すことは、U9 で直す（リーダー判断）。

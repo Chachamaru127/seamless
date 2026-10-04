@@ -40,6 +40,7 @@ export function createAutomatic(options:AutomaticOptions={}){
  const limitsPath=options.limitsPath??join(home,'.seamless','limits.json');
  return async(method:string,input:unknown,context:CallContext={kind:'cli'}):Promise<any>=>{
   const loaded=await readLimits(limitsPath);
+  // limits reads and writes only seamless's own file, so strict never locks an updated caller out of turning strict off.
   const strictVersions=method!=='limits'&&(options.compatTest===true||loaded.status==='ok'&&loaded.value.strictVersions===true);
   const scanOptions={includeUnavailable:!options.compatTest,...options.scanOptions,home,strictVersions,claude:{...options.scanOptions?.claude,strictVersions}};
   const caller=(ctx:CallContext)=>options.caller?options.caller(ctx):identifyCaller(ctx,{...scanOptions,...options.callerOptions,home,strictVersions,claude:{...scanOptions.claude,...options.callerOptions?.claude,strictVersions}});

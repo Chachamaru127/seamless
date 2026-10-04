@@ -104,6 +104,6 @@ readは可視user/assistant本文とpeerの由来、元IDを返します。思�
 
 sendの`submitted`はnative書込み受付です。相手が処理した証拠は、元履歴の依頼IDと返信の`replyTo`を別に照合します。書込み後に成否が不明なら`unknown`です。自動再送しません。届いた文の扱いは、受け取ったAIが自分の権限で判断します。seamlessは受信側の権限を広げず、封筒に`humanApproval:true`を書きません。人の確認を促す印`humanApproval:false`は、`~/.seamless/limits.json`の`markUnapproved:true`のときだけ付けます（既定は付けません）。この印は limits.json を読む新方式（名簿なし）の経路だけが付け、この節の `--registry` の経路では付きません。
 
-対応版: Codex Desktop `26.928.31416+12553`、`26.928.40906+12694`。Claude Desktop同梱Code `2.1.284`、peerProtocol 1。公開安定SDKではない接続部分があり、他版の利用は未検証です。
+対応版: 確認済みの組は [対応表](specs/202610-everyday-use/compat.md) にあります。表にない新しい版も既定で使い、一覧に `versionStatus: unverified`（未確認）と出します。止まるのは、表で修正待ちにした版と、形式の照合（peerProtocol 1、受け口の持ち主、作業場所、記録の形）が合わないときです。確認済みの版だけに限りたいときは `~/.seamless/limits.json` に `strictVersions:true` を書きます（既定は書かない）。公開安定SDKではない接続部分があり、未確認の版での動作は保証しません。
 
 重複抑止の保存先は `~/.seamless/reservations/`（0700）です。1依頼につきhash、status、時刻だけを0600のファイルへ原子的に予約します。本文、会話履歴、秘密は保存しません。同じ元会話とIDの予約は、別の窓口プロセスや再起動後も使います。書込み前に予約した状態が残ればunknownとし、再配送しません。SQLiteや配送待ちキューではありません。

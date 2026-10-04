@@ -222,3 +222,11 @@
 - 軽2（send の返事にハッシュが載る）を 2b251b5 と b37c26d で直した。判定（Codex Astra）1回目 FAIL（拒否で早めに返す経路に残る）、2回目 PASS。296 試験 PASS、`verify: exit=0`。
 - 残り（軽、次の候補）: ハッシュが鍵なしの SHA-256（記録を読める人は短い本文を推測して当否を確かめられる。既存の hash は鍵付きの HMAC）、enqueue の合成 id が同じ時刻で重なりうる、`isRecord` が payloadSha256 の型を見ない。
 - GitHub: 非公開のリポジトリ https://github.com/Chachamaru127/seamless を作り、main（925125d まで、17 commit、144 ファイル）を push。送る前に追跡中のファイルと全履歴を秘密のパターンで走査し、当たりは evidence.md の走査パターンの説明文だけ（値ではない）。
+
+## 2026-10-04 純正の会話探しとの比較、未確認2点、新しい版で止めない
+
+- 比較ページ: docs/reports/2026-10-04-native-vs-seamless.html（Artifact で公開、非公開）。同じ会話から純正 `ListAgents` は 109件（このMacの Claude 14、クラウド 23、Remote Control 72、Codex 0）、seamless の既定 4件（Claude 2、Codex 2）、範囲 any 16件（Claude 14、Codex 2）。
+- 純正の一覧の作業フォルダ（実測）: Remote Control に接続していない `claude -p`（2.1.289）で `ListAgents` の生の結果を取り出した。15件のどの行にも作業フォルダが無い。Remote Control の有無と関係なく、道具の結果に作業フォルダは入らない。同名の会話が複数あるときは未確認。
+- 権限確認を飛ばす受け手での保留（実測）: seamless が Claude の受け口へ送る1行（type user、session_id、from、uuid、msg_id、message）には、送り主の権限モードを名乗る欄が無い。道具と MCP を外した試験用の `claude -p`（2.1.289）を受け手にして同じ形の1行を送った。default の受け手は届いて `PONG-A1` を返した。bypassPermissions の受け手は `peer_message_hold`（cause `no-mode-asserted`）で保留され、届かなかった。Claude Code 2.1.289 の文言は「The sender did not attest its permission mode, and this session bypasses permission prompts」。seamless は名乗りを偽らない。届けたい受け手は本人が `crossSessionInbound: accept` にする。
+- 第12便（Codex Astra）: 新しい版でも止めない（立花さん指示）。表にない版、checking、版が読めない場合を既定で通し、sessions に version と versionStatus を出す。fix_required と未知の状態は常に止める。`strictVersions:true` で従来どおり verified に限る（既定 OFF）。リーダーの実測 332 試験 PASS、verify.sh 終了 0（fa2d926）。
+- 実会話の確認: 対応表に無い Claude Code 2.1.289 の `claude -p` から MCP の sessions を呼び、`status: ok`、呼ぶ側 `2.1.289 unverified`、候補 6件（verified と unverified の両方）、offlineHidden 58 を得た。

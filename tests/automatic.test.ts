@@ -252,6 +252,10 @@ for(const provider of ['claude','codex'] as const)for(const version of ['future'
   const denied=await f.automatic(method,args);assert.equal(denied.status,'unsupported_version');assert.equal(denied.version,version??'unknown');assert.equal(denied.reason,version??'unknown');
  }
  assert.deepEqual(f.count(),before);
+ // limits touches only seamless's own file, so an updated (unverified) caller can still turn strict off.
+ const got=await f.automatic('limits',{action:'get'});assert.equal(got.status,'ok');assert.equal(got.value.strictVersions,true);
+ assert.equal((await f.automatic('limits',{action:'set',value:{...unrestricted,strictVersions:false}})).status,'ok');
+ assert.equal((await f.automatic('sessions',{})).status,'ok');
 });
 for(const provider of ['claude','codex'] as const)test(`automatic strict target gate ${provider}, default read/send and verified/unverified display`,async t=>{
  const f=await fixture(t,[provider,provider]);f.caller.version=provider==='claude'?'2.1.286':'26.930.31730+12947';f.target.version='future';

@@ -1,0 +1,19 @@
+{
+  "version": "0.1.0",
+  "name": "seamless-status",
+  "description": "Codex の会話の右パネルに、seamless のやりとりの状態を出す（読み取りだけ）",
+  "author": {
+    "name": "Chachamaru"
+  },
+  "license": "UNLICENSED",
+  "keywords": ["seamless", "mcp", "mcp-app"],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "seamless の状態",
+    "shortDescription": "別の AI 会話とのやりとりの状態を右パネルに出す",
+    "longDescription": "seamless（同じ Mac の Claude と Codex の会話をつなぐ MCP）の状態を、会話の右パネルに出す local MCP App。読み取りだけで、送信や設定の変更はしない。",
+    "developerName": "Chachamaru",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read"]
+  }
+}

@@ -24,7 +24,7 @@ export async function runCli(argv:string[],automatic:Automatic=createAutomatic()
  if(includeOffline){if(args.filter(a=>a==='--include-offline').length!==1||args.includes('--registry'))throw new ContractError('invalid_arguments');args.splice(args.indexOf('--include-offline'),1);}
  if(!args.includes('--registry')){
   if(args.includes('--caller'))throw new ContractError('invalid_arguments');
-  if(mode==='mcp'&&args.length===0){await runLines(createMcp({automatic}),()=>({jsonrpc:'2.0',id:null,error:{code:-32700,message:'parse_error'}}));return;}
+  if(mode==='mcp'&&(args.length===0||args.length===1&&args[0]==='--panel-only')){await runLines(createMcp({automatic,panelOnly:args.length===1}),()=>({jsonrpc:'2.0',id:null,error:{code:-32700,message:'parse_error'}}));return;}
   if(mode==='serve'&&args.length===0){await runLines(createServe({automatic}));return;}
   if(mode==='limits'){const [action,file,...rest]=args;if(rest.length||!['get','set','clear'].includes(action)||(action==='set'?!file:!!file))throw new ContractError('invalid_arguments');const input=action==='set'?{action,value:JSON.parse(await readFile(file,'utf8'))}:{action};console.log(JSON.stringify(await automatic('limits',input)));return;}
   if(['sessions','read','send','select','revalidate'].includes(mode)&&args.length<=1){const input=args.length?JSON.parse(args[0]):{};console.log(JSON.stringify(await automatic(mode,includeOffline?{...object(input,['operation','scope','target','includeOffline','peek']),includeOffline:true}:input)));return;}

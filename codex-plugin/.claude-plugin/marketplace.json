@@ -1,0 +1,21 @@
+{
+  "name": "seamless-local",
+  "metadata": {
+    "version": "0.1.0",
+    "description": "seamless の Codex 用プラグインを手元から入れるための marketplace"
+  },
+  "owner": {
+    "name": "Chachamaru"
+  },
+  "plugins": [
+    {
+      "name": "seamless-status",
+      "version": "0.1.0",
+      "source": "./seamless-status",
+      "description": "Codex の会話の右パネルに、seamless のやりとりの状態を出す（読み取りだけ）",
+      "author": {
+        "name": "Chachamaru"
+      }
+    }
+  ]
+}

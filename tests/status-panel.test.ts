@@ -118,3 +118,16 @@ test('HTML handshake, host result and manual refresh use JSON-RPC without automa
  await refresh;
  assert.equal(get('reason').textContent,'この会話を特定できませんでした');assert.equal(get('companies').children.length,0);assert.equal(messages.length,3);
 });
+test('panel-only MCP lists just status_panel, refuses the four tools, and keeps the resource',async()=>{
+ const seen:string[]=[];
+ const handle=createMcp({automatic:async(method:string)=>{seen.push(method);return data;},panelOnly:true});let id=0;
+ const call=async(method:string,params?:unknown)=>await handle({jsonrpc:'2.0',id:++id,method,...(params===undefined?{}:{params})}) as any;
+ assert.deepEqual((await call('initialize',{protocolVersion:'2025-06-18'})).result.capabilities,{tools:{},resources:{}});
+ await handle({jsonrpc:'2.0',method:'notifications/initialized'});
+ assert.deepEqual((await call('tools/list')).result.tools,[statusPanelTool]);
+ assert.deepEqual((await call('resources/list')).result,{resources:[statusResource]});
+ for(const name of ['sessions','read','send','limits'])assert.equal((await call('tools/call',{name,arguments:{}})).error.code,-32602);
+ assert.deepEqual(seen,[]);
+ assert.equal((await call('tools/call',{name:'status_panel',arguments:{}})).result.structuredContent.status,'ok');
+ assert.deepEqual(seen,['sessions']);
+});

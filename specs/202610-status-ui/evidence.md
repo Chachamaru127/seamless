@@ -53,3 +53,11 @@
 - 「seamless の状態」のタブは出なかった。
 - 見立て（確信度 medium）: 会話の横の画面の入口は「プラグイン」として導入されたものから選ぶ作りで、config.toml に MCP サーバーとして直接登録した seamless は候補に入らない。また、この会話はメッセージを送っていないので、seamless の MCP が新しいコードで起動し直したかも分からない。
 - 次の手: seamless の右パネルを、手元のプラグイン（`.codex-plugin/plugin.json` と `.mcp.json`）として包み、手元の marketplace から導入して確かめる。Codex の設定を変える操作なので、立花さんの承認が要る（Plans の C 段に追記）。
+
+## 2026-10-05 C1b の準備（導入の直前まで）
+
+- seamless の MCP に、右パネルの道具と資源だけを出す起動の形 `node src/cli.ts mcp --panel-only` を足した（Codex に seamless の4道具が二重に並ばないため）。試験を足し、本体 351、帯 52 試験 PASS、verify.sh 終了 0。
+- Codex 用のプラグインを `codex-plugin/` に作った。手元の marketplace `seamless-local`（`.claude-plugin/marketplace.json`）と、プラグイン `seamless-status`（`.codex-plugin/plugin.json`、`.mcp.json` は `mcp --panel-only` を絶対パスで起動）。
+- 設定を書かない確認: `codex -c 'marketplaces.seamless-local.source_type="local"' -c 'marketplaces.seamless-local.source="<repo>/codex-plugin"' plugin list` で `seamless-status@seamless-local  not installed` と出た。`~/.codex/config.toml` の更新時刻は変わっていない（00:20 のまま）。
+- 起動の確認: `mcp --panel-only` に initialize、tools/list、resources/list を送り、道具は status_panel だけ、資源は ui://seamless/status だけが返った。
+- 残り（承認待ち）: 導入。CJ-Plugin の wire.sh には Codex のプラグインを配る経路がまだ無い。

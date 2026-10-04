@@ -2,11 +2,13 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
 import { peersOf, companiesOf } from '../hooks/exchanges'
+import { requestResults } from './fixtures/status-results'
+import { clip } from '../hooks/text'
 
 const BAND = { plugin: 'seamless-band', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 120, scroll: { offset: 0, bodyRows: 30 }, view: {} } } as const
 const START = { surface: 'terminal', isInteractive: true, cwd: '/work' } as const
 const at = '2026-10-04T09:00:00Z'
-const request = (stage: string, status = 'observed', id = 'req1') => ({ id, at, status: 'ok', stages: [{ stage, status }] })
+const request = (name: keyof typeof requestResults) => requestResults[name]
 const candidate = (requests: unknown[], provider = 'codex', nativeId = '12345678-abc') => ({ id: `${provider}:${nativeId}`, provider, nativeId, cwd: '/work/project', generation: 'g1', requests })
 const response = (requests: unknown[], inbound: unknown[] = []) => ({ status: 'ok', candidates: [candidate(requests)], inbound })
 const incoming = (sender: string) => ({ id: 'received', from: { id: 'codex:12345678-abc', nativeId: '12345678-abc', generation: 'g1' }, sender, at })
@@ -34,10 +36,16 @@ for (const [name, requests, inbound, color, label] of [
   ['processing', [request('processing')], [], 'green', '既読'],
   ['replied', [request('replied')], [], 'green', '既読'],
   ['reached', [request('reached')], [], '#f59e0b', '届いたが未読'],
-  ['unknown', [request('unknown')], [], 'red', '届かなかった'],
-  ['refused', [{ ...request('accepted'), status: 'refused' }], [], 'red', '届かなかった'],
+  ['unknown', [request('unknown')], [], 'gray', '未確認'],
+  ['pending', [request('pending')], [], 'gray', '未確認'],
+  ['submitted', [request('submitted')], [], 'gray', '未確認'],
+  ['unknown but processing observed', [request('unknown processing')], [], 'green', '既読'],
+  ['unknown but replied observed', [request('unknown replied')], [], 'green', '既読'],
+  ['rejected but reached observed', [request('rejected reached')], [], '#f59e0b', '届いたが未読'],
+  ['missing delivery', [{ ...request('accepted'), delivery: undefined }], [], 'gray', '未確認'],
+  ['rejected', [request('rejected')], [], 'red', '届かなかった'],
   ['accepted', [request('accepted')], [], 'gray', '未確認'],
-  ['unobserved processing', [request('processing', 'unobserved')], [], 'gray', '未確認'],
+  ['unobserved processing', [request('unobserved processing')], [], 'gray', '未確認'],
   ['verified inbound', [], [incoming('verified')], 'green', '受け取って会話に入った'],
   ['declared inbound', [], [incoming('declared')], 'gray', '未確認'],
 ] as const) {
@@ -98,23 +106,25 @@ test('queries start on session, every 30 seconds, after seamless tools and recei
   await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'message' })
   await $.tool.call({ tool: 'mcp__seamless__sessions' } as Parameters<Engine['tool']['call']>[0])
   expect(state.calls.length).toBe(1)
+  state.delay = 0
   await clock.advance(20000); await clock.settle()
+  expect(state.calls.length).toBe(2)
   const call = state.calls[0] as { argv: string[]; init: { timeoutMs: number } }
   expect(call.argv[0]).toBe('/Users/tachibanashuuta/.local/share/mise/installs/node/24/bin/node')
   expect(call.argv[1]).toMatch(/seamless-band\/\.\.\/\.\.\/src\/cli\.ts$/)
-  expect(call.argv.slice(2)).toEqual(['sessions', '{"scope":"any"}'])
+  expect(call.argv.slice(2)).toEqual(['sessions', '{"scope":"any","peek":true}'])
   expect(call.init.timeoutMs).toBe(20000)
   state.delay = 0
   await clock.advance(9999)
-  expect(state.calls.length).toBe(1)
+  expect(state.calls.length).toBe(2)
   await clock.advance(1); await clock.settle()
-  expect(state.calls.length).toBe(2)
-  await $.tool.call({ tool: 'Read', file_path: '/work/x' })
-  expect(state.calls.length).toBe(2)
-  await $.tool.call({ tool: 'mcp__seamless__track' } as Parameters<Engine['tool']['call']>[0]); await clock.settle()
   expect(state.calls.length).toBe(3)
-  await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'message' }); await clock.settle()
+  await $.tool.call({ tool: 'Read', file_path: '/work/x' })
+  expect(state.calls.length).toBe(3)
+  await $.tool.call({ tool: 'mcp__seamless__send', track: 'req1' } as Parameters<Engine['tool']['call']>[0]); await clock.settle()
   expect(state.calls.length).toBe(4)
+  await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'message' }); await clock.settle()
+  expect(state.calls.length).toBe(5)
 })
 
 test('snippet is only first 40 characters of current main-session send input, sanitized on display', async ($, on) => {
@@ -193,4 +203,50 @@ test('failed refresh grays existing peer rows instead of showing stale green', a
   await ui.press({ key: 'toggle' })
   expect((await ui.find({ key: 'peer-0' }))?.text).toContain('未確認')
   expect((await ui.find({ key: 'peer-0' }))?.text).not.toContain('既読')
+})
+
+
+test('clip counts code points without splitting emoji surrogate pairs', async () => {
+  expect(clip('😀😁😂', 3)).toBe('😀😁😂')
+  expect(clip('A😀BC', 3)).toBe('A😀…')
+  expect(clip('😀😁😂', 2)).toBe('😀…')
+  expect(clip('😀😁😂', 1)).toBe('…')
+})
+
+test('inbound across generations joins one peer by provider and nativeId', async () => {
+  const old = incoming('verified')
+  old.from.generation = 'old'
+  const data = response([request('reached')], [old])
+  data.candidates.push(candidate([], 'claude', '12345678-abc'))
+  const peers = peersOf(JSON.stringify(data))
+  expect(peers.length).toBe(1)
+  expect(peers[0].generation).toBe('g1')
+  expect(peers[0].cwd).toBe('/work/project')
+  expect(peers[0].exchanges.length).toBe(2)
+  expect(companiesOf(peers)[0].count).toBe(2)
+})
+
+for (const mode of ['ok', 'failure']) test(`busy ${mode} refresh coalesces queued requests into one follow-up`, async ($, on) => {
+  const { clock, state } = seat(on, response([]))
+  state.mode = mode
+  state.delay = 1000
+  await $.session.start(START)
+  for (let i = 0; i < 3; i++) await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'refresh' })
+  expect(state.calls.length).toBe(1)
+  await clock.advance(999)
+  expect(state.calls.length).toBe(1)
+  await clock.advance(1); await clock.settle()
+  expect(state.calls.length).toBe(2)
+  await clock.advance(1000); await clock.settle()
+  expect(state.calls.length).toBe(2)
+})
+
+test('session end discards queued refresh without starting another query', async ($, on) => {
+  const { clock, state } = seat(on, response([]))
+  state.delay = 1000
+  await $.session.start(START)
+  await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'refresh' })
+  await $.session.end({ reason: 'clear' })
+  await clock.advance(1000); await clock.settle()
+  expect(state.calls.length).toBe(1)
 })

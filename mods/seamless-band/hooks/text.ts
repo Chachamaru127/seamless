@@ -5,7 +5,8 @@ export function oneLine(text: string): string {
 
 /** Cuts `text` to `max` characters, marking the cut with an ellipsis. */
 export function clip(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+  const points = Array.from(text)
+  return points.length > max ? `${points.slice(0, max - 1).join('')}…` : text
 }
 
 /**

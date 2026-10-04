@@ -31,6 +31,9 @@ export function stages(record:RequestRecord,destination:StructureItem[],source:S
  const reply=src.find(n=>n.peer?.replyTo===record.id&&n.peer.sender?.provider===record.recipient.provider&&n.peer.sender.nativeId===record.recipient.nativeId);if(reply)mark('replied',[reply.id],reply.at);
  return result;
 }
+export function statusResult(record:RequestRecord,destination:StructureItem[],source:StructureItem[],now:number){
+ return {status:'ok' as const,id:record.id,delivery:record.status,target:{provider:record.recipient.provider,nativeId:record.recipient.nativeId,generation:record.recipient.generation},at:new Date(record.at).toISOString(),stages:stages(record,destination,source,now)};
+}
 export function createStatus(options:{dir:string;adapter:NativeAdapter;caller:RequestParty;canRead:(p:RequestParty)=>Promise<boolean>;clock?:StatusClock}){
  const time=options.clock??clock;
  const owned=(r:RequestRecord)=>r.sender.provider===options.caller.provider&&r.sender.nativeId===options.caller.nativeId&&r.sender.generation===options.caller.generation;
@@ -41,7 +44,7 @@ export function createStatus(options:{dir:string;adapter:NativeAdapter;caller:Re
  const once=async(id:string)=>{
   const record=(await requests(options.dir)).find(r=>r.id===id&&owned(r));if(!record)return {status:'not_found' as const};
   const destination=await read(record.recipient),source=await read(record.sender);
-  return {status:'ok' as const,id:record.id,target:{provider:record.recipient.provider,nativeId:record.recipient.nativeId,generation:record.recipient.generation},at:new Date(record.at).toISOString(),stages:stages(record,destination,source,time.now())};
+  return statusResult(record,destination,source,time.now());
  };
  return {
   async track(id:unknown,waitSeconds:unknown=0){

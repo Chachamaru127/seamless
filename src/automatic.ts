@@ -84,9 +84,10 @@ export function createAutomatic(options:AutomaticOptions={}){
   const callerVersion=rejectedVersion(c,l);if(callerVersion)return callerVersion;
   const status=createStatus({dir:options.reservationDir??join(home,'.seamless','reservations'),adapter,caller:{...c,id:idOf(c)},clock:options.clock,canRead:async n=>{const current=await caller(context);if(current.status!=='ok'||idOf(current.caller)!==idOf(c)||current.caller.generation!==c.generation)return false;const limits=await readLimits(limitsPath);if(limits.status==='unusable')return false;const currentLimits=limits.status==='ok'?limits.value:unrestricted;return !rejectedVersion(current.caller,currentLimits)&&!await policy(n,c,currentLimits,'read','any')&&!await targetCompatibility(n,currentLimits);}});
   if(method==='send'&&input&&typeof input==='object'&&'track' in input){const p=object(input,['track','waitSeconds','scope']);scope(p.scope);return status.track(p.track,p.waitSeconds);}
-  const keys=method==='sessions'?['operation','scope','target','includeOffline']:method==='select'?['operation','scope','target']:method==='read'?['target','scope','cursor','limit']:method==='send'?['ticket','id','text','replyTo','scope']:method==='revalidate'?['ticket','operation','scope']:[];
+  const keys=method==='sessions'?['operation','scope','target','includeOffline','peek']:method==='select'?['operation','scope','target']:method==='read'?['target','scope','cursor','limit']:method==='send'?['ticket','id','text','replyTo','scope']:method==='revalidate'?['ticket','operation','scope']:[];
   if(!keys.length)throw new ContractError('unknown_method');
   const p=object(input??{},keys),s=scope(p.scope);
+  if(p.peek!==undefined&&typeof p.peek!=='boolean')throw new ContractError();
   if(p.includeOffline!==undefined&&typeof p.includeOffline!=='boolean')throw new ContractError();
   const op:Operation=method==='read'||(method==='sessions'||method==='select')&&p.operation===undefined?'read':(p.operation??'send') as Operation;
   if(!['read','send'].includes(op)||p.target!==undefined&&typeof p.target!=='string')throw new ContractError();
@@ -122,7 +123,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   if(options.compatTest){if(found.codexWorkspace!=='observed'||found.codexTruncated)return {status:'compat_check_pair_required'};const pair=[];for(const n of found.sessions)if(!await policy(n,c,l,'read',s))pair.push(n);if(pair.length!==2||!pair.some(n=>idOf(n)===idOf(c)))return {status:'compat_check_pair_required'};}
   for(const foundSession of found.sessions){const n:SessionIdentity=rejectedVersion(foundSession,l)?{...foundSession,status:'unknown',reason:'unsupported_version'}:foundSession;if(idOf(n)!==idOf(c)&&!await policy(n,c,l,op,s)&&(!p.target||idOf(n)===p.target))visible.push(n);}
   if(method==='sessions'){
-   const seen=options.compatTest?{disappeared:[],changes:new Map()}:await observeSeen(join(home,'.seamless','seen.json'),found.sessions,options.clock?.now()??Date.now());
+   const seen=options.compatTest||p.peek===true?{disappeared:[],changes:new Map()}:await observeSeen(join(home,'.seamless','seen.json'),found.sessions,options.clock?.now()??Date.now());
    const expired:string[]=[];
    for(const old of seen.disappeared){if(await excluded(old,{...l,exclude:l.exclude.filter(e=>e.nativeId!==undefined)})&&visible.some(n=>n.provider===old.provider&&n.cwd===old.cwd&&seen.changes.get(idOf(n))?.change==='new'))expired.push(old.nativeId);}
    const excludeExpired=[...new Set(expired)];
@@ -135,7 +136,7 @@ export function createAutomatic(options:AutomaticOptions={}){
      }});
     }catch{}
    }
-   const candidates=await Promise.all(visible.map(async n=>({id:idOf(n),provider:n.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,version:n.version||null,versionStatus:versionStatus(n.provider==='claude'?'claude-code':'codex',n.version,compatibilityFor(n,l)),...seen.changes.get(idOf(n)),status:n.status??(seen.changes.get(idOf(n))?.change==='generation_changed'?'unknown':'online'),reason:n.reason??(seen.changes.get(idOf(n))?.change==='generation_changed'?'generation_changed':null),requests:options.compatTest?[]:await status.recent({...n,id:idOf(n)}),operations:{read:l.operations?.read??true,send:l.operations?.send??true},ticket:n.status&&n.status!=='online'?null:await ticketFor(n)})));
+   const candidates=await Promise.all(visible.map(async n=>({id:idOf(n),provider:n.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,version:n.version||null,versionStatus:versionStatus(n.provider==='claude'?'claude-code':'codex',n.version,compatibilityFor(n,l)),...(p.peek===true?{change:'unknown'}:seen.changes.get(idOf(n))),status:n.status??(seen.changes.get(idOf(n))?.change==='generation_changed'?'unknown':'online'),reason:n.reason??(seen.changes.get(idOf(n))?.change==='generation_changed'?'generation_changed':null),requests:options.compatTest?[]:await status.recent({...n,id:idOf(n)}),operations:{read:l.operations?.read??true,send:l.operations?.send??true},ticket:n.status&&n.status!=='online'?null:await ticketFor(n)})));
    // Hide only sessions the scan saw as not running; a changed generation is still reachable.
    const listed=p.includeOffline===true?candidates:candidates.filter((_,i)=>(visible[i].status??'online')==='online');
    return {status:'ok',inbound,caller:{provider:c.provider,nativeId:c.nativeId,generation:c.generation,cwd:c.cwd,source:c.source,version:c.version||null,versionStatus:versionStatus(c.provider==='claude'?'claude-code':'codex',c.version,compatibilityFor(c,l))},codexWorkspace:found.codexWorkspace,...(found.codexTruncated?{codexTruncated:found.codexTruncated}:{}),excludeExpired,offlineHidden:candidates.length-listed.length,candidates:listed};

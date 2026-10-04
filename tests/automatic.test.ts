@@ -287,3 +287,109 @@ test('strictVersions enabled at write-time blocks an unverified target',async t=
  const result=await f.automatic('send',{ticket:issueTicket(f.target),id:'strict-race',text:'no'});
  assert.equal(result.status,'unsupported_version');assert.equal(result.version,'future');assert.equal(f.count().writes,0);
 });
+
+async function seamlessSnapshot(home:string){
+ const {readdir,readFile}=await import('node:fs/promises');
+ const root=join(home,'.seamless'),result:Record<string,string>={};
+ const visit=async(path:string,relative:string)=>{
+  for(const entry of (await readdir(path,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){
+   const name=relative+entry.name;
+   if(entry.isDirectory()){result[name+'/']='directory';await visit(join(path,entry.name),name+'/');}
+   else result[name]=(await readFile(join(path,entry.name))).toString('base64');
+  }
+ };
+ try{await visit(root,'');}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;result['<absent>']='';}
+ return result;
+}
+
+test('peek sessions leaves absent and populated seamless trees byte-identical and preserves generation changes',async t=>{
+ const f=await fixture(t);
+ const absent=await seamlessSnapshot(f.home);
+ const first=await cli(f.automatic,['sessions','{"scope":"any","peek":true}']);
+ assert.equal(first.candidates[0].change,'unknown');assert.deepEqual(first.excludeExpired,[]);
+ assert.deepEqual(await seamlessSnapshot(f.home),absent);
+ await f.automatic('sessions',{});
+ await f.automatic('send',{ticket:issueTicket(f.target),id:'peek-request',text:'private test body'});
+ f.target.generation='new-generation';
+ const before=await seamlessSnapshot(f.home);
+ for(const args of [['sessions','{"scope":"any","peek":true}'],['sessions','--include-offline','{"scope":"any","peek":true}']]){
+  const result=await cli(f.automatic,args),candidate=result.candidates[0];
+  assert.equal(candidate.change,'unknown');assert.equal(candidate.reason,null);assert.equal(candidate.status,'online');
+  assert.equal(candidate.possible_restart_of,undefined);assert.deepEqual(result.excludeExpired,[]);
+  assert.equal(candidate.requests[0].id,'peek-request');assert.equal(candidate.requests[0].delivery,'submitted');
+  assert.equal(typeof candidate.ticket,'string');assert.equal(result.caller.nativeId,'a');
+  assert.deepEqual(await seamlessSnapshot(f.home),before);
+ }
+ assert.equal((await f.automatic('sessions',{peek:false})).candidates[0].change,'generation_changed');
+ assert.equal((await f.automatic('sessions',{})).candidates[0].change,'none');
+});
+
+test('peek never opens seen.json and leaves restart and exclusion expiry for the next regular sessions',async t=>{
+ const f=await fixture(t);
+ await writeLimits({...unrestricted,exclude:[{provider:'claude',nativeId:'b'}]},null,f.path);
+ await f.automatic('sessions',{});f.target.nativeId='new-b';f.target.generation='next';
+ const before=await seamlessSnapshot(f.home);
+ const fs=await import('node:fs/promises'),{syncBuiltinESMExports}=await import('node:module');
+ const original=fs.default.open;let seenOpens=0;
+ t.mock.method(fs.default,'open',(...args:Parameters<typeof original>)=>{
+  if(String(args[0])===join(f.home,'.seamless','seen.json'))seenOpens++;
+  return original(...args);
+ });
+ syncBuiltinESMExports();
+ try{
+  const result=await f.automatic('sessions',{peek:true});
+  assert.equal(result.candidates[0].change,'unknown');assert.equal(result.candidates[0].possible_restart_of,undefined);
+  assert.deepEqual(result.excludeExpired,[]);assert.equal(seenOpens,0);
+ }finally{t.mock.restoreAll();syncBuiltinESMExports();}
+ assert.deepEqual(await seamlessSnapshot(f.home),before);
+ const next=await f.automatic('sessions',{});
+ assert.equal(next.candidates[0].change,'new');assert.equal(next.candidates[0].possible_restart_of,'b');
+ assert.deepEqual(next.excludeExpired,['b']);
+});
+
+test('peek requires booleans and remains absent from MCP inputSchema',async t=>{
+ const f=await fixture(t);
+ for(const peek of [null,0,1,'true',[],{}]){
+  await assert.rejects(f.automatic('sessions',{peek}),/invalid_params/);
+  await assert.rejects(cli(f.automatic,['sessions','--include-offline',JSON.stringify({peek})]),/invalid_params/);
+ }
+ const handle=createMcp({automatic:f.automatic});
+ await handle({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18'}});
+ await handle({jsonrpc:'2.0',method:'notifications/initialized'});
+ const list:any=await handle({jsonrpc:'2.0',id:2,method:'tools/list'});
+ assert.equal('peek' in list.result.tools.find((n:any)=>n.name==='sessions').inputSchema.properties,false);
+});
+
+test('peek retains caller, limits, scope, exclusion and strict version gates',async t=>{
+ const f=await fixture(t);
+ f.setObserved(false);assert.equal((await f.automatic('sessions',{peek:true})).status,'caller_unobserved');
+ assert.equal(f.count().scans,0);f.setObserved(true);
+ await writeLimits({...unrestricted,operations:{read:false,send:false}},null,f.path);
+ assert.equal((await f.automatic('sessions',{peek:true})).status,'operation_not_permitted');
+ let loaded=await readLimits(f.path);assert.equal(loaded.status,'ok');
+ await writeLimits({...unrestricted,exclude:[{nativeId:'b'}]},loaded.hash,f.path);
+ assert.deepEqual((await f.automatic('sessions',{peek:true})).candidates,[]);
+ loaded=await readLimits(f.path);assert.equal(loaded.status,'ok');
+ await writeLimits({...unrestricted,scope:'current_work'},loaded.hash,f.path);
+ f.target.cwd=f.home+'-elsewhere';assert.deepEqual((await f.automatic('sessions',{scope:'any',peek:true})).candidates,[]);
+ loaded=await readLimits(f.path);assert.equal(loaded.status,'ok');
+ await writeLimits({...unrestricted,strictVersions:true},loaded.hash,f.path);
+ assert.equal((await f.automatic('sessions',{peek:true})).status,'unsupported_version');
+ await writeFile(f.path,'broken',{mode:0o600});assert.equal((await f.automatic('sessions',{peek:true})).status,'limits_unusable');
+});
+
+test('peek preserves AC34 inbound verification and refuses unproven senders',async t=>{
+ const f=await fixture(t);let proofs=0;
+ const auto=createAutomatic({home:f.home,limitsPath:f.path,caller:async()=>({status:'ok',caller:f.caller}),scan:async()=>({sessions:[f.caller,f.target],codexWorkspace:'observed'}),scanOptions:{git:async cwd=>({state:'no_git',workspace:cwd})},adapter:{
+  read:async()=>null,send:async()=>({status:'rejected'}),
+  received:async()=>['proven','forged'].map(id=>({id,sender:{id:'claude:b',nativeId:'b',generation:'g'},recipient:{id:'codex:a',nativeId:'a',generation:'g'},at:new Date().toISOString()})),
+  sentIds:async()=>{proofs++;return ['proven'];}
+ }});
+ const before=await seamlessSnapshot(f.home);
+ const result=await auto('sessions',{peek:true});
+ assert.deepEqual(result.inbound.map((r:any)=>r.sender),['verified','declared']);assert.equal(proofs,2);
+ assert.deepEqual(await seamlessSnapshot(f.home),before);
+ await writeLimits({...unrestricted,exclude:[{nativeId:'b'}]},null,f.path);
+ const denied=await auto('sessions',{peek:true});
+ assert.deepEqual(denied.inbound.map((r:any)=>r.sender),['declared','declared']);assert.equal(proofs,2);
+});

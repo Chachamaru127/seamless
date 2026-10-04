@@ -233,3 +233,19 @@ test('delivery persists payload hash and restarted track reads it without plaint
  f.setDestination(projectClaudeStructure([JSON.stringify({type:'queue-operation',operation:'enqueue',sessionId:'b',timestamp:'2026-10-04T06:26:03.542Z',content:payload})],'b'));
  assert.deepEqual(observed((await createAutomatic(options)('send',{track:'request'})).stages),['accepted','reached']);
 });
+
+for(const delivery of ['pending','submitted','rejected','unknown','future-status'])test(`once exposes delivery ${delivery} through track and recent without hashes or text`,async t=>{
+ const home=await mkdtemp(join(tmpdir(),'cldx-delivery-status-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ const stored={...record,status:delivery,payloadSha256:'private-payload-hash'};
+ await writeFile(join(home,'a'.repeat(64)+'.json'),JSON.stringify(stored),{mode:0o600});
+ const status=createStatus({dir:home,caller:record.sender,adapter:{read:async()=>null,send:async()=>({status:'rejected'})},canRead:async()=>true,clock:{now:()=>2000,sleep:async()=>{}}});
+ const tracked=await status.track(record.id);
+ assert.equal(tracked.status,'ok');assert.ok('delivery' in tracked);assert.equal(tracked.delivery,delivery);
+ assert.deepEqual(await status.recent(record.recipient),[tracked]);
+ assert.deepEqual(Object.keys(tracked).sort(),['at','delivery','id','stages','status','target']);
+});
+
+test('band status fixtures match the actual once result and stages generator',async()=>{
+ const {bandFixtureSource}=await import('./support/band-fixtures.ts');
+ assert.equal(await readFile(new URL('../mods/seamless-band/tests/fixtures/status-results.ts',import.meta.url),'utf8'),bandFixtureSource());
+});

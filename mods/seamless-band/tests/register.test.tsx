@@ -174,7 +174,7 @@ describe('register', () => {
 
     await step($, 1)
 
-    expect(box.seen[4]).toContain('返事を書いている / 7 words')
+    expect(box.seen[4]).toContain('返事を書いている / 7語')
 
     await $.turn.complete({ ...DONE, turnId })
 
@@ -203,9 +203,9 @@ describe('register', () => {
     const history = (await ui.find({ key: 'history' }))?.text ?? ''
 
     expect(history).toContain('fix the config')
-    expect(history).toContain('考えた (4 words)')
+    expect(history).toContain('考えた (4語)')
     expect(history).toContain('⊘ 道具を使っている: ファイルを読む: app.ts')
-    expect(history).toContain('返事を書いた (1 word)')
+    expect(history).toContain('返事を書いた (1語)')
     expect(history).toContain('で完了')
     expect((await ui.find({ key: 'activity' }))?.text).toContain('▾')
   })
@@ -430,4 +430,26 @@ test('thinking and reply timers advance while the stream is open', async ($, on)
   read = async () => (await ui.find({ key: 'activity' }))?.text ?? ''
   await $.turn.start({ text: '質問', turnId: 't1' })
   await step($, 0)
+})
+
+
+for (const stop of ['return', 'throw'] as const) test(`turn.step closes inner stream on outer ${stop}`, async ($, on) => {
+  mock.clock(on)
+  let closed = 0
+  on('turn.step', async function* ($, e) {
+    try {
+      yield { kind: 'text', index: 0, text: 'first' }
+      yield { kind: 'text', index: 1, text: 'second' }
+      return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: null }
+    } finally { closed++ }
+  })
+  const stream = $.turn.step({ ...STEP, index: 0 })
+  await stream.next()
+  if (stop === 'return') await stream.return(undefined)
+  else {
+    let caught = false
+    try { await stream.throw(new Error('stop')) } catch { caught = true }
+    expect(caught).toBe(true)
+  }
+  expect(closed).toBe(1)
 })

@@ -15,7 +15,7 @@
 ## 方針
 
 1. 帯は seamless のリポジトリの中の plugin `mods/seamless-band/` として作る。左半分は whats-agent-doing を元に日本語化し、右半分を足す。
-2. 右半分のデータは seamless の `sessions` だけから取る（AC7）。mod は `$.process.run` で `node <seamless>/src/cli.ts sessions` を呼ぶ。この子プロセスの親は Claude Code なので、seamless は呼ぶ側を今と同じ方法（claude-ancestor）で特定できる。
+2. 右半分のデータは seamless の `sessions` だけから取る（AC7）。照会は `peek:true` を付け、`~/.seamless/seen.json` を書かない（帯が世代の変化と除外切れの表示を先に使って消さないため。第13便の判定の重大1）。mod は `$.process.run` で `node <seamless>/src/cli.ts sessions` を呼ぶ。この子プロセスの親は Claude Code なので、seamless は呼ぶ側を今と同じ方法（claude-ancestor）で特定できる。
 3. mod が使う mods API は、描画（`$.ui`）、時計（`$.clock`）、会話の間だけメモリに残る値（`$.state`）、子エージェントの一覧（`$.agent.list`）、seamless の照会（`$.process.run`）だけにする。`$.fs`、`$.http`、`$.model`、`$.prompt`、`$.session.send`、`$.tool`、`$.store` は使わない（AC6、AC7）。`claude plugin validate --json` の calls で確かめる。
 4. 照会は重い（会話ごとに受け口とプロセスを照合する）。30秒ごと、seamless の道具の呼出しの後、別の会話からの受信（`session.receive`）の後にだけ走らせ、同時に2本走らせない。1回の上限は20秒。
 5. 導入（普段のセッションで読み込ませる）は Human gate G5 の承認の後。それまでは `claude --plugin-dir` の1セッションだけで試す。
@@ -38,8 +38,8 @@
 |---|---|---|
 | 自分の依頼で、処理開始か返答完了を観測 | 緑 | 既読 |
 | 自分の依頼で、到達を観測（処理開始は未観測） | オレンジ | 届いたが未読 |
-| 自分の依頼で、拒否、または不明（unknown） | 赤 | 届かなかった |
-| 自分の依頼で、受理だけ（到達は未観測） | 灰 | 未確認 |
+| 自分の依頼で、記録の状態が拒否（rejected） | 赤 | 届かなかった |
+| 自分の依頼で、受理だけ（到達は未観測）、送信中（pending）、書込み後に不明（unknown） | 灰 | 未確認 |
 | 受け取った依頼で、送り主が確認済み（AC34） | 緑 | 受け取って会話に入った |
 | 受け取った依頼で、送り主が名乗っただけ | 灰 | 未確認 |
 | seamless の照会が失敗した、時間切れ | 灰（全体） | 未確認（AC9） |

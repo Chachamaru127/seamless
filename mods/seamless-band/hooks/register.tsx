@@ -11,7 +11,7 @@ import type {
   ActivityPhase,
 } from '../types'
 import { activityOf, partialArgsOf } from './activity-of'
-import { clip, durationOf, oneLine, plural, printable, sizeOf, thoughtOf, wordsAdded } from './text'
+import { clip, durationOf, oneLine, printable, sizeOf, thoughtOf, wordsAdded } from './text'
 
 const IDLE: ActivityNow = {
   phase: 'idle',
@@ -141,7 +141,7 @@ type Live = {
  * @param on the engine's registrar
  */
 export const register: Register = (on, options) => {
-  const exchanges: ExchangeLive = { peers: [], unknown: true, busy: false, generation: 0, snippets: new Map(), poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
+  const exchanges: ExchangeLive = { peers: [], unknown: true, busy: false, pending: false, generation: 0, snippets: new Map(), poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
   const live: Live = {
     calls: new Map(),
     agents: new Map(),
@@ -186,6 +186,7 @@ export const register: Register = (on, options) => {
 
   on('session.end', async ($, e, next) => {
     exchanges.generation += 1
+    exchanges.pending = false
     exchanges.snippets.clear()
     exchanges.peers = []
     exchanges.unknown = true
@@ -250,15 +251,17 @@ export const register: Register = (on, options) => {
     await enter($, live, 'requesting')
     await publish($, live)
 
+    const stream = next(e)
+    let done = false
     try {
-      const stream = next(e)
       for (;;) {
         const step = await stream.next()
-        if (step.done) return step.value
+        if (step.done) { done = true; return step.value }
         await follow($, live, step.value)
         yield step.value
       }
     } finally {
+      if (!done) await stream.return?.(undefined)
       live.isFirstRequest = false
       live.composing = null
       await enter($, live, 'requesting')
@@ -668,7 +671,7 @@ function current(live: Live): ActivityNow {
     case 'writing':
       return {
         phase: 'writing',
-        label: `返事を書いている / ${plural(live.replyWords, 'word')}`,
+        label: `返事を書いている / ${live.replyWords}語`,
         sinceMs,
       }
     case 'composing': {
@@ -863,7 +866,7 @@ async function enter($: EngineInterface, live: Live, next: ModelPhase): Promise<
 
     await remember($, {
       kind: 'thought',
-      label: words > 0 ? `考えた (${plural(words, 'word')})` : '考えた',
+      label: words > 0 ? `考えた (${words}語)` : '考えた',
       durationMs,
       outcome: 'ok',
     })
@@ -872,7 +875,7 @@ async function enter($: EngineInterface, live: Live, next: ModelPhase): Promise<
   if (live.phase === 'writing' && live.replyWords > 0) {
     await remember($, {
       kind: 'reply',
-      label: `返事を書いた (${plural(live.replyWords, 'word')})`,
+      label: `返事を書いた (${live.replyWords}語)`,
       durationMs,
       outcome: 'ok',
     })
@@ -1021,6 +1024,7 @@ type ExchangeLive = {
   peers: Peer[]
   unknown: boolean
   busy: boolean
+  pending: boolean
   generation: number
   snippets: Map<string, string>
   poller: Timer | null
@@ -1033,12 +1037,13 @@ function keepPolling($: EngineInterface, state: ExchangeLive): void {
 }
 
 async function refresh($: EngineInterface, state: ExchangeLive): Promise<void> {
-  if (state.busy) return
+  if (state.busy) { state.pending = true; return }
+  state.pending = false
   state.busy = true
   const generation = state.generation
   try {
     const root = state.repository || `${$.plugin.root}/../..`
-    const result = await $.process.run([state.node, `${root}/src/cli.ts`, 'sessions', '{"scope":"any"}'], { timeoutMs: 20_000 })
+    const result = await $.process.run([state.node, `${root}/src/cli.ts`, 'sessions', '{"scope":"any","peek":true}'], { timeoutMs: 20_000 })
     if (generation !== state.generation) return
     if (result.exitCode !== 0) throw new Error('Query failed')
     state.peers = peersOf(result.stdout)
@@ -1048,5 +1053,6 @@ async function refresh($: EngineInterface, state: ExchangeLive): Promise<void> {
   } finally {
     state.busy = false
     $.ui.invalidate('ui.render')
+    if (state.pending) void refresh($, state)
   }
 }

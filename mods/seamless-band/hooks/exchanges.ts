@@ -42,12 +42,9 @@ function outbound(value: unknown): Exchange {
     return s.status === 'observed' ? [s.stage as string] : []
   }))
   let state = UNKNOWN
-  if (['denied', 'rejected', 'refused', 'unknown'].includes(string(r.status)) || observed.has('unknown')) {
-    state = { color: 'red', label: '届かなかった' }
-  } else if (r.status === 'ok') {
-    if (observed.has('processing') || observed.has('replied')) state = { color: 'green', label: '既読' }
-    else if (observed.has('reached')) state = { color: '#f59e0b', label: '届いたが未読' }
-  }
+  if (observed.has('processing') || observed.has('replied')) state = { color: 'green', label: '既読' }
+  else if (observed.has('reached')) state = { color: '#f59e0b', label: '届いたが未読' }
+  else if (r.delivery === 'rejected') state = { color: 'red', label: '届かなかった' }
   return { id: string(r.id), direction: 'outbound', at: timestamp(r.at), ...state }
 }
 
@@ -66,8 +63,8 @@ export function peersOf(json: string): Peer[] {
     const id = string(from.id), nativeId = string(from.nativeId)
     const provider = id.startsWith('claude:') ? 'claude' : id.startsWith('codex:') ? 'codex' : null
     if (!provider) continue
-    const matching = candidates.find(c => c.id === id && c.nativeId === nativeId && c.generation === from.generation)
-    let peer = peers.find(p => p.provider === provider && p.nativeId === nativeId && p.generation === from.generation)
+    const matching = candidates.find(c => c.id === id && c.nativeId === nativeId)
+    let peer = peers.find(p => p.provider === provider && p.nativeId === nativeId)
     if (!peer) {
       peer = { provider, nativeId, generation: string(from.generation), cwd: matching ? string(matching.cwd) : '', exchanges: [] }
       peers.push(peer)

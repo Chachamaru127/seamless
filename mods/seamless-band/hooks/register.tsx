@@ -123,7 +123,7 @@ type Live = {
  * @param on the engine's registrar
  */
 export const register: Register = (on, options) => {
-  const exchanges: ExchangeLive = { peers: [], unknown: true, busy: false, pending: false, generation: 0, snippets: new Map(), poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
+  const exchanges: ExchangeLive = { desktop: false, ended: false, peers: [], unknown: true, busy: false, pending: false, generation: 0, snippets: new Map(), poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
   const live: Live = {
     todoPurpose: '',
     calls: new Map(),
@@ -152,12 +152,11 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const result = await next(e)
+    exchanges.ended = false
 
     live.phaseStartMs = await $.clock.now()
     await publish($, live)
     keepTicking($, live)
-    keepPolling($, exchanges)
-    void refresh($, exchanges)
 
     return result
   })
@@ -168,6 +167,8 @@ export const register: Register = (on, options) => {
   })
 
   on('session.end', async ($, e, next) => {
+    exchanges.ended = true
+    exchanges.desktop = false
     exchanges.generation += 1
     exchanges.pending = false
     exchanges.snippets.clear()
@@ -195,9 +196,8 @@ export const register: Register = (on, options) => {
   })
 
   on('classic.SessionStart', { source: ['clear', 'resume', 'fork'] }, async ($, e, next) => {
+    exchanges.ended = false
     keepTicking($, live)
-    keepPolling($, exchanges)
-    void refresh($, exchanges)
     return next(e)
   })
 
@@ -351,6 +351,7 @@ export const register: Register = (on, options) => {
   // The run-in-background pill shows only under a call that is running, so
   // its drawing means the person has answered the approval it waited on.
   on('ui.render', { component: 'ToolProgress' }, ($, e, next) => {
+    if (e.surface !== 'desktop') return next(e)
     const call = live.calls.get(e.props.tool_use_id)
 
     if (call?.isAwaitingApproval) {
@@ -444,6 +445,12 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.surface !== 'desktop') return next(e)
+    if (!exchanges.desktop && !exchanges.ended) {
+      exchanges.desktop = true
+      keepPolling($, exchanges)
+      void refresh($, exchanges)
+    }
     if (e.props.hasSurvey) {
       return next(e)
     }
@@ -1011,7 +1018,10 @@ function capitalized(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 const DEFAULT_NODE = '/Users/tachibanashuuta/.local/share/mise/installs/node/24/bin/node'
+const DEFAULT_REPOSITORY = '/Users/tachibanashuuta/LocalWork/Code/seamless'
 type ExchangeLive = {
+  desktop: boolean
+  ended: boolean
   peers: Peer[]
   unknown: boolean
   busy: boolean
@@ -1024,17 +1034,18 @@ type ExchangeLive = {
 }
 
 function keepPolling($: EngineInterface, state: ExchangeLive): void {
-  state.poller ??= $.clock.every(30_000, () => { void refresh($, state) })
+  state.poller ??= $.clock.every(60_000, () => { void refresh($, state) })
 }
 
 async function refresh($: EngineInterface, state: ExchangeLive): Promise<void> {
+  if (!state.desktop) return
   if (state.busy) { state.pending = true; return }
   state.pending = false
   state.busy = true
   const generation = state.generation
   try {
-    const root = state.repository || `${$.plugin.root}/../..`
-    const result = await $.process.run([state.node, `${root}/src/cli.ts`, 'sessions', '{"scope":"any","peek":true}'], { timeoutMs: 20_000 })
+    const root = state.repository || DEFAULT_REPOSITORY
+    const result = await $.process.run([state.node, `${root}/src/cli.ts`, 'band'], { timeoutMs: 20_000 })
     if (generation !== state.generation) return
     if (result.exitCode !== 0) throw new Error('Query failed')
     state.peers = peersOf(result.stdout)

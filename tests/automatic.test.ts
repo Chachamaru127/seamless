@@ -393,3 +393,107 @@ test('peek preserves AC34 inbound verification and refuses unproven senders',asy
  const denied=await auto('sessions',{peek:true});
  assert.deepEqual(denied.inbound.map((r:any)=>r.sender),['declared','declared']);assert.equal(proofs,2);
 });
+
+test('band inspects only related peers, never scans or touches seen, and times one query',async t=>{
+ const f=await fixture(t),now=Date.now(),dir=join(f.home,'.seamless','reservations');
+ await mkdir(dir,{recursive:true,mode:0o700});
+ const sender={...f.caller,id:'codex:a'},recipient={...f.target,id:'claude:b'};
+ for(const [i,change] of [
+  {},{id:'old',at:now-86400001,recipient:{...recipient,nativeId:'old',id:'claude:old'}},
+  {id:'generation',sender:{...sender,generation:'old'},recipient:{...recipient,nativeId:'other',id:'claude:other'}},
+  {id:'future',at:now+1,recipient:{...recipient,nativeId:'future',id:'claude:future'}},
+ ].entries())await writeFile(join(dir,String(i).padStart(64,'0')+'.json'),JSON.stringify({id:'recent',sender,recipient,at:now,hash:'h',status:'submitted',...change}),{mode:0o600});
+ const seen=join(f.home,'.seamless','seen.json');await writeFile(seen,'leave unchanged',{mode:0o600});
+ const inspected:string[]=[];
+ const auto=createAutomatic({home:f.home,caller:async()=>({status:'ok',caller:f.caller}),clock:{now:()=>now,sleep:async()=>{}},
+  scan:async()=>{throw Error('band must never scan');},
+  inspect:async n=>{inspected.push(n.nativeId);return n.nativeId==='b'?f.target:null;},
+  adapter:{read:async()=>null,send:async()=>({status:'rejected'}),received:async()=>[
+   {id:'incoming',sender:{id:'codex:in',nativeId:'in',generation:'g'},recipient:{id:'codex:a',nativeId:'a',generation:'g'},at:new Date(now).toISOString()}
+  ]}
+ });
+ const before=await seamlessSnapshot(f.home),start=performance.now();
+ const result=await auto('band',{});
+ t.diagnostic('band fixture query: '+(performance.now()-start).toFixed(2)+' ms');
+ assert.equal(result.status,'ok');
+ assert.deepEqual(inspected,['b','in']);
+ assert.deepEqual(result.candidates.map((n:any)=>n.id),['claude:b','codex:in']);
+ assert.equal(result.candidates[0].requests[0].id,'recent');
+ assert.equal(result.candidates[1].status,'unknown');
+ assert.equal(result.candidates[1].ticket,null);
+ assert.deepEqual(result.excludeExpired,[]);assert.equal(result.offlineHidden,0);
+ assert.deepEqual(await seamlessSnapshot(f.home),before);
+ assert.equal((await cli(auto,['band'])).status,'ok');
+ for(const input of [{scope:'any'},{caller:'codex:a'},{peek:true},[],null])await assert.rejects(()=>auto('band',input));
+});
+
+test('band preserves sessions AC34 proof and exclusion, operation, scope and strict gates without scans',async t=>{
+ const f=await fixture(t);f.caller.version='26.930.31730+12947';f.target.version='2.1.286';
+ let proofs=0,scans=0;const at=new Date().toISOString();
+ const adapter={read:async()=>null,send:async()=>({status:'rejected' as const}),
+  received:async()=>['proven','forged'].map(id=>({id,sender:{id:'claude:b',nativeId:'b',generation:'g'},recipient:{id:'codex:a',nativeId:'a',generation:'g'},at})),
+  sentIds:async()=>{proofs++;return ['proven'];}};
+ const auto=createAutomatic({home:f.home,limitsPath:f.path,caller:async()=>({status:'ok',caller:f.caller}),
+  scan:async()=>{scans++;return {sessions:[f.caller,f.target],codexWorkspace:'observed'};},inspect:async()=>f.target,
+  scanOptions:{git:async cwd=>({state:'no_git',workspace:cwd})},adapter});
+ const baseline=await auto('sessions',{scope:'any',peek:true});
+ const band=await auto('band',{});
+ assert.deepEqual(band.inbound,baseline.inbound);assert.equal(scans,1);
+ assert.deepEqual(band.inbound.map((r:any)=>r.sender),['verified','declared']);
+ let loaded=await writeLimits({...unrestricted,exclude:[{nativeId:'b'}]},null,f.path);
+ assert.equal(loaded.status,'ok');
+ const beforeProofs=proofs;
+ assert.deepEqual((await auto('band',{})).candidates,[]);
+ assert.equal(proofs,beforeProofs);
+ assert.deepEqual((await auto('band',{})).inbound.map((r:any)=>r.sender),['declared','declared']);
+ loaded=await writeLimits({...unrestricted,operations:{read:false,send:true}},loaded.hash!,f.path);
+ assert.equal((await auto('band',{})).status,'operation_not_permitted');
+ assert.equal(loaded.status,'ok');
+ loaded=await writeLimits({...unrestricted,scope:'current_work'},loaded.hash!,f.path);
+ f.target.cwd='/elsewhere';assert.deepEqual((await auto('band',{})).candidates,[]);f.target.cwd=f.home;
+ assert.equal(loaded.status,'ok');
+ loaded=await writeLimits({...unrestricted,strictVersions:true},loaded.hash!,f.path);
+ // Unknown caller versions are refused, while an unknown target remains unconfirmed.
+ f.caller.version=null;assert.equal((await auto('band',{})).status,'unsupported_version');
+ f.caller.version='26.930.31730+12947';
+ f.target.version='999.0.0';
+ const strict=await auto('band',{});
+ assert.equal(strict.status,'ok');assert.equal(strict.candidates[0].status,'unknown');
+ assert.deepEqual(strict.inbound.map((r:any)=>r.sender),['declared','declared']);
+ await writeFile(f.path,'broken',{mode:0o600});
+ assert.equal((await auto('band',{})).status,'limits_unusable');
+ assert.equal(scans,1);
+});
+
+test('band stops without a caller and creates no seamless files in a fresh home',async t=>{
+ const f=await fixture(t);f.setObserved(false);
+ assert.equal((await f.automatic('band',{})).status,'caller_unobserved');assert.equal(f.count().scans,0);
+ const before=await seamlessSnapshot(f.home);
+ const auto=createAutomatic({home:f.home,caller:async()=>({status:'ok',caller:f.caller}),scan:async()=>{throw Error('scan');},adapter:{read:async()=>null,send:async()=>({status:'rejected'})}});
+ assert.deepEqual((await auto('band',{})).candidates,[]);
+ assert.deepEqual(await seamlessSnapshot(f.home),before);
+});
+
+test('band never opens seen.json and is not an MCP tool',async t=>{
+ const f=await fixture(t);
+ const fs=await import('node:fs/promises'),{syncBuiltinESMExports}=await import('node:module');
+ const original=fs.default.open;
+ t.mock.method(fs.default,'open',(...args:Parameters<typeof original>)=>{
+  if(String(args[0])===join(f.home,'.seamless','seen.json'))throw Error('seen.json must not be opened');
+  return original(...args);
+ });
+ syncBuiltinESMExports();
+ try{
+  const auto=createAutomatic({home:f.home,caller:async()=>({status:'ok',caller:f.caller}),scan:async()=>{throw Error('scan');},adapter:{read:async()=>null,send:async()=>({status:'rejected'})}});
+  assert.equal((await auto('band',{})).status,'ok');
+  assert.equal((await (await mcp(auto))('band',{})).message,'unknown_tool');
+ }finally{t.mock.restoreAll();syncBuiltinESMExports();}
+});
+
+test('band manifest retains absolute configurable runtime and repository defaults',async()=>{
+ const manifest=JSON.parse(await readFile(new URL('../mods/seamless-band/.claude-plugin/plugin.json',import.meta.url),'utf8'));
+ assert.equal(manifest.userConfig.repositoryPath.default,'/Users/tachibanashuuta/LocalWork/Code/seamless');
+ assert.equal(manifest.userConfig.nodePath.default,'/Users/tachibanashuuta/.local/share/mise/installs/node/24/bin/node');
+ assert.equal(manifest.userConfig.repositoryPath.type,'string');
+ assert.equal(manifest.userConfig.nodePath.type,'string');
+});

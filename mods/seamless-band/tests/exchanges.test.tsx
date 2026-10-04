@@ -5,8 +5,8 @@ import { peersOf, companiesOf } from '../hooks/exchanges'
 import { requestResults } from './fixtures/status-results'
 import { clip, durationOf } from '../hooks/text'
 
-const BAND = { plugin: 'seamless-band', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 120, scroll: { offset: 0, bodyRows: 30 }, view: {} } } as const
-const START = { surface: 'terminal', isInteractive: true, cwd: '/work' } as const
+const BAND = { plugin: 'seamless-band', surface: 'desktop', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 120, scroll: { offset: 0, bodyRows: 30 }, view: {} } } as const
+const START = { surface: 'desktop', isInteractive: true, cwd: '/work' } as const
 const at = '2026-10-04T09:00:00Z'
 const request = (name: keyof typeof requestResults) => requestResults[name]
 const candidate = (requests: unknown[], provider = 'codex', nativeId = '12345678-abc') => ({ id: `${provider}:${nativeId}`, provider, nativeId, cwd: '/work/project', generation: 'g1', requests })
@@ -51,7 +51,7 @@ for (const [name, requests, inbound, color, label] of [
 ] as const) {
   test(`right color table: ${name}`, async ($, on) => {
     const { clock } = seat(on, response([...requests], [...inbound]))
-    await $.session.start(START)
+    await $.session.start(START); await $.ui.mount(BAND)
     await clock.settle()
     const ui = await $.ui.mount(BAND)
     const company = await ui.find({ type: 'Text', text: /^ [0-9]/ })
@@ -70,7 +70,7 @@ test('company totals include both directions and newest exchange across peers de
   data.candidates.push(candidate([{ ...request('reached'), at: '2026-10-04T10:00:00Z' }], 'codex', '87654321'))
   data.candidates.push(candidate([], 'claude'))
   const { clock } = seat(on, data)
-  await $.session.start(START); await clock.settle()
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   const ui = await $.ui.mount(BAND)
   expect((await ui.find({ type: 'Text', text: /^ [0-9]/ }))?.text).toContain(' 3')
   expect((await ui.find({ type: 'Text', text: /^ [0-9]/ }))?.props.color).toBe('#f9a437')
@@ -84,7 +84,7 @@ for (const mode of ['failure', 'timeout', 'json', 'status', 'shape']) {
   test(`query ${mode} makes right unknown while left keeps ticking, then recovers`, async ($, on) => {
     const { clock, state } = seat(on, mode === 'status' ? { status: 'error' } : mode === 'shape' ? { status: 'ok', candidates: null } : response([request('replied')]))
     state.mode = mode
-    await $.session.start(START); await clock.settle()
+    await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
     await $.turn.start({ text: 'work', turnId: 't' })
     const ui = await $.ui.mount(BAND)
     await clock.advance(2000)
@@ -92,16 +92,16 @@ for (const mode of ['failure', 'timeout', 'json', 'status', 'shape']) {
     expect((await ui.find({ type: 'Text', text: '未確認' }))?.text).toBe('未確認')
     expect((await ui.find({ key: 'activity' }))?.text).toContain('指示を読んでいる · 2秒')
     state.mode = 'ok'; state.data = response([request('replied')])
-    await clock.advance(28000); await clock.settle()
+    await clock.advance(58000); await clock.settle()
     expect((await ui.find({ type: 'Text', text: /^ [0-9]/ }))?.props.color).toBe('#38c68e')
   })
 }
 
-test('queries start on session, every 30 seconds, after seamless tools and receives without overlap', async ($, on) => {
+test('queries start on desktop render, every 60 seconds, after seamless tools and receives without overlap', async ($, on) => {
   const { clock, state } = seat(on, response([]))
   on('tool.call', () => ({ result: 'ok' }))
   state.delay = 20000
-  await $.session.start(START)
+  await $.session.start(START); await $.ui.mount(BAND)
   expect(state.calls.length).toBe(1)
   await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'message' })
   await $.tool.call({ tool: 'mcp__seamless__sessions' } as Parameters<Engine['tool']['call']>[0])
@@ -111,11 +111,11 @@ test('queries start on session, every 30 seconds, after seamless tools and recei
   expect(state.calls.length).toBe(2)
   const call = state.calls[0] as { argv: string[]; init: { timeoutMs: number } }
   expect(call.argv[0]).toBe('/Users/tachibanashuuta/.local/share/mise/installs/node/24/bin/node')
-  expect(call.argv[1]).toMatch(/seamless-band\/\.\.\/\.\.\/src\/cli\.ts$/)
-  expect(call.argv.slice(2)).toEqual(['sessions', '{"scope":"any","peek":true}'])
+  expect(call.argv[1]).toBe('/Users/tachibanashuuta/LocalWork/Code/seamless/src/cli.ts')
+  expect(call.argv.slice(2)).toEqual(['band'])
   expect(call.init.timeoutMs).toBe(20000)
   state.delay = 0
-  await clock.advance(9999)
+  await clock.advance(39999)
   expect(state.calls.length).toBe(2)
   await clock.advance(1); await clock.settle()
   expect(state.calls.length).toBe(3)
@@ -133,7 +133,7 @@ test('snippet is only first 40 characters of current main-session send input, sa
   data.candidates[0].cwd = `/work/pro${dirty}ject`
   const { clock } = seat(on, data)
   on('tool.call', () => ({ result: 'same result' }))
-  await $.session.start(START); await clock.settle()
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   const text = 'あ'.repeat(25) + dirty + 'Z'.repeat(40)
   const result = await $.tool.call({ tool: 'mcp__seamless__send', id: 'req1', text } as Parameters<Engine['tool']['call']>[0])
@@ -177,7 +177,7 @@ test('tool.call, tool.check, prompt.submit and session.receive pass input and ou
 test('reset discards snippets and ignores an old query completing in the new conversation', async ($, on) => {
   const { clock, state } = seat(on, response([request('reached')]))
   on('tool.call', () => ({ result: 'ok' }))
-  await $.session.start(START); await clock.settle()
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   await $.tool.call({ tool: 'mcp__seamless__send', id: 'req1', text: 'private preview' } as Parameters<Engine['tool']['call']>[0]); await clock.settle()
   state.delay = 10000
   await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'start slow query' })
@@ -187,7 +187,7 @@ test('reset discards snippets and ignores an old query completing in the new con
   await clock.advance(10000); await clock.settle()
   expect(await ui.find({ type: 'Text', text: '未確認' })).toBeDefined()
   state.delay = 0
-  await clock.advance(20000); await clock.settle()
+  await clock.advance(50000); await clock.settle()
   await ui.press({ key: 'toggle' })
   const rows = (await ui.find({ key: 'exchanges' }))?.text ?? ''
   expect(rows).not.toContain('private preview')
@@ -196,9 +196,9 @@ test('reset discards snippets and ignores an old query completing in the new con
 
 test('failed refresh grays existing peer rows instead of showing stale green', async ($, on) => {
   const { clock, state } = seat(on, response([request('replied')]))
-  await $.session.start(START); await clock.settle()
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   state.mode = 'failure'
-  await clock.advance(30000); await clock.settle()
+  await clock.advance(60000); await clock.settle()
   const ui = await $.ui.mount(BAND)
   await ui.press({ key: 'toggle' })
   expect((await ui.find({ key: 'peer-0' }))?.text).toContain('未確認')
@@ -230,7 +230,7 @@ for (const mode of ['ok', 'failure']) test(`busy ${mode} refresh coalesces queue
   const { clock, state } = seat(on, response([]))
   state.mode = mode
   state.delay = 1000
-  await $.session.start(START)
+  await $.session.start(START); await $.ui.mount(BAND)
   for (let i = 0; i < 3; i++) await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'refresh' })
   expect(state.calls.length).toBe(1)
   await clock.advance(999)
@@ -244,18 +244,18 @@ for (const mode of ['ok', 'failure']) test(`busy ${mode} refresh coalesces queue
 test('session end discards queued refresh without starting another query', async ($, on) => {
   const { clock, state } = seat(on, response([]))
   state.delay = 1000
-  await $.session.start(START)
+  await $.session.start(START); await $.ui.mount(BAND)
   await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'refresh' })
   await $.session.end({ reason: 'clear' })
   await clock.advance(1000); await clock.settle()
   expect(state.calls.length).toBe(1)
 })
 
-for (const surface of ['desktop', 'terminal'] as const) test(`${surface} closed and expanded trees match the agreed band`, async ($, on) => {
+for (const surface of ['desktop'] as const) test(`${surface} closed and expanded trees match the agreed band`, async ($, on) => {
   const data = response([request('replied')])
   data.candidates.push(candidate([request('reached')], 'claude', 'claude-peer'))
   const { clock } = seat(on, data)
-  await $.session.start({ ...START, surface }); await clock.settle()
+  await $.session.start({ ...START, surface }); await $.ui.mount({ ...BAND, surface }); await clock.settle()
   await $.turn.start({ text: '見本に合わせる', turnId: 'design' })
   const ui = await $.ui.mount({ ...BAND, surface })
   expect((await ui.find({ key: 'band' }))?.props).toMatchObject({ backgroundColor: '#1d1d1b', borderStyle: 'round' })
@@ -300,4 +300,39 @@ for (const surface of ['desktop', 'terminal'] as const) test(`${surface} closed 
   expect(durationOf(60000)).toBe('1分0秒')
   expect(durationOf(72000)).toBe('1分12秒')
   expect(durationOf(-1000)).toBe('0秒')
+})
+
+for (const interactive of [true, false]) test(`terminal interactive=${interactive} never queries or adds UI`, async ($, on) => {
+  const { clock, state } = seat(on, response([]))
+  on('tool.call', () => ({ result: 'ok' }))
+  on('ui.render', { component: 'ToolProgress' }, () => ({ type: 'Text', props: {}, children: ['original progress'] }))
+  await $.session.start({ ...START, surface: 'terminal', isInteractive: interactive })
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'received' })
+  await $.tool.call({ tool: 'mcp__seamless__sessions' } as Parameters<Engine['tool']['call']>[0])
+  await clock.advance(120000); await clock.settle()
+  expect(state.calls.length).toBe(0)
+  expect(await ui.find({ key: 'band' })).toBeUndefined()
+  expect(await ui.find({ key: 'activity' })).toBeUndefined()
+  const progress = await $.ui.mount({ ...BAND, surface: 'terminal', component: 'ToolProgress', props: { tool_use_id: 'tool' } } as never)
+  expect(await progress.find({ type: 'Text', text: 'original progress' })).toBeDefined()
+  expect(state.calls.length).toBe(0)
+})
+
+test('desktop session waits for first AbovePrompt render and starts one 60 second poller', async ($, on) => {
+  const { clock, state } = seat(on, response([]))
+  on('tool.call', () => ({ result: 'ok' }))
+  await $.session.start(START)
+  await $.session.receive({ origin: { kind: 'peer-send-message' }, text: 'before drawing' })
+  await $.tool.call({ tool: 'mcp__seamless__sessions' } as Parameters<Engine['tool']['call']>[0])
+  await clock.advance(120000)
+  expect(state.calls.length).toBe(0)
+  await $.ui.mount(BAND); await clock.settle()
+  expect(state.calls.length).toBe(1)
+  await $.ui.mount(BAND); await clock.settle()
+  expect(state.calls.length).toBe(1)
+  await clock.advance(59999)
+  expect(state.calls.length).toBe(1)
+  await clock.advance(1); await clock.settle()
+  expect(state.calls.length).toBe(2)
 })

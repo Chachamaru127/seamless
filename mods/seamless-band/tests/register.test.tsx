@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 
 const BAND = {
   plugin: 'seamless-band',
-  surface: 'terminal',
+  surface: 'desktop',
   component: 'AbovePrompt',
   props: {
     hasSurvey: false,

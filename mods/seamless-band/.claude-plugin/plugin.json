@@ -14,8 +14,8 @@
     "repositoryPath": {
       "type": "string",
       "title": "seamless のリポジトリ",
-      "description": "空欄なら plugin のフォルダから2つ上",
-      "default": ""
+      "description": "seamless のソースがある絶対パス",
+      "default": "/Users/tachibanashuuta/LocalWork/Code/seamless"
     }
   },
   "author": {

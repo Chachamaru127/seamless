@@ -34,7 +34,7 @@ export function stages(record:RequestRecord,destination:StructureItem[],source:S
 export function statusResult(record:RequestRecord,destination:StructureItem[],source:StructureItem[],now:number){
  return {status:'ok' as const,id:record.id,delivery:record.status,target:{provider:record.recipient.provider,nativeId:record.recipient.nativeId,generation:record.recipient.generation},at:new Date(record.at).toISOString(),stages:stages(record,destination,source,now)};
 }
-export function createStatus(options:{dir:string;adapter:NativeAdapter;caller:RequestParty;canRead:(p:RequestParty)=>Promise<boolean>;clock?:StatusClock}){
+export function createStatus(options:{parallelReads?:boolean;dir:string;adapter:NativeAdapter;caller:RequestParty;canRead:(p:RequestParty)=>Promise<boolean>;clock?:StatusClock}){
  const time=options.clock??clock;
  const owned=(r:RequestRecord)=>r.sender.provider===options.caller.provider&&r.sender.nativeId===options.caller.nativeId&&r.sender.generation===options.caller.generation;
  const read=async(p:RequestParty):Promise<StructureItem[]>=>{
@@ -43,7 +43,7 @@ export function createStatus(options:{dir:string;adapter:NativeAdapter;caller:Re
  };
  const once=async(id:string)=>{
   const record=(await requests(options.dir)).find(r=>r.id===id&&owned(r));if(!record)return {status:'not_found' as const};
-  const destination=await read(record.recipient),source=await read(record.sender);
+  const [destination,source]=options.parallelReads?await Promise.all([read(record.recipient),read(record.sender)]):[await read(record.recipient),await read(record.sender)];
   return statusResult(record,destination,source,time.now());
  };
  return {

@@ -19,7 +19,7 @@ export const CLIENT_TYPE='seamless-read';
 export const PEER_NAMESPACES:readonly string[]=['seamless_test','seamless','claudex_test','claudex'];
 const MAX_FRAME=256*1024*1024,STEP_MS=40_000;
 const OMITTED=['reasoning','commandExecution','mcpToolCall','fileChange','webSearch','non_seamless_tool_output','images','subagents'];
-export type CodexOptions=CompatibilityOptions&{codexHome?:string;socketPath?:string;version?:()=>Promise<string|null>;timeoutMs?:number};
+export type CodexOptions=CompatibilityOptions&{codexHome?:string;socketPath?:string;version?:()=>Promise<string|null>;timeoutMs?:number;owner?:(nativeId:string)=>Promise<string|null>};
 export type CodexSessionMeta={ownerId:string;cwd:string|null;generation:string;version:string};
 type Frame=Record<string,any>;
 type Failure={status:ReadFailure;reason:string};
@@ -75,7 +75,7 @@ async function session(nativeId:string,options:CodexOptions):Promise<Failure|Liv
   const init=await exchange(ipc,request('initialize',{clientType:CLIENT_TYPE},'initializing-client',0));
   if(init.resultType!=='success'||typeof init.result?.clientId!=='string')throw new Error('initialize');
   const client:string=init.result.clientId;
-  const owner=await exchange(ipc,request('thread-owner-discovery',{hostId:'local',conversationId:nativeId},client,1)).catch(()=>null);
+  const owner=options.owner?await options.owner(nativeId).then(id=>id?{resultType:'success',handledByClientId:id}:null):await exchange(ipc,request('thread-owner-discovery',{hostId:'local',conversationId:nativeId},client,1)).catch(()=>null);
   if(owner?.resultType!=='success'||typeof owner.handledByClientId!=='string'){await ipc.close();const exists=await rolloutExists(nativeId,options);return exists===null?{status:'unavailable',reason:'rollout_unreadable'}:exists?{status:'unavailable',reason:'owner_offline'}:{status:'not_found',reason:'no_owner_no_rollout'};}
   return {ipc,client,owner:owner.handledByClientId as string,version:version??'unknown'};
  }catch{await ipc.close();return {status:'unavailable' as const,reason:'ipc_protocol'};}

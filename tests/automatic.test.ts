@@ -236,3 +236,8 @@ test('MCP advertises seamless server and boolean sessions includeOffline',async 
  const list:any=await handle({jsonrpc:'2.0',id:2,method:'tools/list'});
  assert.deepEqual(list.result.tools.find((n:any)=>n.name==='sessions').inputSchema.properties.includeOffline,{type:'boolean'});
 });
+test('automatic MCP tools/list accepts standard cursor and _meta params and rejects others',async t=>{
+ const f=await fixture(t),handle=createMcp({automatic:f.automatic});await handle({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18'}});await handle({jsonrpc:'2.0',method:'notifications/initialized'});
+ for(const params of [{},{cursor:null},{_meta:{progressToken:1}}]){const r:any=await handle({jsonrpc:'2.0',id:2,method:'tools/list',params});assert.equal(r.result.tools.length,4);}
+ const bad:any=await handle({jsonrpc:'2.0',id:3,method:'tools/list',params:{caller:'x'}});assert.equal(bad.error.code,-32602);
+});

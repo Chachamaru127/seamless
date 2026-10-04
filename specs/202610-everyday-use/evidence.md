@@ -179,3 +179,12 @@
 - 修正後、`codex exec` の新しい会話から seamless の sessions を呼べた。返事は `caller_unobserved / native_identity_unobserved`。`missing_turn_metadata` ではないので、Codex は `_meta` の session_id を付けている。特定できないのは、`codex exec` の会話が Codex Desktop の持ち物ではなく、Desktop の IPC で owner が見つからないため（設計どおり。対応表は Codex Desktop だけ）。
 - 発見2: 端末の Claude Code CLI は 2.1.289 に更新されていた。`claude -p` から呼ぶと `unsupported_version / 2.1.289`（対応表に無い版で止まる設計どおり）。動いている Desktop の Claude の会話 16 件はすべて 2.1.286（確認済みの版）。
 - 未観測: Desktop の Claude の新しい会話と、Desktop の Codex の新しい会話から seamless を呼ぶ経路（T26 を含む）。MCP の設定は会話の開始時に読まれるので、新しい会話が要る。
+
+## 2026-10-04 段 F: Desktop の新しい Claude の会話からの経路
+
+- 立花さんが CJ-Plugin#15 を merge（squash、dd5cafc）し、Desktop で新しい会話「シームレス」（local_506be96d、中の ID 859d7cf9、Claude Code 2.1.286）を立てた。Desktop は worktree `seamless/.claude/worktrees/hello-6d7bef` の中で会話を動かす。
+- 一覧（`scope: same_repository`）: status ok。呼ぶ側は provider claude、source `claude-ancestor`、nativeId 859d7cf9。候補は claude 44043390、claude f8352827、codex 01a0f59d（すべて online）、offlineHidden 50、codexWorkspace observed。既定の current_work では、worktree の外にある会話は見えない。
+- 送信（859d7cf9 → この会話 f8352827、id `seamless-f-claude-to-claude-1`）: `submitted`。track: accepted 06:10:51、reached 06:10:57、processing 06:10:59 を観測。replied は未観測（試験文が「返事は不要」のため想定どおり）。
+- 受信側（f8352827）の照合: inbound に `sender: verified`。新方式の宛名で届いた依頼の照合を初めて観測した。
+- 軽の発見: ① track に scope を付けると invalid_params（send の道具の説明には scope があるので、呼ぶ側が付けやすい）。② `wait_limit` が MCP の道具のエラー（isError）として返る。
+- 未観測: Desktop の新しい Codex の会話からの経路（T26 の `_meta`、Codex → Claude の送信）。Codex の会話の記録に、新しい会話はまだ無い。

@@ -278,7 +278,7 @@ describe('register', () => {
     await $.turn.start({ text: 'test it', turnId: 't1' })
     await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests' })
 
-    expect(box.seen[0]).toContain('承認待ち: 道具を使っている: Run the tests')
+    expect(box.seen[0]).toContain('承認待ち: 道具を使っている · Run the tests')
   })
 
   test('agents still at work after the turn keep the box busy', async ($, on) => {
@@ -296,6 +296,7 @@ describe('register', () => {
     await $.tool.call({ tool: 'Read', file_path: 'README.md', agentId: 'a1' } as Parameters<Engine['tool']['call']>[0])
     await clock.advance(300)
 
+    await ui.press({ key: 'toggle' })
     const team = (await ui.find({ key: 'agents' }))?.text ?? ''
 
     expect(await box.read()).toContain('2個の子エージェントが作業中')
@@ -308,8 +309,6 @@ describe('register', () => {
     expect(await ui.find({ key: 'agents' })).toBeUndefined()
 
     await $.turn.complete({ ...DONE, turnId: 't3', agentId: 'a1', reason: 'error' })
-    await ui.press({ key: 'toggle' })
-
     const history = (await ui.find({ key: 'history' }))?.text ?? ''
 
     expect(await box.read()).toContain('待機中')
@@ -380,15 +379,15 @@ test('six left states show Japanese labels and update elapsed seconds', async ($
   const ui = await mount($, box)
   await $.turn.start({ text: '確認', turnId: 't1' })
   await clock.advance(2000)
-  expect(await box.read()).toContain('指示を読んでいる / 2秒')
+  expect(await box.read()).toContain('指示を読んでいる · 2秒')
   await step($, 0)
-  expect(box.seen[0]).toContain('考えている: 確認する。 / 0秒')
+  expect(box.seen[0]).toContain('考えている: 確認する。 · 0秒')
   box.onTool = async () => {
     await clock.advance(2700)
-    expect(await box.read()).toContain('道具を使っている: テストを実行 / 2秒')
+    expect(await box.read()).toContain('道具を使っている · テストを実行 · 2秒')
     await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'test' } })
     await clock.advance(1000)
-    expect(await box.read()).toContain('承認待ち: 道具を使っている: テストを実行 / 3秒')
+    expect(await box.read()).toContain('承認待ち: 道具を使っている · テストを実行 · 3秒')
   }
   await $.tool.call({ tool: 'Bash', command: 'test', description: 'テストを実行' })
   await step($, 1)
@@ -396,7 +395,7 @@ test('six left states show Japanese labels and update elapsed seconds', async ($
   await $.turn.complete({ ...DONE, turnId: 't1' })
   await clock.advance(2700)
   expect(await box.read()).toContain('待機中')
-  expect(await box.read()).toContain('/ 2秒')
+  expect(await box.read()).toContain('· 2秒')
   await ui.press({ key: 'toggle' })
   expect((await ui.find({ key: 'history' }))?.text).toContain('3秒')
 })
@@ -419,11 +418,11 @@ test('thinking and reply timers advance while the stream is open', async ($, on)
   on('turn.step', async function* ($, e) {
     yield { kind: 'thinking', index: 0, text: '判断する。' }
     await clock.advance(2000)
-    expect(await read()).toContain('考えている: 判断する。 / 2秒')
+    expect(await read()).toContain('考えている: 判断する。 · 2秒')
     yield { kind: 'text', index: 1, text: '回答です。' }
     await clock.advance(3000)
     expect(await read()).toContain('返事を書いている')
-    expect(await read()).toContain('/ 3秒')
+    expect(await read()).toContain('· 3秒')
     return { turnId: e.turnId, index: e.index, answer: '回答です。', toolUses: [], stopReason: 'end_turn', usage: null }
   })
   const ui = await $.ui.mount(BAND)
@@ -452,4 +451,22 @@ for (const stop of ['return', 'throw'] as const) test(`turn.step closes inner st
     expect(caught).toBe(true)
   }
   expect(closed).toBe(1)
+})
+
+test('desktop purpose prefers active TodoWrite, falls back to the running tool and omits missing purpose', async ($, on) => {
+  const { box } = seat(on, [])
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  box.read = async () => (await ui.find({ key: 'activity' }))?.text ?? ''
+  expect(await box.read()).toContain('待機中 · 16分40秒')
+  await $.tool.call({ tool: 'TodoWrite', todos: [{ content: 'plan', activeForm: '計画\u202eを作成中', status: 'in_progress' }] } as Parameters<Engine['tool']['call']>[0])
+  box.onTool = async () => {
+    expect(await box.read()).toContain('道具を使っている · 計画を作成中 · 0秒')
+    expect(await box.read()).not.toContain('Bashの目的')
+    expect(await box.read()).not.toContain('\u202e')
+  }
+  await $.tool.call({ tool: 'Bash', command: 'test', description: 'Bashの目的' })
+  box.onTool = async () => {}
+  await $.tool.call({ tool: 'TodoWrite', todos: [{ content: 'plan', activeForm: '計画を作成中', status: 'completed' }] } as Parameters<Engine['tool']['call']>[0])
+  box.onTool = async () => { expect(await box.read()).toContain('道具を使っている · Bashの目的 · 0秒') }
+  await $.tool.call({ tool: 'Bash', command: 'test', description: 'Bashの目的' })
 })

@@ -1,3 +1,4 @@
+import { palette } from './appearance'
 import { printable } from './text'
 
 export type Exchange = {
@@ -14,7 +15,7 @@ export type Peer = {
   cwd: string
   exchanges: Exchange[]
 }
-export const UNKNOWN = { color: 'gray', label: '未確認' }
+export const UNKNOWN = { color: palette.muted, label: '未確認' }
 export const companyName = (provider: Peer['provider']) => provider === 'claude' ? 'Claude' : 'Codex'
 const object = (v: unknown): Record<string, unknown> => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('Invalid object')
@@ -42,9 +43,9 @@ function outbound(value: unknown): Exchange {
     return s.status === 'observed' ? [s.stage as string] : []
   }))
   let state = UNKNOWN
-  if (observed.has('processing') || observed.has('replied')) state = { color: 'green', label: '既読' }
-  else if (observed.has('reached')) state = { color: '#f59e0b', label: '届いたが未読' }
-  else if (r.delivery === 'rejected') state = { color: 'red', label: '届かなかった' }
+  if (observed.has('processing') || observed.has('replied')) state = { color: palette.green, label: observed.has('replied') ? '既読 · 返信あり' : '既読' }
+  else if (observed.has('reached')) state = { color: palette.orange, label: '届いた · 未読' }
+  else if (r.delivery === 'rejected') state = { color: palette.red, label: '届かなかった' }
   return { id: string(r.id), direction: 'outbound', at: timestamp(r.at), ...state }
 }
 
@@ -71,7 +72,7 @@ export function peersOf(json: string): Peer[] {
     }
     if (r.sender !== 'verified' && r.sender !== 'declared') throw new Error('Invalid sender status')
     peer.exchanges.push({ id: string(r.id), direction: 'inbound', at: timestamp(r.at),
-      ...(r.sender === 'verified' ? { color: 'green', label: '受け取って会話に入った' } : UNKNOWN) })
+      ...(r.sender === 'verified' ? { color: palette.green, label: '受け取った' } : UNKNOWN) })
   }
   return peers.filter(p => p.exchanges.length > 0)
 }
@@ -84,7 +85,7 @@ export function latest(exchanges: Exchange[]): Exchange {
 }
 
 export function companiesOf(peers: Peer[]) {
-  return (['claude', 'codex'] as const).flatMap(provider => {
+  return (['codex', 'claude'] as const).flatMap(provider => {
     const exchanges = peers.filter(p => p.provider === provider).flatMap(p => p.exchanges)
     return exchanges.length ? [{ provider, count: exchanges.length, ...latest(exchanges) }] : []
   })
@@ -92,5 +93,5 @@ export function companiesOf(peers: Peer[]) {
 
 export function peerLabel(peer: Peer): string {
   const folder = printable(peer.cwd, 1000).split(/[\\/]/).filter(Boolean).pop() || '作業場所は未確認'
-  return `${companyName(peer.provider)} ${printable(peer.nativeId, 1000).slice(0, 8)} / ${folder}`
+  return `${companyName(peer.provider)} · ${folder}`
 }

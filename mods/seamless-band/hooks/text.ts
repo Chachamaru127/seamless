@@ -52,9 +52,10 @@ export function sizeOf(chars: number): string {
   return `${(chars / 1024 / 1024).toFixed(1)} MB`
 }
 
-/** `0.4s` under ten seconds, `12s` under a minute, `3m 05s` after. */
+/** Whole seconds, compact minutes after one minute. */
 export function durationOf(ms: number): string {
-  return `${Math.floor(Math.max(0, ms) / 1000)}秒`
+  const seconds = Math.floor(Math.max(0, ms) / 1000)
+  return seconds < 60 ? `${seconds}秒` : `${Math.floor(seconds / 60)}分${seconds % 60}秒`
 }
 
 /**

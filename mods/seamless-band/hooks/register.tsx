@@ -1,3 +1,4 @@
+import { palette, logoSvg } from './appearance'
 import { peersOf, companiesOf, latest, peerLabel, companyName, UNKNOWN } from './exchanges'
 import type { Peer } from './exchanges'
 import { atom, read, update } from 'claude-code'
@@ -8,7 +9,6 @@ import type {
   ActivityEntry,
   ActivityNow,
   ActivityOutcome,
-  ActivityPhase,
 } from '../types'
 import { activityOf, partialArgsOf } from './activity-of'
 import { clip, durationOf, oneLine, printable, sizeOf, thoughtOf, wordsAdded } from './text'
@@ -48,31 +48,11 @@ const isExpanded = atom(
   false,
 )
 
-const PHASE_COLORS: Record<ActivityPhase, string> = {
-  idle: 'gray',
-  requesting: 'cyan',
-  thinking: 'magenta',
-  writing: 'green',
-  composing: 'blue',
-  tool: 'cyan',
-  agent: 'cyan',
-  approval: 'yellow',
-  question: 'yellow',
-  compacting: 'blue',
-}
-
 const OUTCOME_MARKS: Record<ActivityOutcome, { mark: string; color: string }> = {
-  ok: { mark: '✓', color: 'green' },
-  error: { mark: '✗', color: 'red' },
-  denied: { mark: '⊘', color: 'yellow' },
-  interrupted: { mark: '■', color: 'gray' },
-}
-
-const KIND_MARKS: Partial<Record<ActivityEntry['kind'], { mark: string; color: string }>> = {
-  turn: { mark: '›', color: 'white' },
-  thought: { mark: '∴', color: 'magenta' },
-  reply: { mark: '✎', color: 'green' },
-  compact: { mark: '⇣', color: 'blue' },
+  ok: { mark: '✓', color: palette.green },
+  error: { mark: '✗', color: palette.red },
+  denied: { mark: '⊘', color: palette.orange },
+  interrupted: { mark: '■', color: palette.muted },
 }
 
 /** What the model is doing in the main loop, between and around tool calls. */
@@ -82,6 +62,7 @@ type ModelPhase = 'idle' | 'requesting' | 'thinking' | 'writing' | 'composing' |
 type Call = {
   tool: string
   label: string
+  purpose: string
   startMs: number
   isAwaitingApproval: boolean
 }
@@ -105,6 +86,7 @@ type Agent = {
  * started over on a reload, while the headline and history in `$.state` stay.
  */
 type Live = {
+  todoPurpose: string
   calls: Map<string, Call>
   agents: Map<string, Agent>
   agentNames: Map<string, string>
@@ -143,6 +125,7 @@ type Live = {
 export const register: Register = (on, options) => {
   const exchanges: ExchangeLive = { peers: [], unknown: true, busy: false, pending: false, generation: 0, snippets: new Map(), poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
   const live: Live = {
+    todoPurpose: '',
     calls: new Map(),
     agents: new Map(),
     agentNames: new Map(),
@@ -196,6 +179,7 @@ export const register: Register = (on, options) => {
     live.ticker = null
     live.trailing?.cancel()
     live.trailing = null
+    live.todoPurpose = ''
     live.calls.clear()
     live.agents.clear()
     live.agentNames.clear()
@@ -275,6 +259,11 @@ export const register: Register = (on, options) => {
       exchanges.snippets.set(args.id, Array.from(args.text).slice(0, 40).join(''))
     }
     const label = activityOf(e.tool, args)
+    if (e.agentId === undefined && e.tool === 'TodoWrite' && Array.isArray(args.todos)) {
+      const active = args.todos.find((todo: unknown) => todo && typeof todo === 'object' && (todo as Record<string, unknown>).status === 'in_progress') as Record<string, unknown> | undefined
+      live.todoPurpose = typeof active?.activeForm === 'string' ? printable(active.activeForm, MAX_LABEL_CHARS) : ''
+    }
+    const purpose = typeof args.description === 'string' ? printable(args.description, MAX_LABEL_CHARS) : ''
 
     if (e.agentId !== undefined) {
       const agent = await agentOf($, live, e.agentId)
@@ -295,7 +284,7 @@ export const register: Register = (on, options) => {
 
     const startMs = await $.clock.now()
 
-    live.calls.set(e.tool_use_id, { tool: e.tool, label, startMs, isAwaitingApproval: false })
+    live.calls.set(e.tool_use_id, { tool: e.tool, label, purpose, startMs, isAwaitingApproval: false })
     live.lastAction = label
     live.turnActions += 1
     await publish($, live)
@@ -463,7 +452,7 @@ export const register: Register = (on, options) => {
     // stays, under the box, so another mod's band is never hidden.
     const below = await next(e)
 
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const { Box, Text, Button, Svg } = $.ui.resolve(e)
 
     const headline = await read($, now)
     const entries = await read($, history)
@@ -472,8 +461,15 @@ export const register: Register = (on, options) => {
     const nowMs = await $.clock.now()
 
     const isWorking = headline.phase !== 'idle'
-    const color = PHASE_COLORS[headline.phase]
-    const elapsed = ` / ${durationOf(nowMs - headline.sinceMs)}`
+    const elapsed = durationOf(nowMs - headline.sinceMs)
+    const call = [...live.calls.values()].at(-1)
+    const purpose = live.todoPurpose || call?.purpose || ''
+    const title = call?.purpose && headline.label.endsWith(call.label)
+      ? headline.label.slice(0, -call.label.length) + '道具を使っている'
+      : headline.label
+    const logo = (provider: Peer['provider'], color: string, key: string) => e.surface === 'desktop'
+      ? <Svg key={key} alt={companyName(provider)} width={14} height={14} source={logoSvg(provider, color)} />
+      : <Text key={key} color={color}>{companyName(provider)}</Text>
 
     // One agent the headline names; more, or one beside the main loop's
     // work, get a row each.
@@ -484,17 +480,17 @@ export const register: Register = (on, options) => {
     const agentRows = listed.map((agent, i) => (
       <Box key={`agent-${i}`} flexDirection="row">
         <Box flexShrink={0}>
-          <Text color={PHASE_COLORS.agent}>{'◆ '}</Text>
+          <Text color={palette.active}>{'● '}</Text>
         </Box>
         <Text bold wrap="truncate-end">{printable(agent.name, MAX_AGENT_NAME_CHARS)}</Text>
         <Text wrap="truncate-end">{` › ${printable(agent.label, MAX_LABEL_CHARS)}`}</Text>
         <Box flexShrink={0}>
-          <Text dimColor>{`  ${durationOf(nowMs - agent.sinceMs)}`}</Text>
+          <Text color={palette.muted}>{`  ${durationOf(nowMs - agent.sinceMs)}`}</Text>
         </Box>
       </Box>
     ))
 
-    const moreAgents = unlisted > 0 ? [<Text dimColor>{`… ほか${unlisted}個の子エージェント`}</Text>] : []
+    const moreAgents = unlisted > 0 ? [<Text color={palette.muted}>{`… ほか${unlisted}個の子エージェント`}</Text>] : []
 
     const teamBox = isTeamListed
       ? [
@@ -511,7 +507,7 @@ export const register: Register = (on, options) => {
     const hidden = entries.length - shown.length
 
     const historyRows = shown.map((entry, i) => {
-      const { mark, color: markColor } = KIND_MARKS[entry.kind] ?? OUTCOME_MARKS[entry.outcome]
+      const { mark, color: markColor } = entry.kind === 'turn' ? { mark: '›', color: palette.muted } : OUTCOME_MARKS[entry.outcome]
       const isQuiet = entry.kind === 'thought' || entry.kind === 'end'
       const took = entry.durationMs === null ? '' : `  ${durationOf(entry.durationMs)}`
 
@@ -520,79 +516,74 @@ export const register: Register = (on, options) => {
           <Box flexShrink={0}>
             <Text color={markColor}>{`${mark} `}</Text>
           </Box>
-          <Text bold={entry.kind === 'turn'} dimColor={isQuiet} wrap="truncate-end">
+          <Box flexGrow={1} flexShrink={1}><Text color={palette.text} bold={entry.kind === 'turn'} dimColor={isQuiet} wrap="truncate-end">
             {printable(entry.label, MAX_LABEL_CHARS)}
-          </Text>
+          </Text></Box>
           <Box flexShrink={0}>
-            <Text dimColor>{took}</Text>
+            <Text color={palette.muted}>{took}</Text>
           </Box>
         </Box>
       )
     })
 
-    const earlier = hidden > 0 ? [<Text dimColor>{`… 以前の${hidden}件`}</Text>] : []
-    const empty = entries.length === 0 ? [<Text dimColor>まだ手順はありません</Text>] : []
+    const earlier = hidden > 0 ? [<Text color={palette.muted}>{`… 以前の${hidden}件`}</Text>] : []
+    const empty = entries.length === 0 ? [<Text color={palette.muted}>まだ手順はありません</Text>] : []
 
     const companies = companiesOf(exchanges.peers)
     const right = exchanges.unknown
-      ? <Text key="exchange-unknown" color="gray">未確認</Text>
-      : companies.map(c => <Text key={`company-${c.provider}`} color={c.color}>{`${companyName(c.provider)} ${c.count}${c.color === 'gray' ? ' 未確認' : ''} `}</Text>)
+      ? <Text key="exchange-unknown" color={palette.muted}>未確認</Text>
+      : companies.map(c => <Box key={`company-${c.provider}`} flexDirection="row" alignItems="center" backgroundColor={palette.badge} borderStyle="round" borderColor={palette.badge} paddingX={1}>
+          {logo(c.provider, c.color, `badge-logo-${c.provider}`)}
+          <Text key={`count-${c.provider}`} color={c.color} bold>{` ${c.count}${c.color === palette.muted ? ' 未確認' : ''}`}</Text>
+        </Box>)
     const peerRows = exchanges.peers.map((peer, i) => {
       const last = latest(peer.exchanges)
       const state = exchanges.unknown ? UNKNOWN : last
       const snippet = last.direction === 'outbound' ? exchanges.snippets.get(last.id) : undefined
-      return <Box key={`peer-${i}`} flexDirection="row">
-        <Text wrap="truncate-end">{printable(`${peerLabel(peer)} / ${snippet ?? '本文は保存していません'} / `, 240)}</Text>
+      return <Box key={`peer-${i}`} flexDirection="row" alignItems="center" columnGap={1}>
+        {logo(peer.provider, state.color, `peer-logo-${i}`)}
+        <Box flexGrow={1} flexShrink={1}><Text color={palette.text} wrap="truncate-end">{printable(`${peerLabel(peer)}　「${snippet === undefined ? '本文は保存していません' : snippet + '…'}」`, 240)}</Text></Box>
         <Text color={state.color}>{state.label}</Text>
       </Box>
     })
 
     const body = isOpen
-      ? [
-          <Box key="history" flexDirection="column" marginTop={1}>
+      ? <Box key="details" flexDirection="column" paddingX={1} paddingBottom={1}>
+          <Box key="divider" height={0.0625} width="100%" backgroundColor={palette.divider} />
+          <Box key="history" flexDirection="column">
+            <Text color={palette.muted}>この会話</Text>
             {earlier}
             {historyRows}
             {empty}
-          </Box>,
-          <Box key="exchanges" flexDirection="column">
+            {isWorking ? <Box key="current-step" flexDirection="row">
+              <Text color={palette.active}>{'● '}</Text>
+              <Box flexGrow={1} flexShrink={1}><Text color={palette.text} wrap="truncate-end">{printable(headline.label, MAX_LABEL_CHARS)}</Text></Box>
+              <Text color={palette.muted}>{elapsed}</Text>
+            </Box> : null}
+          </Box>
+          {teamBox}
+          <Box key="exchanges" flexDirection="column" marginTop={1}>
+            <Text color={palette.muted}>やりとり</Text>
             {peerRows}
-            <Text dimColor>回数は直近24時間の記録。送信は相手ごと最大10件、受信は全体で最大10件のため頭打ちになります。</Text>
-          </Box>,
-        ]
-      : []
+            <Text color={palette.muted}>回数は直近24時間の記録。送信は相手ごと最大10件、受信は全体で最大10件のため頭打ちになります。</Text>
+          </Box>
+        </Box>
+      : null
 
     return (
       <Box flexDirection="column">
-        <Box
-          flexDirection="column"
-          borderStyle="round"
-          borderColor="gray"
-          backgroundColor="#202124"
-          width="100%"
-          paddingX={1}
-          alignSelf="flex-start"
-        >
-          <Box key="activity" flexDirection="row">
-            <Button
-              key="toggle"
-              plain
-              label={isOpen ? '▾' : '▸'}
-              onPress={() => update($, isExpanded, open => !open)}
-            />
-            {/* On a narrow screen only the label gives way: the rest would wrap. */}
-            <Box flexShrink={0}>
-              <Text color={color}>{isWorking ? ' ● ' : ' ○ '}</Text>
-              <Text bold>Claude: </Text>
+        <Box key="band" flexDirection="column" borderStyle="round" borderColor={palette.background} backgroundColor={palette.background} width="100%" alignSelf="flex-start">
+          <Box key="activity" flexDirection="row" alignItems="center" minHeight={e.surface === 'desktop' ? 2.125 : 1} paddingX={1.5}>
+            <Box>
+              <Button key="toggle" plain dimColor label={isOpen ? '▾' : '▸'} onPress={() => update($, isExpanded, open => !open)} />
             </Box>
-            <Box flexGrow={1} flexShrink={1}>
-              <Text wrap="truncate-end">{printable(headline.label, MAX_LABEL_CHARS)}</Text>
+            <Text key="live-dot" color={isWorking ? palette.active : palette.muted}>{' ● '}</Text>
+            <Box flexGrow={1} flexShrink={1} flexDirection="row">
+              <Text key="headline" bold color="#fff" wrap="truncate-end">{printable(title, MAX_LABEL_CHARS)}</Text>
+              <Text key="supplement" color={palette.muted} wrap="truncate-end">{`${purpose ? ` · ${printable(purpose, MAX_LABEL_CHARS)}` : ''} · ${elapsed}`}</Text>
             </Box>
-            <Box flexShrink={0}>
-              <Text dimColor>{elapsed}</Text>
-            </Box>
-            <Box key="companies" flexDirection="row" flexShrink={0} marginLeft={2}>{right}</Box>
+            <Box key="companies" flexDirection="row" flexShrink={0} columnGap={1} marginLeft={1}>{right}</Box>
           </Box>
-          {teamBox}
           {body}
         </Box>
         {below}

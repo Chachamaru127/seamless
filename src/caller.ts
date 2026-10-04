@@ -4,6 +4,7 @@ import {promisify} from 'node:util';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {realpath,readdir,stat} from 'node:fs/promises';
+import {readPrivateJson,writePrivateJson} from './limits.ts';
 import {command,findClaudeIdentityByPid} from './native-runtime.ts';
 import {codexIdentity,type SessionIdentity,type ScanOptions} from './sessions-scan.ts';
 export type Caller=SessionIdentity&{source:'claude-ancestor'|'codex-turn-metadata'};
@@ -20,24 +21,40 @@ async function knownCodex(executable:string,locations:()=>Promise<string[]>):Pro
  const known=await Promise.all((await locations()).map(path=>realpath(path).catch(()=>null)));
  return known.includes(actual);
 }
-export type SignatureVerifier=(path:string)=>Promise<string|null>;
+export type SignatureTeam='2DC432GLL2'|'Q6L2SF6YDW';
+export type SignatureVerifier=(path:string,team:SignatureTeam)=>Promise<string|null>;
 const runSignature=promisify(execFile);
 export function createSignatureVerifier(run:(file:string,args:string[],options:{timeout:number})=>Promise<unknown>=runSignature):SignatureVerifier{
- return async path=>{
-  for(const team of ['2DC432GLL2','Q6L2SF6YDW']){
-   try{await run('/usr/bin/codesign',['--verify','--strict',`-R=anchor apple generic and certificate leaf[subject.OU] = "${team}"`,path],{timeout:5000});return team;}catch{}
-  }
-  return null;
+ return async(path,team)=>{
+  try{await run('/usr/bin/codesign',['--verify','--strict',`-R=anchor apple generic and certificate leaf[subject.OU] = "${team}"`,path],{timeout:5000});return team;}catch{return null;}
  };
 }
 export const verifySignature=createSignatureVerifier();
-const signatureCache=new WeakMap<SignatureVerifier,Map<string,Promise<string|null>>>();
-async function signed(path:string,provider:'claude'|'codex',verify:SignatureVerifier){
+const signatureFields=['dev','ino','size','mtimeMs','ctimeMs'] as const;
+type SignatureEntry=Pick<Awaited<ReturnType<typeof stat>>,typeof signatureFields[number]>&{team:SignatureTeam;at:number};
+type SignatureCache=Record<string,SignatureEntry>;
+function validSignatureCache(value:unknown):value is SignatureCache{
+ return !!value&&typeof value==='object'&&!Array.isArray(value)&&Object.entries(value).every(([path,v])=>path.startsWith('/')&&v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')==='at,ctimeMs,dev,ino,mtimeMs,size,team'&&[...signatureFields,'at'].every(k=>typeof v[k]==='number'&&Number.isFinite(v[k]))&&['2DC432GLL2','Q6L2SF6YDW'].includes(v.team));
+}
+export async function signed(path:string,provider:'claude'|'codex',verify:SignatureVerifier,home:string,now=Date.now()){
  try{
-  path=await realpath(path);const info=await stat(path);const key=JSON.stringify([path,info.mtimeMs]);
-  let cache=signatureCache.get(verify);if(!cache){cache=new Map();signatureCache.set(verify,cache);}
-  let result=cache.get(key);if(!result){result=verify(path).catch(()=>null);cache.set(key,result);}
-  return await result===(provider==='codex'?'2DC432GLL2':'Q6L2SF6YDW');
+  path=await realpath(path);const info=await stat(path);
+  const team=provider==='codex'?'2DC432GLL2':'Q6L2SF6YDW';
+  const cachePath=join(home,'.seamless','signature-cache.json');
+  const read=await readPrivateJson(cachePath,validSignatureCache);
+  const fresh=(entry:SignatureEntry)=>entry.at<=now&&now-entry.at<=86400000;
+  const matches=(entry:Pick<SignatureEntry,typeof signatureFields[number]>)=>signatureFields.every(k=>entry[k]===info[k]);
+  const old=read.status==='ok'?read.value[path]:undefined;
+  if(old&&old.team===team&&fresh(old)&&matches(old))return true;
+  if(await verify(path,team)!==team)return false;
+  // Do not persist a result for a binary replaced or modified during verification.
+  if(!matches(await stat(path)))return false;
+  if(read.status!=='unusable'){
+   const next:SignatureCache=Object.fromEntries(Object.entries(read.status==='ok'?read.value:{}).filter(([,entry])=>fresh(entry)));
+   next[path]={dev:info.dev,ino:info.ino,size:info.size,mtimeMs:info.mtimeMs,ctimeMs:info.ctimeMs,team,at:now};
+   await writePrivateJson(next,read.hash,cachePath,validSignatureCache).catch(()=>{});
+  }
+  return true;
  }catch{return false;}
 }
 export async function processInfo(pid:number):Promise<Ancestor|null>{
@@ -55,8 +72,8 @@ export async function identifyCaller(context:{kind:'cli'|'mcp';meta?:unknown},op
    if(seen.has(current.ppid))break;seen.add(current.ppid);
    current=await inspect(current.ppid);if(!current)break;
    const n=await findClaudeIdentityByPid(current.pid,home,{...options,...options.claude},true);
-   if(n){if(!await signed(current.executable,'claude',options.signature??verifySignature))return fail('signature_untrusted');if(!isClaudeVersionAllowed(n.version??'unknown',{...options,...options.claude}))return {status:'unsupported_version',reason:n.version??'unknown',version:n.version??'unknown'};return {status:'ok',caller:{...n,provider:'claude',source:'claude-ancestor'}};}
-   if(await knownCodex(current.executable,options.codexLocations??(()=>codexLocations(home)))){if(!await signed(current.executable,'codex',options.signature??verifySignature))return fail('signature_untrusted');codex=true;break;}
+   if(n){if(!await signed(current.executable,'claude',options.signature??verifySignature,home))return fail('signature_untrusted');if(!isClaudeVersionAllowed(n.version??'unknown',{...options,...options.claude}))return {status:'unsupported_version',reason:n.version??'unknown',version:n.version??'unknown'};return {status:'ok',caller:{...n,provider:'claude',source:'claude-ancestor'}};}
+   if(await knownCodex(current.executable,options.codexLocations??(()=>codexLocations(home)))){if(!await signed(current.executable,'codex',options.signature??verifySignature,home))return fail('signature_untrusted');codex=true;break;}
   }
   if(!codex)return fail('native_ancestor_missing');
   let id:unknown,source:Caller['source'];

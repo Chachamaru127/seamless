@@ -7,6 +7,7 @@
 | 保存先 | 保存する項目 | mode | 保持期間と削除 |
 |---|---|---|---|
 | `limits.json` | `version`、`exclude`（provider/nativeId/workspace）、`scope`、`operations`（read/send） | 0600 | 本人が変更または clear するまで |
+| `~/.seamless/signature-cache.json` | realpath をキーに dev、ino、size、mtimeMs、ctimeMs、team（合格したチーム）、at（検証時刻）。合格結果だけ | 0600 | 全 stat 項目とチームが一致し、検証から24時間以内だけ利用。次の保存で期限外を除外。呼出しがなければ残る。親は既存設定と同じ検査。`.signature-cache.json.<uuid>.tmp` から置換し、一時ファイルは finally で削除（強制終了では残る場合あり）。`signature-cache.json.lock` は既存設定と同じ排他処理中だけ保持 |
 | `seen.json` | 配列の provider、nativeId、generation、cwd、at | 0600 | 識別情報の比較対象は24時間。次の一覧で期限外を除外して書き換える。常駐削除はなく、呼出しがなければディスク上に残る |
 | `key` | 重複検知の HMAC-SHA256 用ランダム鍵32バイト。外部サービスの認証値ではない | 0600 | 自動失効なし。再起動後も同じ鍵で照合する |
 | `reservations/<sha256>.json` | hash、status、at。新方式では id、sender/recipient（id/provider/nativeId/generation/cwd）、任意の replyTo も保存 | 0600 | 自動削除なし。同じ依頼 ID の再配送を防ぐ。書込み前の再照合で拒否した予約だけ削除 |

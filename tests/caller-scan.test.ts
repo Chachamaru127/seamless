@@ -142,8 +142,8 @@ for(const team of [null,'WRONGTEAM1','2DC432GLL2'])test(`Codex signature team ${
  const f=await fixture(t);let calls=0;f.options.signature=async()=>{calls++;return team;};
  const context={kind:'mcp' as const,meta:{'x-codex-turn-metadata':{session_id:'codex-a'}}};
  assert.equal((await identifyCaller(context,f.options)).status,team==='2DC432GLL2'?'ok':'caller_unobserved');
- await identifyCaller(context,f.options);assert.equal(calls,1);
- const {utimes}=await import('node:fs/promises');await utimes(join(f.home,'codex'),new Date(),new Date(Date.now()+10000));await identifyCaller(context,f.options);assert.equal(calls,2);
+ await identifyCaller(context,f.options);assert.equal(calls,team==='2DC432GLL2'?1:2);
+ const {utimes}=await import('node:fs/promises');await utimes(join(f.home,'codex'),new Date(),new Date(Date.now()+10000));await identifyCaller(context,f.options);assert.equal(calls,team==='2DC432GLL2'?2:3);
 });
 for(const team of [null,'2DC432GLL2','Q6L2SF6YDW'])test(`Claude signature team ${team} is checked via injection`,async t=>{
  const f=await fixture(t);await f.save();f.options.signature=async()=>team;
@@ -168,7 +168,8 @@ for(const accepted of [null,'2DC432GLL2','Q6L2SF6YDW'])test(`codesign anchored r
   assert.match(args[2],/^-R=anchor apple generic and certificate leaf\[subject\.OU\] = "(2DC432GLL2|Q6L2SF6YDW)"$/);
   if(!accepted||!args[2].includes(accepted))throw Error('untrusted');
  });
- assert.equal(await verify('/fixture/app'),accepted);assert.equal(calls.length,accepted==='2DC432GLL2'?1:2);
+ for(const expected of ['2DC432GLL2','Q6L2SF6YDW'] as const){assert.equal(await verify('/fixture/app',expected),accepted===expected?expected:null);}
+ assert.equal(calls.length,2);
 });
 test('unobserved Claude caller version returns unsupported_version after identity validation',async t=>{
  const f=await fixture(t);await f.save({...f.record,version:'9.9.999'});

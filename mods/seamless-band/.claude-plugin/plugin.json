@@ -1,0 +1,24 @@
+{
+  "name": "seamless-band",
+  "version": "0.1.0",
+  "description": "Claude の現在の作業と seamless の相手ごとのやりとりを表示する帯",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "nodePath": {
+      "type": "string",
+      "title": "Node.js のパス",
+      "description": "seamless の照会に使う Node.js",
+      "default": "/Users/tachibanashuuta/.local/share/mise/installs/node/24/bin/node"
+    },
+    "repositoryPath": {
+      "type": "string",
+      "title": "seamless のリポジトリ",
+      "description": "空欄なら plugin のフォルダから2つ上",
+      "default": ""
+    }
+  },
+  "author": {
+    "name": "seamless contributors"
+  }
+}

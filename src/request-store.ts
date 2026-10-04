@@ -3,7 +3,7 @@ import {mkdir,open,link,unlink,readdir,lstat} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {createHmac,randomBytes,randomUUID} from 'node:crypto';
 export type RequestParty={id:string;provider:'claude'|'codex';nativeId:string;generation:string;cwd:string};
-export type RequestRecord={id:string;sender:RequestParty;recipient:RequestParty;replyTo?:string;at:number;hash:string;status:string};
+export type RequestRecord={id:string;sender:RequestParty;recipient:RequestParty;replyTo?:string;at:number;hash:string;payloadSha256?:string;status:string};
 export const DAY=86400000;
 export async function privateJson(path:string):Promise<any>{
  let file;try{file=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);const s=await file.stat();if(!s.isFile()||s.uid!==process.getuid?.()||(s.mode&0o777)!==0o600||s.size>16384)return null;return JSON.parse(await file.readFile('utf8'));}catch{return null;}finally{await file?.close();}

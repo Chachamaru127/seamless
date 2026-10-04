@@ -10,7 +10,7 @@ import { Registry, permitted } from './registry.ts';
 import { ContractError, object } from './protocol.ts';
 import type { Registration } from './protocol.ts';
 export type Envelope={id:string;sender:{id:string;nativeId:string;generation:string};recipient:{id:string;nativeId:string;generation:string};text:string;replyTo?:string};
-export type Receipt={status:'submitted'|'unknown'|'rejected';nativeMessageId?:string;reason?:string;version?:string};
+export type Receipt={status:'submitted'|'unknown'|'rejected';nativeMessageId?:string;payloadSha256?:string;reason?:string;version?:string};
 export type NativeAdapter={received?:(target:Registration)=>Promise<import("./inbound.ts").Received[]>;sentIds?:(target:Registration,ids:string[],recipient:Pick<Registration,'provider'|'nativeId'>)=>Promise<string[]>;structure?:(target:Registration)=>Promise<StructureItem[]>;inbound?:(recipient:Registration)=>Promise<Envelope[]>;read:(target:Registration,options:{cursor?:string;limit?:number})=>Promise<unknown>;send:(target:Registration,envelope:Envelope,authorize?:()=>Promise<boolean>)=>Promise<Receipt>};
 export class Delivery {
  private tracking?:{keyPath:string;now?:()=>number};
@@ -89,7 +89,7 @@ export class Delivery {
   }
   // A lost process leaves pending; another process never retries that reservation.
   const temporary=path+'.'+randomUUID();let state;
-  try{state=await open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await state.writeFile(JSON.stringify({hash,status:receipt.status,at:Date.now(),...metadata}));await state.sync();await state.close();state=undefined;await rename(temporary,path);}catch{receipt={status:'unknown'};}finally{await state?.close();}
+  try{state=await open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await state.writeFile(JSON.stringify({hash,status:receipt.status,at:Date.now(),...metadata,...(receipt.payloadSha256?{payloadSha256:receipt.payloadSha256}:{})}));await state.sync();await state.close();state=undefined;await rename(temporary,path);}catch{receipt={status:'unknown'};}finally{await state?.close();}
   if(receipt.status==='rejected'&&!denied)denied=await this.validate?.()??null;
   return denied&&receipt.status==='rejected'?{status:denied}:receipt;
  }

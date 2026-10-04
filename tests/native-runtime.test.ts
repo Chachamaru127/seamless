@@ -55,11 +55,11 @@ import {readLimits,unrestricted} from '../src/limits.ts';
 for(const provider of ['claude','codex'] as const)for(const mark of [undefined,false,true,'legacy'] as const)test(`${provider} outbound envelope marker with markUnapproved=${String(mark)}`,async t=>{
  const home=await mkdtemp(join(tmpdir(),'marker-')),path=join(home,'limits.json');
  if(mark!==undefined&&mark!=='legacy')await fs.writeFile(path,JSON.stringify({...unrestricted,markUnapproved:mark}),{mode:0o600});
- let payload:Record<string,unknown>|undefined;
+ let payload:Record<string,unknown>|undefined,content:string|undefined;
  class Transport extends EventEmitter{
   destroyed=false;setTimeout(){return this;}destroy(){this.destroyed=true;return this;}end(){return this;}
   write(frame:string|Buffer,callback?:(error?:Error|null)=>void){
-   if(provider==='claude'){payload=JSON.parse(JSON.parse(String(frame)).message.content);callback?.();return true;}
+   if(provider==='claude'){content=JSON.parse(String(frame)).message.content;payload=JSON.parse(content!);callback?.();return true;}
    const bytes=frame as Buffer,request=JSON.parse(bytes.subarray(4).toString());
    if(request.method==='thread-follower-start-turn')payload=JSON.parse(request.params.turnStart.request.toolOutput.output);
    const body=Buffer.from(JSON.stringify({type:'response',requestId:request.requestId,handledByClientId:'owner',resultType:'success',result:request.method==='initialize'?{clientId:'client'}:{}}));
@@ -79,6 +79,8 @@ for(const provider of ['claude','codex'] as const)for(const mark of [undefined,f
  const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',claudeVersion:async()=>'2.1.284',codexIdentity:identity,claudeIdentity:identity,...(mark==='legacy'?{}:{markUnapproved:async()=>{const l=await readLimits(path);return l.status==='ok'&&l.value.markUnapproved===true;}})});
  const receipt=await adapter.send(target,{id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'test'});
  assert.equal(receipt.status,'submitted');assert.ok(payload);
+ const {createHash}=await import('node:crypto');
+ assert.equal(receipt.payloadSha256,provider==='claude'?createHash('sha256').update(content!).digest('hex'):undefined);
  assert.equal(Object.hasOwn(payload,'humanApproval'),mark===true);
  if(mark===true)assert.equal(payload.humanApproval,false);
 });

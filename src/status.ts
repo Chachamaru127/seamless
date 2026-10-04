@@ -1,7 +1,7 @@
 import {ContractError,type Registration} from './protocol.ts';
 import {requests,DAY,type RequestRecord,type RequestParty} from './request-store.ts';
 import type {NativeAdapter} from './delivery.ts';
-export type StructureItem={id:string;type:string;at:string|null;turnId?:string;position?:number;parentUuid?:string|null;peer?:{id:string;replyTo?:string;sender?:{provider:string;nativeId:string}}};
+export type StructureItem={id:string;type:string;at:string|null;payloadSha256?:string;turnId?:string;position?:number;parentUuid?:string|null;peer?:{id:string;replyTo?:string;sender?:{provider:string;nativeId:string}}};
 export type Stage={stage:'accepted'|'reached'|'processing'|'replied'|'unknown';status:'observed'|'unobserved';evidence:string[];at:string|null};
 export type StatusClock={now:()=>number;sleep:(ms:number)=>Promise<void>};
 const clock:StatusClock={now:Date.now,sleep:ms=>new Promise(resolve=>setTimeout(resolve,ms))};
@@ -23,6 +23,10 @@ export function stages(record:RequestRecord,destination:StructureItem[],source:S
    }
    if(proof){mark('processing',[peer.id,proof.id],proof.at);break;}
   }
+ }
+ if(!peers.length&&record.recipient.provider==='claude'&&record.payloadSha256){
+  const queued=dest.find(n=>n.type==='enqueue'&&n.payloadSha256===record.payloadSha256);
+  if(queued)mark('reached',['queued:'+queued.id],queued.at);
  }
  const reply=src.find(n=>n.peer?.replyTo===record.id&&n.peer.sender?.provider===record.recipient.provider&&n.peer.sender.nativeId===record.recipient.nativeId);if(reply)mark('replied',[reply.id],reply.at);
  return result;

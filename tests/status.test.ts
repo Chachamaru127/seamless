@@ -177,3 +177,58 @@ test('Claude structure recognizes seamless declared sender',()=>{
  assert.equal(data[0].peer?.id,'request');assert.equal(data[0].peer?.sender?.nativeId,'a');
  assert.ok(!JSON.stringify(data).includes('PRIVATE BODY'));
 });
+
+test('track accepts valid scopes but rejects invalid scope and mixed send fields',async t=>{
+ const f=await fixture(t);await f.auto('send',{ticket:issueTicket(f.target),id:'request',text:'body'});
+ for(const scope of ['current_work','same_repository','any'])assert.equal((await f.auto('send',{track:'request',scope})).status,'ok');
+ for(const input of [{scope:'wrong'},{scope:null},{ticket:issueTicket(f.target)},{id:'other'},{text:'body'}])await assert.rejects(f.auto('send',{track:'request',...input}),{message:'invalid_params'});
+});
+
+test('MCP track treats wait_limit as normal and not_found as error',async t=>{
+ const f=await fixture(t);await f.auto('send',{ticket:issueTicket(f.target),id:'request',text:'body'});
+ const handle=createMcp({automatic:f.auto});
+ await handle({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18'}});await handle({jsonrpc:'2.0',method:'notifications/initialized'});
+ for(const [track,status,isError] of [['request','wait_limit',false],['missing','not_found',true]] as const){
+  const r:any=await handle({jsonrpc:'2.0',id:2,method:'tools/call',params:{name:'send',arguments:{track,waitSeconds:1}}});
+  assert.equal(JSON.parse(r.result.content[0].text).status,status);assert.equal(r.result.isError,isError);
+ }
+});
+
+test('Claude enqueue hash observes exact arrival only and never supplies inbound evidence',async()=>{
+ const {createHash}=await import('node:crypto');
+ const {projectClaude}=await import('../src/adapters/claude.ts');
+ const {receivedMetadata}=await import('../src/inbound.ts');
+ const at='2026-10-04T06:26:03.542Z';
+ const r={...record,recipient:party('b','claude'),payloadSha256:createHash('sha256').update(payload).digest('hex')};
+ const enqueue=(content:unknown,extra:object={})=>JSON.stringify({type:'queue-operation',operation:'enqueue',sessionId:'b',timestamp:at,content,...extra});
+ const exact=enqueue(payload),data=projectClaudeStructure([exact],'b');
+ assert.deepEqual(data,[{id:'queue:'+at,type:'enqueue',at,payloadSha256:r.payloadSha256}]);
+ const result=stages(r,data,[],2000);
+ assert.deepEqual(observed(result),['accepted','reached']);
+ assert.deepEqual(result.find(s=>s.stage==='reached'),{stage:'reached',status:'observed',evidence:['queued:queue:'+at],at});
+ for(const line of [enqueue(payload+' '),enqueue('ordinary user text'),enqueue(payload.replace('request','another')),enqueue(payload,{sessionId:'other'}),enqueue(payload,{operation:'remove'}),enqueue({text:payload})]){
+  assert.deepEqual(observed(stages(r,projectClaudeStructure([line],'b'),[],2000)),['accepted']);
+  assert.deepEqual(receivedMetadata(projectClaude([line],'b')),[]);
+ }
+ assert.deepEqual(receivedMetadata(projectClaude([exact],'b')),[]);
+ assert.deepEqual(observed(stages({...r,payloadSha256:undefined},data,[],2000)),['accepted']);
+ assert.deepEqual(observed(stages({...r,recipient:party('b','codex')},data,[],2000)),['accepted']);
+ const attachment=JSON.stringify({type:'attachment',sessionId:'b',uuid:'peer',timestamp:at,attachment:{type:'queued_command',prompt:payload,source_uuid:'request',origin:{kind:'peer',from:'seamless'},timestamp:at}});
+ const both=projectClaudeStructure([exact,attachment],'b');
+ assert.deepEqual(stages(r,both,[],2000).find(s=>s.stage==='reached')?.evidence,['peer']);
+ assert.deepEqual(observed(stages({...r,payloadSha256:undefined},both,[],2000)),['accepted','reached']);
+ assert.deepEqual(projectClaudeStructure([exact,...Array(200).fill('{}')],'b'),[]);
+});
+
+test('delivery persists payload hash and restarted track reads it without plaintext',async t=>{
+ const {createHash}=await import('node:crypto');
+ const f=await fixture(t),target={...f.target,provider:'claude' as const};
+ const payloadSha256=createHash('sha256').update(payload).digest('hex');
+ const options={...f.options,inspect:async()=>target,adapter:{...f.options.adapter,send:async()=>({status:'submitted' as const,payloadSha256})}};
+ const auto=createAutomatic(options);
+ await auto('send',{ticket:issueTicket(target),id:'request',text:'PRIVATE BODY'});
+ const stored=await requests(join(f.home,'.seamless','reservations'));
+ assert.equal(stored[0].payloadSha256,payloadSha256);assert.ok(!JSON.stringify(stored).includes('PRIVATE BODY'));
+ f.setDestination(projectClaudeStructure([JSON.stringify({type:'queue-operation',operation:'enqueue',sessionId:'b',timestamp:'2026-10-04T06:26:03.542Z',content:payload})],'b'));
+ assert.deepEqual(observed((await createAutomatic(options)('send',{track:'request'})).stages),['accepted','reached']);
+});

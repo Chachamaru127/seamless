@@ -67,7 +67,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   if(options.compatTest&&(loaded.status!=='ok'||loaded.hash!==options.testLimitsHash))return {status:'compat_check_limits_changed'};
   const l=loaded.status==='ok'?loaded.value:unrestricted;
   const status=createStatus({dir:options.reservationDir??join(home,'.seamless','reservations'),adapter,caller:{...c,id:idOf(c)},clock:options.clock,canRead:async n=>{const current=await caller(context);if(current.status!=='ok'||idOf(current.caller)!==idOf(c)||current.caller.generation!==c.generation)return false;const limits=await readLimits(limitsPath);return limits.status!=='unusable'&&!await policy(n,c,limits.status==='ok'?limits.value:unrestricted,'read','any');}});
-  if(method==='send'&&input&&typeof input==='object'&&'track' in input){const p=object(input,['track','waitSeconds']);return status.track(p.track,p.waitSeconds);}
+  if(method==='send'&&input&&typeof input==='object'&&'track' in input){const p=object(input,['track','waitSeconds','scope']);scope(p.scope);return status.track(p.track,p.waitSeconds);}
   const keys=method==='sessions'?['operation','scope','target','includeOffline']:method==='select'?['operation','scope','target']:method==='read'?['target','scope','cursor','limit']:method==='send'?['ticket','id','text','replyTo','scope']:method==='revalidate'?['ticket','operation','scope']:[];
   if(!keys.length)throw new ContractError('unknown_method');
   const p=object(input??{},keys),s=scope(p.scope);

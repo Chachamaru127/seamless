@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {sentTo,type SendRecipient} from '../inbound.ts';
 import type {StructureItem} from '../status.ts';
 import {isClaudeVersionAllowed,type CompatibilityOptions} from '../compat.ts';
@@ -113,7 +114,12 @@ export function projectClaudeStructure(lines:string[],nativeId:string):Structure
  const result:StructureItem[]=[];
  for(const line of lines.filter(line=>line.trim()).slice(-200)){
   let r;try{r=JSON.parse(line);}catch{continue;}
-  if(r?.sessionId!==nativeId||r.isSidechain||typeof r.uuid!=='string')continue;
+  if(r?.sessionId!==nativeId||r.isSidechain)continue;
+  if(r.type==='queue-operation'&&r.operation==='enqueue'&&typeof r.content==='string'){
+   const at=typeof r.timestamp==='string'?r.timestamp:null;
+   result.push({id:'queue:'+at,type:'enqueue',at,payloadSha256:createHash('sha256').update(r.content).digest('hex')});continue;
+  }
+  if(typeof r.uuid!=='string')continue;
   const peer=projectClaude([line],nativeId).find(n=>n.role==='peer'&&['seamless','claudex'].includes(n.peer?.declaredSender??''))?.peer?.envelope;
   result.push({id:r.uuid,type:r.type,parentUuid:typeof r.parentUuid==='string'?r.parentUuid:null,at:typeof r.timestamp==='string'?r.timestamp:null,...(peer?{peer:{id:peer.id,sender:{provider:peer.sender.id.split(':')[0],nativeId:peer.sender.nativeId},...(peer.replyTo?{replyTo:peer.replyTo}:{})}}:{})});
  }

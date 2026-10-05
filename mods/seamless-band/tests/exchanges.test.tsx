@@ -401,15 +401,44 @@ test('a request is drawn as its way so far: sent, arrived, read, answered, with 
 
 test('changes between two looks become notices: taken up, answered, not delivered, received', () => {
   const sent = peers([staged({ reached: 1000 })])
-  expect(noticesOf(sent, peers([staged({ reached: 1000, processing: 2000 })]))).toEqual(['Codex が依頼を読み始めました'])
-  expect(noticesOf(peers([staged({ reached: 1000, processing: 2000 })]), peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]))).toEqual(['Codex が依頼に返信しました'])
+  expect(noticesOf(sent, peers([staged({ reached: 1000, processing: 2000 })]), new Set())).toEqual(['Codex が依頼を読み始めました'])
+  expect(noticesOf(peers([staged({ reached: 1000, processing: 2000 })]), peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]), new Set())).toEqual(['Codex が依頼に返信しました'])
   // An answer that also came here as a message is told once, as the message.
   const reply = { ...incoming('verified'), at: new Date(T + 3000).toISOString() }
-  expect(noticesOf(peers([staged({ processing: 2000 })]), peers([staged({ processing: 2000, replied: 3000 })], [reply]))).toEqual(['Codex から返信が届きました'])
-  expect(noticesOf([], peers([], [incoming('verified')]))).toEqual(['Codex から依頼が届きました'])
-  expect(noticesOf(sent, peers([{ ...staged({}), delivery: 'rejected', stages: [] }]))).toEqual(['Codex に依頼が届きませんでした'])
-  expect(noticesOf([], peers([{ ...staged({}), id: 'req2', delivery: 'rejected', stages: [] }]))).toEqual(['Codex に依頼が届きませんでした'])
-  expect(noticesOf(sent, sent)).toEqual([])
+  expect(noticesOf(peers([staged({ processing: 2000 })]), peers([staged({ processing: 2000, replied: 3000 })], [reply]), new Set())).toEqual(['Codex から返信が届きました'])
+  expect(noticesOf([], peers([], [incoming('verified')]), new Set())).toEqual(['Codex から依頼が届きました'])
+  expect(noticesOf(sent, peers([{ ...staged({}), delivery: 'rejected', stages: [] }]), new Set())).toEqual(['Codex に依頼が届きませんでした'])
+  expect(noticesOf([], peers([{ ...staged({}), id: 'req2', delivery: 'rejected', stages: [] }]), new Set())).toEqual(['Codex に依頼が届きませんでした'])
+  expect(noticesOf(sent, sent, new Set())).toEqual([])
+  // A request first met by the later look is told by where it stands.
+  expect(noticesOf([], peers([staged({ processing: 2000 })]), new Set())).toEqual(['Codex が依頼を読み始めました'])
+  expect(noticesOf([], peers([staged({ reached: 1000 })]), new Set())).toEqual([])
+  // A request and a message with the same id are two things.
+  const both = peers([staged({ processing: 2000 })], [{ ...incoming('verified'), id: 'req1' }])
+  expect(noticesOf(peers([staged({ processing: 2000 })]), both, new Set())).toEqual(['Codex から依頼が届きました'])
+  expect(noticesOf(both, both, new Set())).toEqual([])
+  // One reply seen first as an answer, then as a message, is told once.
+  const told = new Set<string>()
+  const answered = peers([staged({ processing: 2000, replied: 3000 })])
+  expect(noticesOf(peers([staged({ processing: 2000 })]), answered, told)).toEqual(['Codex が依頼に返信しました'])
+  expect(noticesOf(answered, peers([staged({ processing: 2000, replied: 3000 })], [reply]), told)).toEqual([])
+})
+
+test('a peer whose state is unknown is said neither running nor stopped', () => {
+  expect(peers([staged({})], [], 'unknown')[0]!.online).toBeNull()
+  expect(peersOf(JSON.stringify({ status: 'ok', candidates: [candidate([staged({})])], inbound: [] }))[0]!.online).toBeNull()
+})
+
+test('a failed look leaves the peer without a running state', async ($, on) => {
+  const { clock, state } = seat(on, { status: 'ok', candidates: [{ ...candidate([staged({ reached: 1000 })]), status: 'online' }], inbound: [] })
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'toggle' })
+  expect((await ui.find({ key: 'peer-0' }))?.text).toContain('動いている')
+  state.mode = 'failure'
+  await clock.advance(60000); await clock.settle()
+  expect((await ui.find({ key: 'peer-0' }))?.text).not.toContain('動いている')
+  expect((await ui.find({ key: 'peer-0' }))?.text).toContain('状態は未確認')
 })
 
 test('a change seen by a later look is told as a toast; the first look tells nothing', async ($, on) => {

@@ -417,7 +417,8 @@ test('six left states show Japanese labels and update elapsed seconds', async ($
     await clock.advance(1000)
     expect(await box.read()).toContain('承認を待っています')
     expect(await box.read()).toContain('テストを実行')
-    expect(await box.read()).toContain('3秒')
+    // A wait for the person counts from when it began, not from the call.
+    expect(await box.read()).toContain('1秒')
   }
   await $.tool.call({ tool: 'Bash', command: 'test', description: 'テストを実行' })
   await step($, 1)
@@ -815,4 +816,17 @@ test('without a plan the line names the stretch of work, the most of the last ca
   expect(await line()).toContain('相手とやりとりしている')
   expect(await line()).not.toContain('相手の会話を読む')
   void box
+})
+
+test('a subagent call counts in the stretch of work like any other call during a turn', async ($, on) => {
+  const { box } = seat(on, [])
+  const ui = await $.ui.mount(BAND)
+  const line = async () => (await ui.find({ key: 'activity' }))?.text ?? ''
+
+  await $.turn.start({ text: '帯を直す', turnId: 't1' })
+  for (const file of ['a.ts', 'b.ts', 'c.ts', 'd.ts']) await $.tool.call({ tool: 'Read', file_path: file })
+  box.onTool = async () => {
+    expect(await line()).toContain('調べている')
+  }
+  await $.tool.call({ tool: 'Agent', description: '差分を見る', prompt: 'x' } as Parameters<Engine['tool']['call']>[0])
 })

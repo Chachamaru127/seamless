@@ -74,6 +74,8 @@ type Call = {
   purpose: string
   startMs: number
   isAwaitingApproval: boolean
+  /** When the call began to wait for the person's approval; null while it does not. */
+  approvalMs: number | null
 }
 
 /**
@@ -135,7 +137,7 @@ type Live = {
  * @param on the engine's registrar
  */
 export const register: Register = (on, options) => {
-  const exchanges: ExchangeLive = { desktop: false, ended: false, peers: [], unknown: true, error: null, busy: false, pending: false, generation: 0, snippets: new Map(), seeded: false, poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
+  const exchanges: ExchangeLive = { desktop: false, ended: false, peers: [], unknown: true, error: null, busy: false, pending: false, generation: 0, snippets: new Map(), seeded: false, told: new Set(), poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
   const live: Live = {
     planStarts: new Map(),
     planEnds: new Map(),
@@ -187,6 +189,7 @@ export const register: Register = (on, options) => {
     exchanges.pending = false
     exchanges.snippets.clear()
     exchanges.seeded = false
+    exchanges.told.clear()
     exchanges.peers = []
     exchanges.unknown = true
     exchanges.poller?.cancel()
@@ -303,7 +306,7 @@ export const register: Register = (on, options) => {
 
     const startMs = await $.clock.now()
 
-    live.calls.set(e.tool_use_id, { tool: e.tool, label, purpose, startMs, isAwaitingApproval: false })
+    live.calls.set(e.tool_use_id, { tool: e.tool, label, purpose, startMs, isAwaitingApproval: false, approvalMs: null })
     live.stances = [...live.stances, stanceOf(e.tool, args)].slice(-STANCE_WINDOW)
     live.lastAction = label
     live.turnActions += 1
@@ -365,6 +368,7 @@ export const register: Register = (on, options) => {
 
       if (waiting) {
         waiting.isAwaitingApproval = true
+        waiting.approvalMs = await $.clock.now()
       }
     }
 
@@ -381,6 +385,7 @@ export const register: Register = (on, options) => {
 
     if (call?.isAwaitingApproval) {
       call.isAwaitingApproval = false
+      call.approvalMs = null
       $.clock.after(0, () => void publish($, live))
     }
 
@@ -606,7 +611,7 @@ export const register: Register = (on, options) => {
         <Box key={`peer-head-${i}`} flexDirection="row" alignItems="center" columnGap={1}>
           <Svg key={`peer-logo-${i}`} alt={companyName(peer.provider)} width={14} height={14} source={brandSvg(peer.provider)} />
           <Text key={`peer-name-${i}`} color={theme.text} bold>{companyName(peer.provider)}</Text>
-          <Box key={`peer-where-${i}`} flexGrow={1} flexShrink={1}><Text color={theme.subtle} wrap="truncate-end">{printable(` · ${where}${peer.online === null ? '' : peer.online ? ' · 動いている' : ' · 止まっている'}`, 120)}</Text></Box>
+          <Box key={`peer-where-${i}`} flexGrow={1} flexShrink={1}><Text color={theme.subtle} wrap="truncate-end">{printable(` · ${where}${peer.online === null || exchanges.unknown ? '' : peer.online ? ' · 動いている' : ' · 止まっている'}`, 120)}</Text></Box>
         </Box>
         {newest.map((x, j) => {
           const snippet = x.direction === 'outbound' ? exchanges.snippets.get(x.id) : undefined
@@ -698,7 +703,8 @@ function lineOf(headline: ActivityNow, entries: readonly ActivityEntry[], steps:
  */
 function stanceNow(live: Live, headline: ActivityNow): string {
   if (headline.phase === 'compacting') return '会話を整理している'
-  if (headline.phase === 'agent') return '子エージェントに任せている'
+  // Between turns, only background agents are at work.
+  if (headline.phase === 'agent' && live.turnStartMs === null) return '子エージェントに任せている'
   if (headline.phase === 'writing') return 'まとめている'
   if (live.stances.length === 0) return headline.phase === 'requesting' && live.isFirstRequest ? '指示を読んでいる' : '考えている'
   const counts = new Map<string, number>()
@@ -758,7 +764,7 @@ function current(live: Live): ActivityNow {
       return {
         phase: 'approval',
         label: `承認待ち: ${newest.label}${more}`,
-        sinceMs: newest.startMs,
+        sinceMs: newest.approvalMs ?? newest.startMs,
       }
     }
 
@@ -1167,6 +1173,8 @@ type ExchangeLive = {
   snippets: Map<string, string>
   /** Whether the exchanges were seen once since the reset: changes from then on are told by a toast. */
   seeded: boolean
+  /** The replies already told, so one reply seen first as an answer and then as a message is told once. */
+  told: Set<string>
   poller: Timer | null
   node: string
   repository: string
@@ -1189,7 +1197,7 @@ async function refresh($: EngineInterface, state: ExchangeLive): Promise<void> {
     if (result.exitCode !== 0) throw new Error(`終了コード ${result.exitCode}${result.stderr.trim() === '' ? '' : `: ${result.stderr.trim().split('\n')[0]}`}`)
     const peers = peersOf(result.stdout)
     // Each change after the first look is told once, as a toast: a request taken up, answered, refused, or a message received.
-    const notices = state.seeded ? noticesOf(state.peers, peers) : []
+    const notices = state.seeded ? noticesOf(state.peers, peers, state.told) : []
     state.peers = peers
     state.seeded = true
     state.unknown = false

@@ -58,6 +58,10 @@ function outbound(value: unknown): Exchange {
     times: { reached: when('reached'), processing: when('processing'), replied: when('replied') }, rejected: state.color === palette.red }
 }
 
+/** Whether a peer runs: online, or a status that says it does not; unknown and missing say nothing. */
+const onlineOf = (status: unknown): boolean | null =>
+  status === 'online' ? true : typeof status === 'string' && status !== 'unknown' ? false : null
+
 /** Parse only status metadata; do not retain the response's tickets or other fields. */
 export function peersOf(json: string): Peer[] {
   const data = object(JSON.parse(json))
@@ -67,7 +71,7 @@ export function peersOf(json: string): Peer[] {
   for (const c of candidates) {
     if (c.provider !== 'claude' && c.provider !== 'codex') continue
     peers.push({ provider: c.provider, nativeId: string(c.nativeId), generation: string(c.generation), cwd: string(c.cwd),
-      online: c.status === 'online' ? true : typeof c.status === 'string' ? false : null, exchanges: array(c.requests).map(outbound) })
+      online: onlineOf(c.status), exchanges: array(c.requests).map(outbound) })
   }
   for (const value of array(data.inbound)) {
     const r = object(value), from = object(r.from)
@@ -78,7 +82,7 @@ export function peersOf(json: string): Peer[] {
     let peer = peers.find(p => p.provider === provider && p.nativeId === nativeId)
     if (!peer) {
       peer = { provider, nativeId, generation: string(from.generation), cwd: matching ? string(matching.cwd) : '',
-        online: matching && typeof matching.status === 'string' ? matching.status === 'online' : null, exchanges: [] }
+        online: matching ? onlineOf(matching.status) : null, exchanges: [] }
       peers.push(peer)
     }
     if (r.sender !== 'verified' && r.sender !== 'declared') throw new Error('Invalid sender status')
@@ -202,17 +206,32 @@ export function focusOf(peers: Peer[], readSinceMs: number | null, nowMs: number
 /**
  * What changed between two looks at the exchanges, as notices for a toast:
  * a request taken up, answered, or not delivered, and a message received.
+ * A request first met by the later look is told by where it stands. A reply
+ * is told once, whether seen first as an answer or as a message: `told`
+ * keeps the replies already told, across looks.
  */
-export function noticesOf(before: Peer[], after: Peer[]): string[] {
-  const known = new Map(before.flatMap(peer => peer.exchanges.map(x => [`${peer.provider}:${peer.nativeId}:${x.id}`, x] as const)))
+export function noticesOf(before: Peer[], after: Peer[], told: Set<string>): string[] {
+  const keyOf = (peer: Peer, x: Exchange) => `${peer.provider}:${peer.nativeId}:${x.direction}:${x.id}`
+  const known = new Map(before.flatMap(peer => peer.exchanges.map(x => [keyOf(peer, x), x] as const)))
+  const once = (peer: Peer, at: number | null, notice: string): string[] => {
+    const key = `${peer.provider}:${peer.nativeId}:reply:${at}`
+    if (at !== null && told.has(key)) return []
+    if (at !== null) told.add(key)
+    return [notice]
+  }
   return after.flatMap(peer => peer.exchanges.flatMap(x => {
     const name = companyName(peer.provider)
-    const old = known.get(`${peer.provider}:${peer.nativeId}:${x.id}`)
-    if (x.direction === 'inbound') return old === undefined ? [isReply(peer, x) ? `${name} から返信が届きました` : `${name} から依頼が届きました`] : []
-    if (old === undefined) return x.rejected ? [`${name} に依頼が届きませんでした`] : []
-    if (x.rejected && !old.rejected) return [`${name} に依頼が届きませんでした`]
-    if (x.times.replied !== null && old.times.replied === null) return isReplyReceived(peer, x) ? [] : [`${name} が依頼に返信しました`]
-    if (x.times.processing !== null && old.times.processing === null) return [`${name} が依頼を読み始めました`]
+    const old = known.get(keyOf(peer, x))
+    if (x.direction === 'inbound') {
+      if (old !== undefined) return []
+      return isReply(peer, x) ? once(peer, x.at, `${name} から返信が届きました`) : [`${name} から依頼が届きました`]
+    }
+    if (x.rejected) return old?.rejected === true ? [] : [`${name} に依頼が届きませんでした`]
+    if (x.times.replied !== null && (old === undefined || old.times.replied === null)) {
+      // A reply also received here as a message is told as that message.
+      return isReplyReceived(peer, x) ? [] : once(peer, x.times.replied, `${name} が依頼に返信しました`)
+    }
+    if (x.times.processing !== null && (old === undefined || old.times.processing === null)) return [`${name} が依頼を読み始めました`]
     return []
   }))
 }

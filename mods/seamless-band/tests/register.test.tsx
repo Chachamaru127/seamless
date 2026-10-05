@@ -670,6 +670,9 @@ test('steps are said in plain Japanese: what the model wrote in English is not s
   expect(said('WebSearch', { query: '調査 ftp://DEMO_SECRET.example.co.uk' })).toBe('ウェブで調べる')
   expect(said('Bash', { command: 'bash scripts/verify.sh', description: 'verify.sh で試験を走らせる（3/7）' })).toBe('verify.sh で試験を走らせる（3/7）')
   expect(said('Agent', { description: 'Codex の判定を待つ' })).toBe('子エージェントに頼む: Codex の判定を待つ')
+  expect(said('Bash', { command: 'x', description: 'deploy.sh 123456 を実行する' })).toBe('コマンドを動かす')
+  expect(said('Grep', { pattern: '番号 123456' })).toBe('ファイルの中を探す')
+  expect(said('Agent', { description: 'deploy.sh 123456 を実行する' })).toBe('子エージェントに頼む')
   expect(said('WebSearch', { query: 'claude mods desktop' })).toBe('ウェブで調べる')
   expect(said('Agent', { description: 'Review the diff' })).toBe('子エージェントに頼む')
   expect(said('Agent', { description: '差分を見る' })).toBe('子エージェントに頼む: 差分を見る')
@@ -716,7 +719,7 @@ test('agents with English descriptions go by their handle or a fixed word', asyn
 test('a Japanese thought is quoted, an English one is not; replies count characters', async ($, on) => {
   const { box } = seat(on, [
     [{ kind: 'thinking', index: 0, text: '設定がおかしい。読み込みを先に見る。' }],
-    [{ kind: 'thinking', index: 0, text: '確認: `git status` を見る。' }],
+    [{ kind: 'thinking', index: 0, text: '確認: `deploy.sh 12` を見る。' }],
     [{ kind: 'text', index: 0, text: '直しました。読み込みは正常です。' }],
   ])
 
@@ -725,7 +728,7 @@ test('a Japanese thought is quoted, an English one is not; replies count charact
   await step($, 0)
   expect(box.seen.join(' ')).toContain('考えている: 設定がおかしい。 読み込みを先に見る。')
   await step($, 1)
-  expect(box.seen.join(' ')).not.toContain('git status')
+  expect(box.seen.join(' ')).not.toContain('deploy.sh')
   await step($, 2)
   expect(box.seen.join(' ')).toContain('返事を書いている / 16字')
   await $.turn.complete({ ...DONE, turnId: 't1' })
@@ -736,13 +739,25 @@ test('a thought is counted in characters in the history', async ($, on) => {
     [{ kind: 'thinking', index: 0, text: '設定を見る。' }],
     [{ kind: 'text', index: 0, text: '済み。' }],
   ])
+  const written: { kind: string; label: string }[][] = []
+
+  on('state.set', ($, e, next) => {
+    const { key, value } = e as unknown as { key: string; value: unknown }
+
+    if (key === 'history' && Array.isArray(value)) written.push(value as { kind: string; label: string }[])
+
+    return next(e)
+  })
   const ui = await mount($, box)
 
   await $.turn.start({ text: '確認', turnId: 't1' })
   await step($, 0)
   await step($, 1)
-  await ui.press({ key: 'toggle' })
-  expect(box.seen.join(' ') + ((await ui.find({ key: 'steps' }))?.text ?? '')).not.toContain('語')
+  const entries = written.flat()
+
+  expect(entries.find(entry => entry.kind === 'thought')?.label).toBe('考えた (6字)')
+  expect(entries.find(entry => entry.kind === 'reply')?.label).toBe('返事を書いた (3字)')
+  void ui
 })
 
 test('an agent the engine lists under an English sentence goes by a fixed word', async ($, on) => {

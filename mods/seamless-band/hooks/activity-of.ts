@@ -10,13 +10,14 @@ const JAPANESE = /[぀-ヿ㐀-鿿]/
  * numbers and marks with no letters. Anything else, a command, an address
  * or a key among them, sends the text back to a fixed phrase.
  */
-const FILE_NAME = /^[\w-]+\.(tsx?|jsx?|mjs|json|md|sh|py|html|css|txt|ya?ml|toml)$/
+const FILE_NAME = /^[A-Za-z_-][\w-]*\.(tsx?|jsx?|mjs|json|md|sh|py|html|css|txt|ya?ml|toml)$/
 const PRODUCT_NAMES = new Set(['Claude', 'Codex', 'GitHub', 'seamless', 'MCP', 'UI', 'PR'])
 
 function isAllowedLatin(run: string): boolean {
   const word = run.replace(/^[(\[「『"']+|[)\]」』"'.,:;!?、。]+$/g, '')
 
-  if (!/[A-Za-z]/.test(word)) return /^\d+\/\d+$/.test(word) || !/[/\\:@`$=<>|{}]/.test(run)
+  // Numbers up to three digits and n/m: a longer number may be an argument or a key.
+  if (!/[A-Za-z]/.test(word)) return /^\d{1,3}\/\d{1,3}$/.test(word) || (!/\d{4,}/.test(run) && !/[/\\:@`$=<>|{}]/.test(run))
 
   return FILE_NAME.test(word) || PRODUCT_NAMES.has(word)
 }

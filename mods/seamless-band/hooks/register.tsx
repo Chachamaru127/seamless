@@ -743,9 +743,11 @@ function current(live: Live): ActivityNow {
     case 'thinking': {
       // With no thought text to quote, the last action stands, the dot
       // turned to thinking's color; before any, the prompt is what it reads.
-      // The thought is quoted only when it is Japanese; English stays unsaid.
+      // The thought is quoted only as plain Japanese, judged before the
+      // snippet drops its marks: code in backquotes is never quoted.
       const snippet = thoughtOf(live.thought, MAX_THOUGHT_CHARS)
-      const label = snippet === '' ? standingLabel(live) : plainText(snippet) !== '' ? `考えている: ${snippet}` : '考えている'
+      const isQuotable = plainText(snippet) !== '' && !live.thought.slice(-MAX_THOUGHT_CHARS * 2).includes('`')
+      const label = snippet === '' ? standingLabel(live) : isQuotable ? `考えている: ${snippet}` : '考えている'
 
       return { phase: 'thinking', label, sinceMs }
     }

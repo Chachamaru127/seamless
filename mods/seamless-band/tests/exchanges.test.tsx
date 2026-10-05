@@ -528,3 +528,13 @@ test('the band does not step back when a later look misses a stage', async ($, o
   await ui.press({ key: 'toggle' })
   expect((await ui.find({ key: 'peer-0' }))?.text).not.toContain('読んでいる')
 })
+
+test('more than three changes in one look are told as two and a count of the rest', async ($, on) => {
+  const { clock, state } = seat(on, response([]))
+  const toasts: string[] = []
+  on('ui.toast', ($, e) => { toasts.push(e.text); return {} as never })
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  state.data = response([], ['m1', 'm2', 'm3', 'm4'].map((id, i) => ({ ...incoming('verified'), id, at: new Date(T + i * 1000).toISOString() })))
+  await clock.advance(60000); await clock.settle()
+  expect(toasts).toEqual(['Codex から依頼が届きました', 'Codex から依頼が届きました', 'ほか2件のやりとりの変化。帯を開くと見られます'])
+})

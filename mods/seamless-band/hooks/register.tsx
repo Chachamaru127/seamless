@@ -1204,7 +1204,9 @@ async function refresh($: EngineInterface, state: ExchangeLive): Promise<void> {
     state.peers = peers
     state.seeded = true
     state.unknown = false
-    for (const notice of notices.slice(0, 3)) $.ui.toast(notice)
+    // Three toasts at most a look; beyond that, two and one that counts the rest, so none is lost unsaid.
+    const shown = notices.length <= 3 ? notices : [...notices.slice(0, 2), `ほか${notices.length - 2}件のやりとりの変化。帯を開くと見られます`]
+    for (const notice of shown) $.ui.toast(notice)
     state.error = null
   } catch (error) {
     if (generation === state.generation) {

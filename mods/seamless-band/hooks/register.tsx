@@ -156,7 +156,7 @@ export const register: Register = (on, options) => {
 
     live.phaseStartMs = await $.clock.now()
     await publish($, live)
-    keepTicking($, live)
+    // The ticker starts on the first Desktop draw, so terminal and claude -p sessions never run it.
 
     return result
   })
@@ -448,6 +448,8 @@ export const register: Register = (on, options) => {
     if (e.surface !== 'desktop') return next(e)
     if (!exchanges.desktop && !exchanges.ended) {
       exchanges.desktop = true
+      desktopDrawn = true
+      keepTicking($, live)
       keepPolling($, exchanges)
       void refresh($, exchanges)
     }
@@ -837,7 +839,10 @@ async function sweepListed($: EngineInterface, live: Live, listed: readonly Agen
 /**
  * Keeps the elapsed time ticking, including while idle. Session end stops it.
  */
+let desktopDrawn = false
+
 function keepTicking($: EngineInterface, live: Live): void {
+  if (!desktopDrawn) return
   if (live.ticker === null) {
     live.ticker = $.clock.every(TICK_MS, () => {
       $.ui.invalidate('ui.render')

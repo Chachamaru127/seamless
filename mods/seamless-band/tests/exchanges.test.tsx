@@ -32,52 +32,63 @@ function seat(on: On, data: unknown) {
   return { clock, state }
 }
 
-for (const [name, requests, inbound, color, label] of [
-  ['processing', [request('processing')], [], '#38c68e', '既読'],
-  ['replied', [request('replied')], [], '#38c68e', '既読 · 返信あり'],
-  ['reached', [request('reached')], [], '#f9a437', '届いた · 未読'],
-  ['unknown', [request('unknown')], [], '#8d8b85', '未確認'],
-  ['pending', [request('pending')], [], '#8d8b85', '未確認'],
-  ['submitted', [request('submitted')], [], '#8d8b85', '未確認'],
-  ['unknown but processing observed', [request('unknown processing')], [], '#38c68e', '既読'],
-  ['unknown but replied observed', [request('unknown replied')], [], '#38c68e', '既読 · 返信あり'],
-  ['rejected but reached observed', [request('rejected reached')], [], '#f9a437', '届いた · 未読'],
-  ['missing delivery', [{ ...request('accepted'), delivery: undefined }], [], '#8d8b85', '未確認'],
-  ['rejected', [request('rejected')], [], '#fe3a52', '届かなかった'],
-  ['accepted', [request('accepted')], [], '#8d8b85', '未確認'],
-  ['unobserved processing', [request('unobserved processing')], [], '#8d8b85', '未確認'],
-  ['verified inbound', [], [incoming('verified')], '#38c68e', '受け取った'],
-  ['declared inbound', [], [incoming('declared')], '#8d8b85', '未確認'],
+for (const [name, requests, inbound, right, label] of [
+  ['processing', [request('processing')], [], '↑1', '既読'],
+  ['replied', [request('replied')], [], '↑1', '既読 · 返信あり'],
+  ['reached', [request('reached')], [], '↑1(1)', '届いた · 未読'],
+  ['unknown', [request('unknown')], [], '↑1(1)', '未確認'],
+  ['pending', [request('pending')], [], '↑1(1)', '未確認'],
+  ['submitted', [request('submitted')], [], '↑1(1)', '未確認'],
+  ['unknown but processing observed', [request('unknown processing')], [], '↑1', '既読'],
+  ['unknown but replied observed', [request('unknown replied')], [], '↑1', '既読 · 返信あり'],
+  ['rejected but reached observed', [request('rejected reached')], [], '↑1(1)', '届いた · 未読'],
+  ['missing delivery', [{ ...request('accepted'), delivery: undefined }], [], '↑1(1)', '未確認'],
+  ['rejected', [request('rejected')], [], '↑1', '届かなかった'],
+  ['accepted', [request('accepted')], [], '↑1(1)', '未確認'],
+  ['unobserved processing', [request('unobserved processing')], [], '↑1(1)', '未確認'],
+  ['verified inbound', [], [incoming('verified')], '↓1(1)', '受け取った'],
+  ['declared inbound', [], [incoming('declared')], '↓1(1)', '未確認'],
 ] as const) {
-  test(`right color table: ${name}`, async ($, on) => {
+  test(`right side tally: ${name}`, async ($, on) => {
     const { clock } = seat(on, response([...requests], [...inbound]))
     await $.session.start(START); await $.ui.mount(BAND)
     await clock.settle()
     const ui = await $.ui.mount(BAND)
-    const company = await ui.find({ type: 'Text', text: /^ [0-9]/ })
-    expect(company?.text).toContain(' 1')
-    expect(company?.props.color).toBe(color)
+    expect((await ui.find({ key: 'company-codex' }))?.text).toBe(right)
+    expect(await ui.find({ type: 'Text', text: '!' }) !== undefined).toBe(name === 'rejected')
     await ui.press({ key: 'toggle' })
     const peer = await ui.find({ key: 'peer-0' })
     expect(peer?.text).toContain('Codex · project')
     expect(peer?.text).toContain(label)
-    expect(peer?.text).toContain('本文は保存していません')
+    expect(peer?.text).not.toContain('本文は保存していません')
+    const problems = (await ui.find({ key: 'problems' }))?.text
+    if (name === 'rejected') expect(problems).toContain('Codex · project への依頼')
+    else expect(problems).toBeUndefined()
   })
 }
 
-test('company totals include both directions and newest exchange across peers decides color', async ($, on) => {
+test('received requests count as unread until the next turn begins', async ($, on) => {
+  // The test clock starts at 1,000,000 ms; the request arrived before it.
+  const { clock } = seat(on, response([], [{ ...incoming('verified'), at: '1970-01-01T00:00:00Z' }]))
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  const ui = await $.ui.mount(BAND)
+  expect((await ui.find({ key: 'company-codex' }))?.text).toBe('↓1(1)')
+  await clock.advance(1); await $.turn.start({ text: 'read it', turnId: 't' })
+  expect((await ui.find({ key: 'company-codex' }))?.text).toBe('↓1')
+})
+
+test('company totals include both directions and count what is not confirmed', async ($, on) => {
   const data = response([request('replied')], [incoming('verified')])
   data.candidates.push(candidate([{ ...request('reached'), at: '2026-10-04T10:00:00Z' }], 'codex', '87654321'))
   data.candidates.push(candidate([], 'claude'))
   const { clock } = seat(on, data)
   await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   const ui = await $.ui.mount(BAND)
-  expect((await ui.find({ type: 'Text', text: /^ [0-9]/ }))?.text).toContain(' 3')
-  expect((await ui.find({ type: 'Text', text: /^ [0-9]/ }))?.props.color).toBe('#f9a437')
+  expect((await ui.find({ key: 'company-codex' }))?.text).toBe('↑2(1)↓1(1)')
   expect(await ui.find({ key: 'company-claude' })).toBeUndefined()
   await ui.press({ key: 'toggle' })
-  expect((await ui.find({ key: 'exchanges' }))?.text).toContain('直近24時間')
-  expect((await ui.find({ key: 'exchanges' }))?.text).toContain('相手ごと最大10件')
+  expect((await ui.find({ key: 'exchanges' }))?.text).toContain('Codex · project')
+  expect((await ui.find({ key: 'exchanges' }))?.text).not.toContain('直近24時間')
 })
 
 for (const mode of ['failure', 'timeout', 'json', 'status', 'shape']) {
@@ -88,12 +99,16 @@ for (const mode of ['failure', 'timeout', 'json', 'status', 'shape']) {
     await $.turn.start({ text: 'work', turnId: 't' })
     const ui = await $.ui.mount(BAND)
     await clock.advance(2000)
-    expect((await ui.find({ type: 'Text', text: '未確認' }))?.props.color).toBe('#8d8b85')
-    expect((await ui.find({ type: 'Text', text: '未確認' }))?.text).toBe('未確認')
-    expect((await ui.find({ key: 'activity' }))?.text).toContain('指示を読んでいる · 2秒')
+    expect((await ui.find({ type: 'Text', text: '!' }))?.props.color).toBe('error')
+    await ui.press({ key: 'toggle' })
+    expect((await ui.find({ key: 'problems' }))?.text).toContain('やりとりの状態を確かめられなかった')
+    await ui.press({ key: 'toggle' })
+    expect((await ui.find({ key: 'activity' }))?.text).toContain('指示を読んでいる')
+    expect((await ui.find({ type: 'Text', text: '2秒' }))?.text).toBe('2秒')
     state.mode = 'ok'; state.data = response([request('replied')])
     await clock.advance(58000); await clock.settle()
-    expect((await ui.find({ type: 'Text', text: /^ [0-9]/ }))?.props.color).toBe('#38c68e')
+    expect((await ui.find({ key: 'company-codex' }))?.text).toBe('↑1')
+    expect(await ui.find({ type: 'Text', text: '!' })).toBeUndefined()
   })
 }
 
@@ -185,13 +200,13 @@ test('reset discards snippets and ignores an old query completing in the new con
   await $.classic.SessionStart({ source: 'clear' })
   const ui = await $.ui.mount(BAND)
   await clock.advance(10000); await clock.settle()
-  expect(await ui.find({ type: 'Text', text: '未確認' })).toBeDefined()
+  expect(await ui.find({ key: 'company-codex' })).toBeUndefined()
   state.delay = 0
   await clock.advance(50000); await clock.settle()
   await ui.press({ key: 'toggle' })
   const rows = (await ui.find({ key: 'exchanges' }))?.text ?? ''
   expect(rows).not.toContain('private preview')
-  expect(rows).toContain('本文は保存していません')
+  expect(rows).toContain('Codex · project')
 })
 
 test('failed refresh grays existing peer rows instead of showing stale green', async ($, on) => {
@@ -251,46 +266,45 @@ test('session end discards queued refresh without starting another query', async
   expect(state.calls.length).toBe(1)
 })
 
-for (const surface of ['desktop'] as const) test(`${surface} closed and expanded trees match the agreed band`, async ($, on) => {
+test('desktop band draws inside the app card with theme colors: purpose bold, action thin, marks and logos as Svg', async ($, on) => {
   const data = response([request('replied')])
   data.candidates.push(candidate([request('reached')], 'claude', 'claude-peer'))
   const { clock } = seat(on, data)
-  await $.session.start({ ...START, surface }); await $.ui.mount({ ...BAND, surface }); await clock.settle()
-  await $.turn.start({ text: '見本に合わせる', turnId: 'design' })
-  const ui = await $.ui.mount({ ...BAND, surface })
-  expect((await ui.find({ key: 'band' }))?.props).toMatchObject({ backgroundColor: '#1d1d1b', borderStyle: 'round' })
-  expect((await ui.find({ key: 'activity' }))?.props).toMatchObject({ flexDirection: 'row', paddingX: 1.5, minHeight: surface === 'desktop' ? 2.125 : 1 })
-  expect((await ui.find({ type: 'Text', text: '指示を読んでいる' }))?.props).toMatchObject({ bold: true, color: '#fff' })
-  expect((await ui.find({ type: 'Text', text: ' ● ' }))?.props.color).toBe('#8070f0')
-  expect((await ui.find({ type: 'Text', text: ' · 0秒' }))?.props.color).toBe('#8d8b85')
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  await $.turn.start({ text: '見本に合わせる。細部は後で', turnId: 'design' })
+  const ui = await $.ui.mount(BAND)
+  const band = (await ui.find({ key: 'band' }))?.props ?? {}
+  expect(band).not.toHaveProperty('backgroundColor')
+  expect(band).not.toHaveProperty('borderStyle')
+  expect((await ui.find({ type: 'Text', text: '見本に合わせる' }))?.props).toMatchObject({ bold: true, color: 'text' })
+  expect((await ui.find({ type: 'Text', text: /指示を読んでいる/ }))?.props).toMatchObject({ color: 'inactive' })
+  expect((await ui.find({ type: 'Text', text: /指示を読んでいる/ }))?.props.bold).not.toBe(true)
+  expect((await ui.find({ type: 'Text', text: '0秒' }))?.props.color).toBe('subtle')
+  const stateMark = await ui.find({ type: 'Svg' })
+  expect(stateMark?.props.source).toContain('#8070f0')
+  // The Desktop app drops an Svg whose alt is empty (2026-10-05, on screen).
+  expect(stateMark?.props.alt).toBe('作業中')
   expect(await ui.find({ key: 'details' })).toBeUndefined()
-  const companies = await ui.find({ key: 'companies' })
-  // The kit returns raw descendants; Text keys are intentionally absent there.
-  const badges = companies?.children as { type: string; props: Record<string, unknown>; children: { type: string; props: Record<string, unknown> }[] }[]
-  expect(badges.map(b => b.props.key)).toEqual(['company-codex', 'company-claude'])
-  for (const [index, color] of ['#38c68e', '#f9a437'].entries()) {
-    const badge = badges[index]
-    expect(badge.type).toBe('Box')
-    expect(badge.props).toMatchObject({ backgroundColor: '#2a2a27', borderStyle: 'round' })
-    expect(badge.children[1].props.color).toBe(color)
-    const logo = badge.children[0]
-    expect(logo.type).toBe(surface === 'desktop' ? 'Svg' : 'Text')
-    if (surface === 'desktop') {
-      expect(logo.props).toMatchObject({ width: 14, height: 14, alt: index === 0 ? 'Codex' : 'Claude' })
-      expect(logo.props.source).toContain(color)
-      expect(logo.props.source).toContain(index === 0 ? 'M12 3.2a4.4' : 'M13.8 4h3.1')
-    }
+  expect((await ui.find({ key: 'company-codex' }))?.text).toBe('↑1')
+  expect((await ui.find({ key: 'company-claude' }))?.text).toBe('↑1(1)')
+  for (const provider of ['codex', 'claude']) {
+    const badge = await ui.find({ key: `company-${provider}` })
+    expect(badge?.props).not.toHaveProperty('backgroundColor')
+    const logo = badge?.children[0] as { type: string; props: Record<string, unknown> }
+    expect(logo.type).toBe('Svg')
+    expect(logo.props).toMatchObject({ width: 13, height: 13, alt: provider === 'codex' ? 'Codex' : 'Claude' })
+    expect(logo.props.source).toContain('#8d8b85')
+    expect(logo.props.source).toContain(provider === 'codex' ? 'M12 3.2a4.4' : 'M13.8 4h3.1')
   }
+  expect((await ui.find({ type: 'Text', text: '↑1' }))?.props.color).toBe('inactive')
+  expect((await ui.find({ type: 'Text', text: '(1)' }))?.props.color).toBe('subtle')
   await ui.press({ key: 'toggle' })
-  expect((await ui.find({ key: 'divider' }))?.props.backgroundColor).toBe('#2e2e2b')
-  for (const text of ['この会話', 'やりとり']) expect((await ui.find({ type: 'Text', text }))?.props.color).toBe('#8d8b85')
-  expect((await ui.find({ key: 'history' }))?.text).toContain('› 見本に合わせる')
-  expect((await ui.find({ key: 'current-step' }))?.text).toContain('● 指示を読んでいる')
-  expect((await ui.find({ key: 'peer-0' }))?.text).toContain('Codex · project 「本文は保存していません」既読 · 返信あり')
+  expect((await ui.find({ key: 'goal' }))?.text).toContain('見本に合わせる。細部は後で')
+  for (const text of ['目的', 'やりとり']) expect((await ui.find({ type: 'Text', text }))?.props.color).toBe('subtle')
+  expect((await ui.find({ key: 'peer-0' }))?.text).toContain('Codex · project')
+  expect((await ui.find({ key: 'peer-0' }))?.text).toContain('既読 · 返信あり')
   expect((await ui.find({ key: 'peer-1' }))?.text).toContain('届いた · 未読')
-  const peer = await ui.find({ key: 'peer-0' })
-  expect((peer?.children[0] as { type: string }).type).toBe(surface === 'desktop' ? 'Svg' : 'Text')
-  if (surface === 'terminal') expect(await ui.find({ type: 'Svg' })).toBeUndefined()
+  expect(await ui.find({ key: 'plan' })).toBeUndefined()
   await ui.press({ key: 'toggle' })
   expect(await ui.find({ key: 'details' })).toBeUndefined()
 })

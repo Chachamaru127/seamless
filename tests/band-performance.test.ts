@@ -47,7 +47,7 @@ test('band overlaps peer inspection and status/inbound work, reuses structure on
  for(let i=0;i<2;i++){
   let timedOut=false;const timeout=setTimeout(()=>{timedOut=true;releaseInspections();releaseProofs();},20000);
   const result=await auto('band',{});clearTimeout(timeout);assert.equal(timedOut,false,'independent work must start before another operation finishes');
-  assert.deepEqual(inspections,['one','two']);assert.deepEqual(proofs,['one','two']);
+  assert.deepEqual([...inspections].sort(),['one','two']);assert.deepEqual([...proofs].sort(),['one','two']);
   assert.deepEqual(structures.sort(),['one','self','two']);assert.equal(result.inbound.every((r:{sender:string})=>r.sender==='verified'),true);
   reset();
  }

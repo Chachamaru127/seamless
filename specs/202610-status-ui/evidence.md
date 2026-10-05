@@ -89,3 +89,28 @@
 - 立花さんが `launchctl setenv CLAUDE_CODE_LOCAL_BINARY ~/.local/share/claude/versions/2.1.289` を実行し、Claude アプリを開き直した（11:30:55）。記録は「[CCD] Initialized with version 2.1.286」で、「LOCAL OVERRIDE」の行は出ず、この会話も claude-code/2.1.286 で動いた。
 - app.asar の該当箇所は、初期化の最後に `process.env.CLAUDE_CODE_LOCAL_BINARY` を式として読むだけで、`initLocalBinary` を呼ぶ処理が配布版には残っていない（開発版だけの経路と見られる）。リーダーは前日、この続きを読まずに方法 B を勧めた（誤り）。
 - 結論: Code タブに帯を出す手段は、Claude Code 2.1.287 以上を同梱した Desktop の配信を待つことだけ。環境変数は効果がないので `launchctl unsetenv CLAUDE_CODE_LOCAL_BINARY` で消してよい。
+
+## 2026-10-05 12時台: Code タブに帯は出ていた（訂正）
+
+- 立花さんの画面の撮影（12時台、この会話）: Code タブの入力欄のすぐ上に、暗い箱で「道具を使っている · Watch for 70 seconds whether the band query process runs · 23秒」と出ていた。帯の左半分（今していることと経過時間）は動いている。右半分（ロゴと回数）は出ていない。照会 `node src/cli.ts band` をこの会話から直接走らせると 2.0 秒で status ok、相手3つ、各 requests 0、inbound 0 だった。やりとりが0の会社は出さない仕様（AC3）なので、右半分が空なのは仕様どおり。
+- 帯の問い合わせも動いている: この会話の Claude Code（pid 81054、claude-code/2.1.286）の子として `/Users/tachibanashuuta/.local/share/mise/installs/node/24/bin/node .../seamless/src/cli.ts band`（帯の既定の node と同じ絶対パス）を観測した。Desktop で描かれた後だけ問い合わせを始める作りなので、`e.surface` が desktop で描かれたことの裏付けにもなる。
+- 原因の取り違え: 「mod は Claude Code 2.1.287 以上」（公式文書 plugins/mods overview）を、Desktop の中の 2.1.286 では mod が読み込まれないと読んだのは誤り。実測では 2.1.286 でも mod は読み込まれる。
+  - アプリの中の `claude-code/2.1.286/.../claude plugin test`（mod の無い場所）は `no hooks module to load`（文書の表で「読み込める」状態）。
+  - 同じ 2.1.286 で `plugin test mods/seamless-band` は 54 件 PASS、`plugin validate` も成功。
+  - 同じ 2.1.286 の `claude -p --debug` の記録に `hooks module seamless-band@seamless loaded (worker, environment 2, tier user)`。
+  - Desktop の記録（main.log 11:30:57）は「6 ~/.claude plugin(s) left to the CLI's own loader」。seamless-band は Desktop が渡すのではなく、中の Claude Code が ~/.claude の設定から自分で読む。
+  - 2.1.287 は「mod が既定で有効になった版」（troubleshoot の「Your version predates mods being on by default」）。2.1.286 は早期利用の版で、この Mac では有効だった（理由は未確認。早期利用の切替 CLAUDE_CODE_ENABLE_FUNCTION_HOOKS の既定値か、サーバー側の設定と見られる）。
+- リーダーは 10/4 から 10/5 午前まで、Code タブの画面を確かめずに「出ない」と報告していた。以後、表示の有無は実画面で確かめてから書く。
+- U7（実地）は進められる。残る確認: 右半分の色と回数（相手に依頼を送った後）、開いた状態。見た目の直し（U9）の材料: 閉じた状態の前に「•」の行頭の記号が残る、箱の上下の余白が大きい。
+
+## 2026-10-05 13時台: 第2版（立花さん「通知、進捗、目的から表示するべき情報を徹底的に洗練」、/team-design）
+
+- 実画面の確認用の行（G〜J、写しだけに入れた）の撮影: テーマの色の名前はライトで描き分けられる（text #0e0e0e、inactive #484745、subtle #7e7c76、success #0c5712、warning #673c0f、error #822124、claude #bd553b）。地を塗らず外枠だけの枠はアプリになじむ。Svg の線と明滅は描ける。主ボタンは黒い小さな四角。
+- 見本: リーダーの再現 HTML（out/design-v2/index.html、merged.html）と Ask Pro（ChatGPT 6 Pro、https://chatgpt.com/c/6ac324cb-f774-8320-ad7b-686ea991a5fc、記録 out/ask-pro/20261005-band-v2/）。統合案は Ask Pro の「目的を太字」と2列の開いた状態を取り、色付きの札の地と「確認」ボタン（帯は表示だけ、AC6）は取らなかった。
+- 立花さんの指示（13時台）で右上を `↑n(未確認) ↓n(未読)` と `!` に作り替えた。
+- リーダーは自分で画面を撮れない（computer-use が Claude アプリ自身の画面を拒否する）。品質の確認は、再現 HTML を内部ブラウザで撮って点検し、本物は立花さんの撮影で点検する（立花さん「自分でスクショとって品質チェックした？」への対応）。
+- 実画面の撮影（第2版の初回）で分かったこと: alt が空の Svg は描かれない（印が消えた）。見出しが行の束の中ほどに浮く。「0秒」が雑音。→ alt を付け、上揃え、1秒未満は出さない。
+- 判定（Codex gpt-6-astra、読み取り専用、別家系）: 1回目 FAIL（印の区別、計画の時間、計画の持ち越し、表示窓、n/m の不一致）→ 2回目 FAIL（表示窓が作業中を外す、未着手からの再開の時計）→ 3回目 FAIL（TodoWrite の不成功でも計画が変わる）→ 4回目 PASS（軽1件: 不成功の試験が拒否だけ → 拒否、失敗、中断の3つを試験に足した）。
+- 試験: `bash scripts/verify.sh` 実終了コード 0（本体 379、帯 66）。並列の開始順に頼っていた本体の試験 tests/band-performance.test.ts を、並べ替えて比べる形に直した（混んだときに順番が入れ替わって落ちた）。Codex パネルの写し src/status-exchanges.ts に talliesOf を同じ形で足した（同一性の試験）。
+- calls は前と同じ（ui、clock、state、agent.list、process.run）。
+- 残り: ダークの実画面の撮影と、閉じた帯と開いた帯の最終の撮影。やりとりがある状態（↑1(1) など）の実画面は、確認の依頼を1件送る了承が要る。

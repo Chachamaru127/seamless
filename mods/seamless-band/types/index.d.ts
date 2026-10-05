@@ -45,6 +45,16 @@ export type ActivityEntry = {
   outcome: ActivityOutcome
 }
 
+/** One item of the turn's plan, as TodoWrite last set it. */
+export type ActivityPlanItem = {
+  label: string
+  status: 'pending' | 'in_progress' | 'completed'
+  /** When the item went in progress, while it is; null otherwise. */
+  startMs: number | null
+  /** How long it took, once completed; null otherwise. */
+  durationMs: number | null
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'seamless-band': {
@@ -52,6 +62,8 @@ declare module 'claude-code' {
       history: readonly ActivityEntry[]
       agents: readonly ActivityAgent[]
       isExpanded: boolean
+      goal: string
+      plan: readonly ActivityPlanItem[]
     }
   }
 }

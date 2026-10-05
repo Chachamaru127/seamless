@@ -95,3 +95,36 @@ export function peerLabel(peer: Peer): string {
   const folder = printable(peer.cwd, 1000).split(/[\\/]/).filter(Boolean).pop() || '作業場所は未確認'
   return `${companyName(peer.provider)} · ${folder}`
 }
+
+/** One company's tally for the band's right side: sent, received, and what is not yet confirmed. */
+export type Tally = {
+  provider: Peer['provider']
+  up: number
+  upPending: number
+  down: number
+  downUnread: number
+  problems: Exchange[]
+}
+
+/**
+ * Counts per company: `up` the requests this session sent, `upPending` those
+ * whose arrival or reading is not confirmed, `down` the requests it received,
+ * `downUnread` those that came after the last turn began (not yet read), and
+ * `problems` the requests that did not arrive.
+ */
+export function talliesOf(peers: Peer[], readSinceMs: number | null): Tally[] {
+  return (['codex', 'claude'] as const).flatMap(provider => {
+    const exchanges = peers.filter(p => p.provider === provider).flatMap(p => p.exchanges)
+    if (exchanges.length === 0) return []
+    const sent = exchanges.filter(e => e.direction === 'outbound')
+    const received = exchanges.filter(e => e.direction === 'inbound')
+    return [{
+      provider,
+      up: sent.length,
+      upPending: sent.filter(e => e.color !== palette.green && e.color !== palette.red).length,
+      down: received.length,
+      downUnread: received.filter(e => e.at === null || readSinceMs === null || e.at > readSinceMs).length,
+      problems: sent.filter(e => e.color === palette.red),
+    }]
+  })
+}

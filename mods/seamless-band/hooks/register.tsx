@@ -1,5 +1,5 @@
-import { palette, logoSvg } from './appearance'
-import { peersOf, companiesOf, latest, peerLabel, companyName, UNKNOWN } from './exchanges'
+import { logoSvg, marks, stateTone, theme, tone } from './appearance'
+import { peersOf, talliesOf, latest, peerLabel, companyName, UNKNOWN } from './exchanges'
 import type { Peer } from './exchanges'
 import { atom, read, update } from 'claude-code'
 import type { AgentInfo, EngineInterface, Register, Timer, TurnCompleteReason, TurnStepChunk } from 'claude-code'
@@ -9,6 +9,7 @@ import type {
   ActivityEntry,
   ActivityNow,
   ActivityOutcome,
+  ActivityPlanItem,
 } from '../types'
 import { activityOf, partialArgsOf } from './activity-of'
 import { clip, durationOf, oneLine, printable, sizeOf, thoughtOf, wordsAdded } from './text'
@@ -20,7 +21,6 @@ const IDLE: ActivityNow = {
 }
 
 const MAX_HISTORY = 100
-const MAX_HISTORY_ROWS = 12
 const MAX_THOUGHT_CHARS = 70
 const MAX_THOUGHT_BUFFER = 2000
 const MAX_INPUT_HEAD = 4000
@@ -28,6 +28,13 @@ const LARGE_INPUT_CHARS = 1024
 const MAX_LABEL_CHARS = 120
 const MAX_AGENT_NAME_CHARS = 40
 const MAX_AGENT_ROWS = 6
+const TOOL_PREFIX = '道具を使っている: '
+const MAX_GOAL_CHARS = 400
+const MAX_MACRO_CHARS = 18
+const MAX_PLAN_ROWS = 6
+const MAX_STEP_ROWS = 5
+const MAX_PLAN_ITEMS = 100
+const MAX_GOAL_SHOWN = 100
 const STREAM_THROTTLE_MS = 250
 const TICK_MS = 1000
 
@@ -48,12 +55,12 @@ const isExpanded = atom(
   false,
 )
 
-const OUTCOME_MARKS: Record<ActivityOutcome, { mark: string; color: string }> = {
-  ok: { mark: '✓', color: palette.green },
-  error: { mark: '✗', color: palette.red },
-  denied: { mark: '⊘', color: palette.orange },
-  interrupted: { mark: '■', color: palette.muted },
-}
+const goal = atom({ plugin: 'seamless-band', key: 'goal' } as const, '')
+
+const plan = atom(
+  { plugin: 'seamless-band', key: 'plan' } as const,
+  [] as readonly ActivityPlanItem[],
+)
 
 /** What the model is doing in the main loop, between and around tool calls. */
 type ModelPhase = 'idle' | 'requesting' | 'thinking' | 'writing' | 'composing' | 'compacting'
@@ -86,7 +93,10 @@ type Agent = {
  * started over on a reload, while the headline and history in `$.state` stay.
  */
 type Live = {
-  todoPurpose: string
+  planStarts: Map<string, number>
+  planEnds: Map<string, number>
+  planSeen: Map<string, ActivityPlanItem['status']>
+  readSinceMs: number | null
   calls: Map<string, Call>
   agents: Map<string, Agent>
   agentNames: Map<string, string>
@@ -123,9 +133,12 @@ type Live = {
  * @param on the engine's registrar
  */
 export const register: Register = (on, options) => {
-  const exchanges: ExchangeLive = { desktop: false, ended: false, peers: [], unknown: true, busy: false, pending: false, generation: 0, snippets: new Map(), poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
+  const exchanges: ExchangeLive = { desktop: false, ended: false, peers: [], unknown: true, error: null, busy: false, pending: false, generation: 0, snippets: new Map(), poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
   const live: Live = {
-    todoPurpose: '',
+    planStarts: new Map(),
+    planEnds: new Map(),
+    planSeen: new Map(),
+    readSinceMs: null,
     calls: new Map(),
     agents: new Map(),
     agentNames: new Map(),
@@ -180,7 +193,6 @@ export const register: Register = (on, options) => {
     live.ticker = null
     live.trailing?.cancel()
     live.trailing = null
-    live.todoPurpose = ''
     live.calls.clear()
     live.agents.clear()
     live.agentNames.clear()
@@ -217,6 +229,12 @@ export const register: Register = (on, options) => {
 
     if (prompt !== '') {
       await remember($, { kind: 'turn', label: clip(prompt, 60), durationMs: null, outcome: 'ok' })
+    }
+    live.readSinceMs = live.turnStartMs
+    if (prompt !== '' && !prompt.startsWith('<')) {
+      await update($, goal, () => printable(prompt, MAX_GOAL_CHARS))
+      // A new request starts a new piece of work: a plan already finished belongs to the last one.
+      await update($, plan, items => items.every(item => item.status === 'completed') ? [] : items)
     }
 
     await enter($, live, 'requesting')
@@ -259,10 +277,8 @@ export const register: Register = (on, options) => {
       exchanges.snippets.set(args.id, Array.from(args.text).slice(0, 40).join(''))
     }
     const label = activityOf(e.tool, args)
-    if (e.agentId === undefined && e.tool === 'TodoWrite' && Array.isArray(args.todos)) {
-      const active = args.todos.find((todo: unknown) => todo && typeof todo === 'object' && (todo as Record<string, unknown>).status === 'in_progress') as Record<string, unknown> | undefined
-      live.todoPurpose = typeof active?.activeForm === 'string' ? printable(active.activeForm, MAX_LABEL_CHARS) : ''
-    }
+    // The plan changes only when TodoWrite went through: a refused or failed call leaves it as it was.
+    const plannedTodos = e.agentId === undefined && e.tool === 'TodoWrite' && Array.isArray(args.todos) ? args.todos as unknown[] : null
     const purpose = typeof args.description === 'string' ? printable(args.description, MAX_LABEL_CHARS) : ''
 
     if (e.agentId !== undefined) {
@@ -295,6 +311,11 @@ export const register: Register = (on, options) => {
       const result = await next(e)
 
       outcome = result.deny !== undefined ? 'denied' : result.isError ? 'error' : 'ok'
+
+      if (plannedTodos !== null && outcome === 'ok') {
+        const items = planOf(live, plannedTodos, await $.clock.now())
+        await update($, plan, () => items)
+      }
 
       if (isAgentTool(e.tool)) {
         const args = e as unknown as Record<string, unknown>
@@ -467,131 +488,130 @@ export const register: Register = (on, options) => {
     const entries = await read($, history)
     const working = await read($, team)
     const isOpen = await read($, isExpanded)
+    const purpose = await read($, goal)
+    const steps = await read($, plan)
     const nowMs = await $.clock.now()
 
-    const isWorking = headline.phase !== 'idle'
     const elapsed = durationOf(nowMs - headline.sinceMs)
-    const call = [...live.calls.values()].at(-1)
-    const purpose = live.todoPurpose || call?.purpose || ''
-    const title = call?.purpose && headline.label.endsWith(call.label)
-      ? headline.label.slice(0, -call.label.length) + '道具を使っている'
-      : headline.label
-    const logo = (provider: Peer['provider'], color: string, key: string) => e.surface === 'desktop'
-      ? <Svg key={key} alt={companyName(provider)} width={14} height={14} source={logoSvg(provider, color)} />
-      : <Text key={key} color={color}>{companyName(provider)}</Text>
+    // An Svg needs words of its own (an empty alt is not drawn), which also name the mark for a screen reader.
+    const mark = (key: string, source: string) => <Svg key={key} alt={MARK_WORDS.get(source) ?? '印'} width={14} height={14} source={source} />
 
-    // One agent the headline names; more, or one beside the main loop's
-    // work, get a row each.
-    const isTeamListed = working.length > 1 || (working.length === 1 && headline.phase !== 'agent')
-    const listed = isTeamListed ? working.slice(-MAX_AGENT_ROWS) : []
-    const unlisted = isTeamListed ? working.length - listed.length : 0
+    // One line, three grains: the turn's purpose (bold, it holds still), the
+    // plan's step with n/m, and the action of the moment (thin, it changes).
+    const line = lineOf(headline, entries, steps, purpose, live.lastTurn)
+    const isAsking = line.mark === 'attn' && headline.phase !== 'idle'
+    const showsElapsed = headline.phase !== 'idle'
 
-    const agentRows = listed.map((agent, i) => (
-      <Box key={`agent-${i}`} flexDirection="row">
-        <Box flexShrink={0}>
-          <Text color={palette.active}>{'● '}</Text>
-        </Box>
-        <Text bold wrap="truncate-end">{printable(agent.name, MAX_AGENT_NAME_CHARS)}</Text>
-        <Text wrap="truncate-end">{` › ${printable(agent.label, MAX_LABEL_CHARS)}`}</Text>
-        <Box flexShrink={0}>
-          <Text color={palette.muted}>{`  ${durationOf(nowMs - agent.sinceMs)}`}</Text>
-        </Box>
+    // Right side, per company: ↑ sent and ↓ received, in parentheses those not
+    // yet confirmed (not reached or not read; received after the last turn
+    // began), and ! when something went wrong. Details are behind the triangle.
+    const tallies = talliesOf(exchanges.peers, live.readSinceMs)
+    const hasTrouble = exchanges.error !== null || tallies.some(t => t.problems.length > 0)
+    const count = (key: string, arrow: string, total: number, open: number) => total === 0 ? [] : [
+      <Text key={key} color={theme.meso}>{`${arrow}${total}`}</Text>,
+      ...(open > 0 ? [<Text key={`${key}-open`} color={theme.subtle}>{`(${open})`}</Text>] : []),
+    ]
+    const right = [
+      ...tallies.map(t => <Box key={`company-${t.provider}`} flexDirection="row" alignItems="center" columnGap={0.5}>
+        <Svg key={`badge-logo-${t.provider}`} alt={companyName(t.provider)} width={13} height={13} source={logoSvg(t.provider, t.problems.length > 0 ? tone.fail : tone.idle)} />
+        {count(`up-${t.provider}`, '↑', t.up, t.upPending)}
+        {count(`down-${t.provider}`, '↓', t.down, t.downUnread)}
+      </Box>),
+      ...(hasTrouble ? [<Text key="trouble" color={theme.error} bold>!</Text>] : []),
+    ]
+
+    const section = (key: string, label: string, rows: JSX.Element[]) => rows.length === 0 ? null : (
+      <Box key={key} flexDirection="row" alignItems="flex-start" columnGap={1.5} marginTop={0.5}>
+        <Box key={`${key}-k`} width={8} flexShrink={0}><Text color={theme.subtle} wrap="truncate-end">{label}</Text></Box>
+        <Box key={`${key}-v`} flexDirection="column" flexGrow={1} flexShrink={1}>{rows}</Box>
       </Box>
+    )
+    const item = (key: string, icon: string, text: string, tail: string, tone: { color: string; bold?: boolean }) => (
+      <Box key={key} flexDirection="row" alignItems="center" columnGap={1}>
+        {mark(`${key}-mark`, icon)}
+        <Box key={`${key}-text`} flexGrow={1} flexShrink={1}><Text color={tone.color} bold={tone.bold === true} wrap="truncate-end">{text}</Text></Box>
+        <Text key={`${key}-tail`} color={theme.subtle}>{tail}</Text>
+      </Box>
+    )
+
+    // Six rows at most, always holding the step in progress (or the next one).
+    const inProgress = steps.findIndex(step => step.status === 'in_progress')
+    const focus = inProgress >= 0 ? inProgress : Math.max(0, steps.findIndex(step => step.status !== 'completed'))
+    const first = Math.max(0, Math.min(focus - 2, steps.length - MAX_PLAN_ROWS))
+    const shownSteps = steps.slice(first, first + MAX_PLAN_ROWS)
+    const planRows = [
+      ...(first > 0 ? [<Text key="plan-before" color={theme.subtle}>{steps.slice(0, first).every(step => step.status === 'completed') ? `済み ${first}件` : `前に ${first}件`}</Text>] : []),
+      ...shownSteps.map((step, i) => step.status === 'completed'
+        ? item(`plan-${first + i}`, marks.tick, step.label, step.durationMs === null ? '' : tookOf(step.durationMs), { color: theme.subtle })
+        : step.status === 'in_progress'
+          ? item(`plan-${first + i}`, marks.live, step.label, step.startMs === null ? '' : durationOf(nowMs - step.startMs), { color: theme.text, bold: true })
+          : item(`plan-${first + i}`, marks.pending, step.label, '', { color: theme.subtle })),
+      ...(steps.length > first + shownSteps.length ? [<Text key="plan-more" color={theme.subtle}>{`ほか ${steps.length - first - shownSteps.length}件`}</Text>] : []),
+    ]
+
+    const recent = entries.filter(entry => entry.kind === 'tool' || entry.kind === 'compact').slice(-MAX_STEP_ROWS)
+    const stepRows = steps.length > 0 ? [] : recent.map((entry, i) => item(
+      `step-${i}`,
+      STEP_MARKS[entry.outcome],
+      printable(entry.label.split(TOOL_PREFIX).join(''), MAX_LABEL_CHARS),
+      tookOf(entry.durationMs),
+      { color: entry.outcome === 'error' ? theme.error : theme.meso },
     ))
 
-    const moreAgents = unlisted > 0 ? [<Text color={palette.muted}>{`… ほか${unlisted}個の子エージェント`}</Text>] : []
+    // One agent the line already names; more, or one beside the main loop's work, get a row each.
+    const isTeamListed = working.length > 1 || (working.length === 1 && headline.phase !== 'agent')
+    const agentRows: JSX.Element[] = (isTeamListed ? working : []).slice(-MAX_AGENT_ROWS).map((agent, i) => item(
+      `agent-${i}`, marks.live,
+      `${printable(agent.name, MAX_AGENT_NAME_CHARS)} › ${printable(agent.label.split(TOOL_PREFIX).join(''), MAX_LABEL_CHARS)}`,
+      durationOf(nowMs - agent.sinceMs), { color: theme.meso },
+    ))
 
-    const teamBox = isTeamListed
-      ? [
-          <Box key="agents" flexDirection="column">
-            {agentRows}
-            {moreAgents}
-          </Box>,
-        ]
-      : []
+    if (isTeamListed && working.length > MAX_AGENT_ROWS) {
+      agentRows.push(<Text key="agents-more" color={theme.subtle}>{`ほか ${working.length - MAX_AGENT_ROWS}個`}</Text>)
+    }
 
-    const teamRows = listed.length + moreAgents.length
-    const rows = Math.min(MAX_HISTORY_ROWS, Math.max(1, e.props.maxRows - 4 - teamRows))
-    const shown = entries.slice(-rows)
-    const hidden = entries.length - shown.length
-
-    const historyRows = shown.map((entry, i) => {
-      const { mark, color: markColor } = entry.kind === 'turn' ? { mark: '›', color: palette.muted } : OUTCOME_MARKS[entry.outcome]
-      const isQuiet = entry.kind === 'thought' || entry.kind === 'end'
-      const took = entry.durationMs === null ? '' : `  ${durationOf(entry.durationMs)}`
-
-      return (
-        <Box key={`row-${i}`} flexDirection="row">
-          <Box flexShrink={0}>
-            <Text color={markColor}>{`${mark} `}</Text>
-          </Box>
-          <Box flexGrow={1} flexShrink={1}><Text color={palette.text} bold={entry.kind === 'turn'} dimColor={isQuiet} wrap="truncate-end">
-            {printable(entry.label, MAX_LABEL_CHARS)}
-          </Text></Box>
-          <Box flexShrink={0}>
-            <Text color={palette.muted}>{took}</Text>
-          </Box>
-        </Box>
-      )
-    })
-
-    const earlier = hidden > 0 ? [<Text color={palette.muted}>{`… 以前の${hidden}件`}</Text>] : []
-    const empty = entries.length === 0 ? [<Text color={palette.muted}>まだ手順はありません</Text>] : []
-
-    const companies = companiesOf(exchanges.peers)
-    const right = exchanges.unknown
-      ? <Text key="exchange-unknown" color={palette.muted}>未確認</Text>
-      : companies.map(c => <Box key={`company-${c.provider}`} flexDirection="row" alignItems="center" backgroundColor={palette.badge} borderStyle="round" borderColor={palette.badge} paddingX={1}>
-          {logo(c.provider, c.color, `badge-logo-${c.provider}`)}
-          <Text key={`count-${c.provider}`} color={c.color} bold>{` ${c.count}${c.color === palette.muted ? ' 未確認' : ''}`}</Text>
-        </Box>)
     const peerRows = exchanges.peers.map((peer, i) => {
       const last = latest(peer.exchanges)
       const state = exchanges.unknown ? UNKNOWN : last
+      const { key, mark: tint } = stateTone(state.color)
       const snippet = last.direction === 'outbound' ? exchanges.snippets.get(last.id) : undefined
       return <Box key={`peer-${i}`} flexDirection="row" alignItems="center" columnGap={1}>
-        {logo(peer.provider, state.color, `peer-logo-${i}`)}
-        <Box flexGrow={1} flexShrink={1}><Text color={palette.text} wrap="truncate-end">{printable(`${peerLabel(peer)}　「${snippet === undefined ? '本文は保存していません' : snippet + '…'}」`, 240)}</Text></Box>
-        <Text color={state.color}>{state.label}</Text>
+        <Svg key={`peer-logo-${i}`} alt={companyName(peer.provider)} width={13} height={13} source={logoSvg(peer.provider, tint)} />
+        <Box key={`peer-text-${i}`} flexGrow={1} flexShrink={1}><Text color={theme.text} wrap="truncate-end">{printable(`${peerLabel(peer)}${snippet === undefined ? '' : `「${snippet}…」`}`, 240)}</Text></Box>
+        <Text key={`peer-state-${i}`} color={key}>{state.label}</Text>
       </Box>
     })
 
+    const problemRows = [
+      ...exchanges.peers.flatMap((peer, i) => peer.exchanges.filter(x => x.direction === 'outbound' && tallies.some(t => t.problems.includes(x))).map((x, j) =>
+        <Text key={`problem-${i}-${j}`} color={theme.error} wrap="truncate-end">{`${peerLabel(peer)} への依頼${x.at === null ? '' : `（${clockOf(x.at)}）`}が届かなかった。相手が受け付けなかった`}</Text>)),
+      ...(exchanges.error === null ? [] : [<Text key="problem-query" color={theme.error} wrap="truncate-end">{`やりとりの状態を確かめられなかった（${exchanges.error}）。60秒ごとにやり直す`}</Text>]),
+    ]
+    const position = planPosition(steps)
     const body = isOpen
-      ? <Box key="details" flexDirection="column" paddingX={1} paddingBottom={1}>
-          <Box key="divider" height={0.0625} width="100%" backgroundColor={palette.divider} />
-          <Box key="history" flexDirection="column">
-            <Text color={palette.muted}>この会話</Text>
-            {earlier}
-            {historyRows}
-            {empty}
-            {isWorking ? <Box key="current-step" flexDirection="row">
-              <Text color={palette.active}>{'● '}</Text>
-              <Box flexGrow={1} flexShrink={1}><Text color={palette.text} wrap="truncate-end">{printable(headline.label, MAX_LABEL_CHARS)}</Text></Box>
-              <Text color={palette.muted}>{elapsed}</Text>
-            </Box> : null}
-          </Box>
-          {teamBox}
-          <Box key="exchanges" flexDirection="column" marginTop={1}>
-            <Text color={palette.muted}>やりとり</Text>
-            {peerRows}
-            <Text color={palette.muted}>回数は直近24時間の記録。送信は相手ごと最大10件、受信は全体で最大10件のため頭打ちになります。</Text>
-          </Box>
+      ? <Box key="details" flexDirection="column" marginLeft={4} marginTop={0.5}>
+          {section('problems', '問題', problemRows)}
+          {purpose === '' ? null : section('goal', '目的', [<Text key="goal-text" color={theme.text} wrap="wrap">{clip(purpose, MAX_GOAL_SHOWN)}</Text>])}
+          {section('plan', `計画 ${position}`, planRows)}
+          {section('steps', '手順', stepRows)}
+          {section('agents', '子エージェント', agentRows)}
+          {section('exchanges', 'やりとり', peerRows)}
         </Box>
       : null
 
     return (
       <Box flexDirection="column">
-        <Box key="band" flexDirection="column" borderStyle="round" borderColor={palette.background} backgroundColor={palette.background} width="100%" alignSelf="flex-start">
-          <Box key="activity" flexDirection="row" alignItems="center" minHeight={e.surface === 'desktop' ? 2.125 : 1} paddingX={1.5}>
-            <Box>
-              <Button key="toggle" plain dimColor label={isOpen ? '▾' : '▸'} onPress={() => update($, isExpanded, open => !open)} />
+        <Box key="band" flexDirection="column" width="100%">
+          <Box key="activity" flexDirection="row" alignItems="center" columnGap={1}>
+            <Button key="toggle" label={isOpen ? '▾' : '▸'} onPress={() => update($, isExpanded, open => !open)} />
+            {mark('state-mark', marks[line.mark])}
+            <Box key="line" flexGrow={1} flexShrink={1} flexDirection="row">
+              <Text key="headline" bold color={theme.text} wrap="truncate-end">{line.lead}</Text>
+              {line.meso === '' ? null : <Text key="meso" color={theme.meso} wrap="truncate-end">{`  ›  ${line.meso}`}</Text>}
+              {line.micro === '' ? null : <Text key="micro" color={theme.meso} wrap="truncate-end">{`  ${line.joiner}  ${line.micro}`}</Text>}
             </Box>
-            <Text key="live-dot" color={isWorking ? palette.active : palette.muted}>{' ● '}</Text>
-            <Box flexGrow={1} flexShrink={1} flexDirection="row">
-              <Text key="headline" bold color="#fff" wrap="truncate-end">{printable(title, MAX_LABEL_CHARS)}</Text>
-              <Text key="supplement" color={palette.muted} wrap="truncate-end">{`${purpose ? ` · ${printable(purpose, MAX_LABEL_CHARS)}` : ''} · ${elapsed}`}</Text>
-            </Box>
-            <Box key="companies" flexDirection="row" flexShrink={0} columnGap={1} marginLeft={1}>{right}</Box>
+            {showsElapsed ? <Text key="elapsed" color={isAsking ? theme.warning : theme.subtle}>{elapsed}</Text> : null}
+            <Box key="companies" flexDirection="row" flexShrink={0} columnGap={1.5} marginLeft={1}>{right}</Box>
           </Box>
           {body}
         </Box>
@@ -599,6 +619,70 @@ export const register: Register = (on, options) => {
       </Box>
     )
   })
+}
+
+type LineMark = 'live' | 'idle' | 'ok' | 'attn' | 'fail' | 'stopped'
+
+/**
+ * The closed band's one line: what to lead with (bold), the plan's step,
+ * the action of the moment, and the mark before them.
+ */
+function lineOf(headline: ActivityNow, entries: readonly ActivityEntry[], steps: readonly ActivityPlanItem[], purpose: string, lastTurn: string | null): { mark: LineMark; lead: string; meso: string; micro: string; joiner: string } {
+  const macro = macroOf(purpose)
+  const active = steps.find(step => step.status === 'in_progress')
+  const meso = active ? `${active.label} ${planPosition(steps)}` : ''
+  const action = printable(headline.label.split(TOOL_PREFIX).join(''), MAX_LABEL_CHARS)
+
+  if (headline.phase === 'approval') {
+    return { mark: 'attn', lead: '承認を待っています', meso: '', micro: action.replace(/^承認待ち: /, ''), joiner: '›' }
+  }
+  if (headline.phase === 'question') {
+    return { mark: 'attn', lead: '回答を待っています', meso: '', micro: action, joiner: '›' }
+  }
+  if (headline.phase === 'idle') {
+    const end = [...entries].reverse().find(entry => entry.kind === 'end')
+    const summary = lastTurn ?? end?.label ?? ''
+    if (end === undefined || summary === '') return { mark: 'idle', lead: macro || '待機中', meso: '', micro: '', joiner: '·' }
+    const mark: LineMark = end.outcome === 'ok' ? 'ok' : end.outcome === 'interrupted' ? 'stopped' : end.outcome === 'denied' ? 'attn' : 'fail'
+    return { mark, lead: macro || '前回の作業', meso: '', micro: summary, joiner: '·' }
+  }
+  return macro === ''
+    ? { mark: 'live', lead: action, meso, micro: '', joiner: '›' }
+    : { mark: 'live', lead: macro, meso, micro: action, joiner: '›' }
+}
+
+/**
+ * Where the plan stands, the same on the line and behind the triangle: the
+ * step in progress counted from the first (3/7), or the steps done (7/7).
+ */
+function planPosition(steps: readonly ActivityPlanItem[]): string {
+  const index = steps.findIndex(step => step.status === 'in_progress')
+  const done = steps.filter(step => step.status === 'completed').length
+  return index >= 0 ? `${index + 1}/${steps.length}` : `${done}/${steps.length}`
+}
+
+/** The local time of day, as `14:05`. */
+function clockOf(ms: number): string {
+  const at = new Date(ms)
+  return `${at.getHours()}:${String(at.getMinutes()).padStart(2, '0')}`
+}
+
+/** How long a step took, left out under a second, where it says nothing. */
+function tookOf(ms: number | null): string {
+  return ms === null || ms < 1000 ? '' : durationOf(ms)
+}
+
+const MARK_WORDS = new Map<string, string>([
+  [marks.live, '作業中'], [marks.idle, '待機中'], [marks.ok, '完了'], [marks.attn, '要対応'], [marks.fail, 'エラー'],
+  [marks.stopped, '中断'], [marks.tick, '済み'], [marks.cross, '失敗'], [marks.denied, '拒否'], [marks.halt, '中断'], [marks.pending, '未着手'],
+])
+
+const STEP_MARKS: Record<ActivityOutcome, string> = { ok: marks.tick, error: marks.cross, denied: marks.denied, interrupted: marks.halt }
+
+/** The purpose as the line leads with it: its first sentence, short. */
+function macroOf(purpose: string): string {
+  const first = purpose.split(/[。！？!?\n]|\.\s/).find(part => part.trim() !== '') ?? ''
+  return clip(first.trim(), MAX_MACRO_CHARS)
 }
 
 /** The headline as the live view has it. */
@@ -1029,6 +1113,7 @@ type ExchangeLive = {
   ended: boolean
   peers: Peer[]
   unknown: boolean
+  error: string | null
   busy: boolean
   pending: boolean
   generation: number
@@ -1052,14 +1137,57 @@ async function refresh($: EngineInterface, state: ExchangeLive): Promise<void> {
     const root = state.repository || DEFAULT_REPOSITORY
     const result = await $.process.run([state.node, `${root}/src/cli.ts`, 'band'], { timeoutMs: 20_000 })
     if (generation !== state.generation) return
-    if (result.exitCode !== 0) throw new Error('Query failed')
+    if (result.exitCode !== 0) throw new Error(`終了コード ${result.exitCode}${result.stderr.trim() === '' ? '' : `: ${result.stderr.trim().split('\n')[0]}`}`)
     state.peers = peersOf(result.stdout)
     state.unknown = false
-  } catch {
-    if (generation === state.generation) state.unknown = true
+    state.error = null
+  } catch (error) {
+    if (generation === state.generation) {
+      state.unknown = true
+      state.error = printable(error instanceof Error ? error.message : String(error), MAX_LABEL_CHARS)
+    }
   } finally {
     state.busy = false
     $.ui.invalidate('ui.render')
     if (state.pending) void refresh($, state)
   }
+}
+
+/**
+ * The plan TodoWrite set, each item with how long it took: an item's clock
+ * starts when it is first seen in progress and stops when it is completed.
+ */
+function planOf(live: Live, todos: readonly unknown[], nowMs: number): readonly ActivityPlanItem[] {
+  const seen = new Map<string, ActivityPlanItem['status']>()
+  const items = todos.slice(0, MAX_PLAN_ITEMS).flatMap(todo => {
+    if (!todo || typeof todo !== 'object') return []
+    const { content, activeForm, status } = todo as Record<string, unknown>
+    if (typeof content !== 'string' || (status !== 'pending' && status !== 'in_progress' && status !== 'completed')) return []
+    const key = content
+    const before = live.planSeen.get(key)
+    seen.set(key, status)
+    // The clock starts each time the step goes into progress, from any other
+    // state or from outside the list, and stops once when it is completed.
+    if (status === 'in_progress' && before !== 'in_progress') {
+      live.planStarts.set(key, nowMs)
+      live.planEnds.delete(key)
+    }
+    if (status === 'completed' && before === 'in_progress') live.planEnds.set(key, nowMs)
+    if (status === 'pending') {
+      live.planStarts.delete(key)
+      live.planEnds.delete(key)
+    }
+    const startMs = live.planStarts.get(key)
+    const endMs = live.planEnds.get(key)
+    const label = printable(status === 'in_progress' && typeof activeForm === 'string' ? activeForm : content, MAX_LABEL_CHARS)
+    return [{
+      label,
+      status,
+      startMs: status === 'in_progress' ? startMs ?? nowMs : null,
+      durationMs: status === 'completed' && startMs !== undefined && endMs !== undefined ? endMs - startMs : null,
+    }]
+  })
+  for (const key of live.planStarts.keys()) if (!seen.has(key)) { live.planStarts.delete(key); live.planEnds.delete(key) }
+  live.planSeen = seen
+  return items
 }

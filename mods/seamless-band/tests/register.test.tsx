@@ -58,6 +58,8 @@ function seat(on: On, script: readonly (readonly TurnStepChunk[])[]) {
     read: async () => '',
     seen: [] as string[],
     toolAnswer: { deny: 'stubbed in the test' } as { deny: string },
+    // TodoWrite goes through unless a test says otherwise: the plan follows only a successful one.
+    todoAnswer: { result: 'ok' } as { result: string; isError?: boolean } | { deny: string } | 'throw',
     onTool: async () => {},
   }
 
@@ -89,11 +91,13 @@ function seat(on: On, script: readonly (readonly TurnStepChunk[])[]) {
     } as const
   })
 
-  on('tool.call', async () => {
+  on('tool.call', async ($, e) => {
     await box.onTool()
     await look()
 
-    return box.toolAnswer
+    if (e.tool !== 'TodoWrite') return box.toolAnswer
+    if (box.todoAnswer === 'throw') throw new Error('stopped')
+    return box.todoAnswer
   })
 
   return { box, clock }
@@ -178,7 +182,8 @@ describe('register', () => {
 
     await $.turn.complete({ ...DONE, turnId })
 
-    expect(await box.read()).toContain('待機中 / 前回')
+    expect(await box.read()).toContain('fix the config')
+    expect(await box.read()).toContain('で完了、1手順')
   })
 
   test('the triangle opens the history of the turn', async ($, on) => {
@@ -196,17 +201,17 @@ describe('register', () => {
     await step($, 1)
     await $.turn.complete({ ...DONE, turnId })
 
-    expect(await ui.find({ key: 'history' })).toBeUndefined()
+    expect(await ui.find({ key: 'details' })).toBeUndefined()
 
     await ui.press({ key: 'toggle' })
 
-    const history = (await ui.find({ key: 'history' }))?.text ?? ''
+    const steps = (await ui.find({ key: 'steps' }))?.text ?? ''
 
-    expect(history).toContain('fix the config')
-    expect(history).toContain('考えた (4語)')
-    expect(history).toContain('⊘ 道具を使っている: ファイルを読む: app.ts')
-    expect(history).toContain('返事を書いた (1語)')
-    expect(history).toContain('で完了')
+    expect((await ui.find({ key: 'goal' }))?.text).toContain('fix the config')
+    expect(steps).toContain('ファイルを読む: app.ts')
+    expect(steps).not.toContain('道具を使っている')
+    expect(steps).not.toContain('考えた')
+    expect(steps).not.toContain('返事を書いた')
     expect((await ui.find({ key: 'activity' }))?.text).toContain('▾')
   })
 
@@ -257,7 +262,7 @@ describe('register', () => {
     await $.tool.call({ tool: 'Read', file_path: `src/${'x'.repeat(200000)}.ts` })
     await ui.press({ key: 'toggle' })
 
-    const history = (await ui.find({ key: 'history' }))?.text ?? ''
+    const history = (await ui.find({ key: 'steps' }))?.text ?? ''
 
     expect(box.seen[0]).toContain('ファイルを読む')
     expect(box.seen[0]).toContain('red.ts')
@@ -278,7 +283,9 @@ describe('register', () => {
     await $.turn.start({ text: 'test it', turnId: 't1' })
     await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests' })
 
-    expect(box.seen[0]).toContain('承認待ち: 道具を使っている · Run the tests')
+    expect(box.seen[0]).toContain('承認を待っています')
+    expect(box.seen[0]).toContain('Run the tests')
+    expect(box.seen[0]).not.toContain('承認待ち:')
   })
 
   test('agents still at work after the turn keep the box busy', async ($, on) => {
@@ -300,20 +307,21 @@ describe('register', () => {
     const team = (await ui.find({ key: 'agents' }))?.text ?? ''
 
     expect(await box.read()).toContain('2個の子エージェントが作業中')
-    expect(team).toContain('Draft the plan › 道具を使っている: ファイルを読む: README.md')
+    expect(team).toContain('Draft the plan › ファイルを読む: README.md')
     expect(team).toContain('Storyboard the video › 開始している')
 
     await $.turn.complete({ ...DONE, turnId: 't2', agentId: 'a2' })
 
-    expect(await box.read()).toContain('Draft the plan › 道具を使っている: ファイルを読む: README.md')
+    expect(await box.read()).toContain('Draft the plan › ファイルを読む: README.md')
     expect(await ui.find({ key: 'agents' })).toBeUndefined()
 
     await $.turn.complete({ ...DONE, turnId: 't3', agentId: 'a1', reason: 'error' })
-    const history = (await ui.find({ key: 'history' }))?.text ?? ''
+    const history = (await ui.find({ key: 'steps' }))?.text ?? ''
 
-    expect(await box.read()).toContain('待機中')
-    expect(history).toContain('✓ 子エージェント: Storyboard the video')
-    expect(history).toContain('✗ 子エージェント: Draft the plan')
+    expect(await box.read()).toContain('launch the panel')
+    expect(await box.read()).toContain('で完了')
+    expect(history).toContain('子エージェント: Storyboard the video')
+    expect(history).toContain('子エージェント: Draft the plan')
   })
 
   test('a named agent is shown by its Agent call description, never its prompt', async ($, on) => {
@@ -335,7 +343,7 @@ describe('register', () => {
     await clock.advance(1000)
 
     // Before its Agent call is seen, the engine's handle for it stands.
-    expect(await box.read()).toContain('reviewer › 道具を使っている: ファイルを読む: app.ts')
+    expect(await box.read()).toContain('reviewer › ファイルを読む: app.ts')
 
     box.toolAnswer = { result: { status: 'teammate_spawned' } } as never
     await $.tool.call({
@@ -346,7 +354,7 @@ describe('register', () => {
     } as Parameters<Engine['tool']['call']>[0])
     await clock.advance(1000)
 
-    expect(await box.read()).toContain('Review the diff › 道具を使っている: ファイルを読む: app.ts')
+    expect(await box.read()).toContain('Review the diff › ファイルを読む: app.ts')
     expect(await box.read()).not.toContain('You are reviewing')
     expect(await ui.find({ key: 'agents' })).toBeUndefined()
   })
@@ -367,7 +375,7 @@ describe('register', () => {
     await $.tool.call({ tool: 'Read', file_path: 'src/app.ts', agentId: 'b1' } as Parameters<Engine['tool']['call']>[0])
     await clock.advance(300)
 
-    expect(await box.read()).toContain('Tour the source › 道具を使っている: ファイルを読む: app.ts')
+    expect(await box.read()).toContain('Tour the source › ファイルを読む: app.ts')
   })
 })
 
@@ -379,25 +387,30 @@ test('six left states show Japanese labels and update elapsed seconds', async ($
   const ui = await mount($, box)
   await $.turn.start({ text: '確認', turnId: 't1' })
   await clock.advance(2000)
-  expect(await box.read()).toContain('指示を読んでいる · 2秒')
+  expect(await box.read()).toContain('指示を読んでいる')
+  expect(await box.read()).toContain('2秒')
   await step($, 0)
-  expect(box.seen[0]).toContain('考えている: 確認する。 · 0秒')
+  expect(box.seen[0]).toContain('考えている: 確認する。')
   box.onTool = async () => {
     await clock.advance(2700)
-    expect(await box.read()).toContain('道具を使っている · テストを実行 · 2秒')
+    expect(await box.read()).toContain('テストを実行')
+    expect(await box.read()).toContain('2秒')
     await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'test' } })
     await clock.advance(1000)
-    expect(await box.read()).toContain('承認待ち: 道具を使っている · テストを実行 · 3秒')
+    expect(await box.read()).toContain('承認を待っています')
+    expect(await box.read()).toContain('テストを実行')
+    expect(await box.read()).toContain('3秒')
   }
   await $.tool.call({ tool: 'Bash', command: 'test', description: 'テストを実行' })
   await step($, 1)
   expect(box.seen.join(' ')).toContain('返事を書いている')
   await $.turn.complete({ ...DONE, turnId: 't1' })
   await clock.advance(2700)
-  expect(await box.read()).toContain('待機中')
-  expect(await box.read()).toContain('· 2秒')
+  expect(await box.read()).toContain('確認')
+  expect(await box.read()).toContain('で完了')
+  expect(await box.read()).not.toContain('2秒')
   await ui.press({ key: 'toggle' })
-  expect((await ui.find({ key: 'history' }))?.text).toContain('3秒')
+  expect((await ui.find({ key: 'steps' }))?.text).toContain('3秒')
 })
 
 test('turn.step forwards its completion result and streamed chunks unchanged', async ($, on) => {
@@ -418,11 +431,12 @@ test('thinking and reply timers advance while the stream is open', async ($, on)
   on('turn.step', async function* ($, e) {
     yield { kind: 'thinking', index: 0, text: '判断する。' }
     await clock.advance(2000)
-    expect(await read()).toContain('考えている: 判断する。 · 2秒')
+    expect(await read()).toContain('考えている: 判断する。')
+    expect(await read()).toContain('2秒')
     yield { kind: 'text', index: 1, text: '回答です。' }
     await clock.advance(3000)
     expect(await read()).toContain('返事を書いている')
-    expect(await read()).toContain('· 3秒')
+    expect(await read()).toContain('3秒')
     return { turnId: e.turnId, index: e.index, answer: '回答です。', toolUses: [], stopReason: 'end_turn', usage: null }
   })
   const ui = await $.ui.mount(BAND)
@@ -453,20 +467,184 @@ for (const stop of ['return', 'throw'] as const) test(`turn.step closes inner st
   expect(closed).toBe(1)
 })
 
-test('desktop purpose prefers active TodoWrite, falls back to the running tool and omits missing purpose', async ($, on) => {
+test('desktop line: the plan step with n/m from TodoWrite, the action of the moment, no plan after it ends', async ($, on) => {
   const { box } = seat(on, [])
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   box.read = async () => (await ui.find({ key: 'activity' }))?.text ?? ''
-  expect(await box.read()).toContain('待機中 · 16分40秒')
-  await $.tool.call({ tool: 'TodoWrite', todos: [{ content: 'plan', activeForm: '計画\u202eを作成中', status: 'in_progress' }] } as Parameters<Engine['tool']['call']>[0])
+  expect(await box.read()).toContain('待機中')
+  await $.tool.call({ tool: 'TodoWrite', todos: [{ content: 'read', activeForm: '読む', status: 'completed' }, { content: 'plan', activeForm: '計画\u202eを作成中', status: 'in_progress' }, { content: 'ship', activeForm: '出す', status: 'pending' }] } as Parameters<Engine['tool']['call']>[0])
   box.onTool = async () => {
-    expect(await box.read()).toContain('道具を使っている · 計画を作成中 · 0秒')
-    expect(await box.read()).not.toContain('Bashの目的')
+    expect(await box.read()).toContain('Bashの目的')
+    expect(await box.read()).toContain('計画を作成中 2/3')
     expect(await box.read()).not.toContain('\u202e')
   }
   await $.tool.call({ tool: 'Bash', command: 'test', description: 'Bashの目的' })
   box.onTool = async () => {}
+  await ui.press({ key: 'toggle' })
+  const plan = (await ui.find({ key: 'plan' }))?.text ?? ''
+  expect(plan).toContain('計画 2/3')
+  expect(plan).toContain('read')
+  expect(plan).toContain('計画を作成中')
+  expect(plan).toContain('ship')
+  expect(await ui.find({ key: 'steps' })).toBeUndefined()
   await $.tool.call({ tool: 'TodoWrite', todos: [{ content: 'plan', activeForm: '計画を作成中', status: 'completed' }] } as Parameters<Engine['tool']['call']>[0])
-  box.onTool = async () => { expect(await box.read()).toContain('道具を使っている · Bashの目的 · 0秒') }
+  box.onTool = async () => {
+    expect(await box.read()).toContain('Bashの目的')
+    expect(await box.read()).not.toContain('計画を作成中')
+  }
   await $.tool.call({ tool: 'Bash', command: 'test', description: 'Bashの目的' })
+})
+
+test('desktop line leads with the purpose, drops the generic tool word, and goes quiet with the turn', async ($, on) => {
+  const { box } = seat(on, [])
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  box.read = async () => (await ui.find({ key: 'activity' }))?.text ?? ''
+  const { turnId } = await $.turn.start({ text: 'plan it. then ship', turnId: 't1' })
+  await $.tool.call({ tool: 'TodoWrite', todos: [{ content: 'plan', activeForm: '計画を作成中', status: 'in_progress' }] } as Parameters<Engine['tool']['call']>[0])
+  box.onTool = async () => {
+    const text = await box.read()
+    expect(text).toContain('plan it')
+    expect(text).not.toContain('then ship')
+    expect(text).toContain('計画を作成中 1/1')
+    expect(text).toContain('ファイルを読む: app.ts')
+    expect(text).not.toContain('道具を使っている')
+  }
+  await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })
+  box.onTool = async () => {}
+  await $.turn.complete({ ...DONE, turnId })
+  expect(await box.read()).toContain('plan it')
+  expect(await box.read()).toContain('で完了')
+  expect(await box.read()).not.toContain('計画を作成中')
+})
+
+test('desktop line has no generic tool word with parallel calls', async ($, on) => {
+  const { box } = seat(on, [])
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  box.read = async () => (await ui.find({ key: 'activity' }))?.text ?? ''
+  await $.turn.start({ text: 'run both', turnId: 't1' })
+  box.onTool = async () => {
+    box.onTool = async () => {
+      const text = await box.read()
+      expect(text).toContain('テストを実行')
+      expect(text).toContain('(+ほか1件)')
+      expect(text).not.toContain('道具を使っている')
+    }
+    await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'テストを実行' })
+  }
+  await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })
+})
+
+const todos = (statuses: readonly ('pending' | 'in_progress' | 'completed')[]) =>
+  ({ tool: 'TodoWrite', todos: statuses.map((status, i) => ({ content: `step ${i + 1}`, activeForm: `doing ${i + 1}`, status })) }) as Parameters<Engine['tool']['call']>[0]
+
+test('plan times: the step in progress keeps counting, a finished step keeps its time', async ($, on) => {
+  const { clock } = seat(on, [])
+  const ui = await $.ui.mount(BAND)
+  await $.tool.call(todos(['in_progress', 'pending']))
+  await clock.advance(5000)
+  await ui.press({ key: 'toggle' })
+  expect((await ui.find({ key: 'plan' }))?.text).toContain('doing 15秒')
+  await $.tool.call(todos(['completed', 'in_progress']))
+  await clock.advance(20000)
+  await $.tool.call(todos(['completed', 'in_progress']))
+  const plan = (await ui.find({ key: 'plan' }))?.text ?? ''
+  expect(plan).toContain('step 15秒')
+  expect(plan).toContain('doing 220秒')
+})
+
+test('a new request clears a finished plan and keeps an unfinished one', async ($, on) => {
+  seat(on, [])
+  const ui = await $.ui.mount(BAND)
+  await $.tool.call(todos(['completed', 'completed']))
+  await $.turn.start({ text: 'next thing', turnId: 't1' })
+  await ui.press({ key: 'toggle' })
+  expect(await ui.find({ key: 'plan' })).toBeUndefined()
+  await $.tool.call(todos(['completed', 'in_progress']))
+  await $.turn.start({ text: 'and more', turnId: 't2' })
+  expect((await ui.find({ key: 'plan' }))?.text).toContain('計画 2/2')
+})
+
+test('a long plan shows the step in progress, with what is hidden before and after', async ($, on) => {
+  seat(on, [])
+  const ui = await $.ui.mount(BAND)
+  await $.tool.call(todos(['completed', 'completed', 'completed', 'completed', 'completed', 'completed', 'completed', 'in_progress', 'pending', 'pending', 'pending', 'pending']))
+  await ui.press({ key: 'toggle' })
+  const plan = (await ui.find({ key: 'plan' }))?.text ?? ''
+  expect(plan).toContain('計画 8/12')
+  expect(plan).toContain('doing 8')
+  expect(plan).toContain('済み 5件')
+  expect(plan).toContain('ほか 1件')
+  expect(plan).not.toContain('step 5')
+})
+
+test('steps mark done, failed, refused and stopped apart', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  seatBand(on)
+  const answers: Record<string, () => unknown> = {
+    'done.ts': () => ({ result: 'ok' }),
+    'failed.ts': () => ({ result: 'bad', isError: true }),
+    'refused.ts': () => ({ deny: 'no' }),
+    'stopped.ts': () => { throw new Error('stopped') },
+  }
+  on('tool.call', ($, e) => answers[String((e as unknown as { file_path: string }).file_path)]() as { result: string })
+  const ui = await $.ui.mount(BAND)
+  for (const name of Object.keys(answers)) {
+    try { await $.tool.call({ tool: 'Read', file_path: name }) } catch { /* the stopped call */ }
+  }
+  await ui.press({ key: 'toggle' })
+  const tints = ['#2f8f5b', '#d64545', '#d9752b', '#8d8b85']
+  const words = ['済み', '失敗', '拒否', '中断']
+  for (const [i, name] of Object.keys(answers).entries()) {
+    const row = await ui.find({ key: `step-${i}` })
+    expect(row?.text).toContain(name)
+    const mark = row?.children[0] as { props: { source: string; alt: string } }
+    expect(mark.props.source).toContain(tints[i])
+    expect(mark.props.alt).toBe(words[i])
+  }
+})
+
+test('plan clock starts over when a step returns to progress from pending or from outside the list', async ($, on) => {
+  const { clock } = seat(on, [])
+  const ui = await $.ui.mount(BAND)
+  await $.tool.call(todos(['in_progress']))
+  await clock.advance(5000)
+  await $.tool.call(todos(['pending']))
+  await clock.advance(15000)
+  await $.tool.call(todos(['in_progress']))
+  await clock.advance(3000)
+  await $.tool.call(todos(['completed']))
+  await ui.press({ key: 'toggle' })
+  expect((await ui.find({ key: 'plan' }))?.text).toContain('step 13秒')
+  await $.tool.call({ tool: 'TodoWrite', todos: [] } as Parameters<Engine['tool']['call']>[0])
+  await $.tool.call(todos(['in_progress']))
+  await clock.advance(2000)
+  expect((await ui.find({ key: 'plan' }))?.text).toContain('doing 12秒')
+})
+
+test('a long plan keeps the step in progress in view even after many steps not started', async ($, on) => {
+  seat(on, [])
+  const ui = await $.ui.mount(BAND)
+  await $.tool.call(todos(['pending', 'pending', 'pending', 'pending', 'pending', 'pending', 'pending', 'in_progress', 'pending', 'pending', 'pending', 'pending']))
+  await ui.press({ key: 'toggle' })
+  const plan = (await ui.find({ key: 'plan' }))?.text ?? ''
+  expect(plan).toContain('doing 8')
+  expect(plan).toContain('前に 5件')
+  expect(plan).not.toContain('済み')
+})
+
+for (const [how, answer] of [['refused', { deny: 'no' }], ['failed', { result: 'bad', isError: true }], ['stopped', 'throw']] as const) test(`a ${how} TodoWrite leaves the plan and its clock as they were`, async ($, on) => {
+  const { box, clock } = seat(on, [])
+  const ui = await $.ui.mount(BAND)
+  await $.tool.call(todos(['in_progress', 'pending']))
+  await clock.advance(4000)
+  box.todoAnswer = answer
+  try { await $.tool.call(todos(['completed', 'in_progress'])) } catch { /* the stopped call */ }
+  await clock.advance(1000)
+  await ui.press({ key: 'toggle' })
+  const plan = (await ui.find({ key: 'plan' }))?.text ?? ''
+  expect(plan).toContain('計画 1/2')
+  expect(plan).toContain('doing 15秒')
+  box.todoAnswer = { result: 'ok' }
+  await $.tool.call(todos(['completed', 'in_progress']))
+  expect((await ui.find({ key: 'plan' }))?.text).toContain('計画 2/2')
 })

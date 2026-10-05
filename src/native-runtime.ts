@@ -97,7 +97,8 @@ export function createCodexOwnerLookup(home=homedir(),versionOf?:()=>Promise<str
    let result=owners.get(id);if(result)return result;
    result=(async()=>{try{
     const {ipc,client}=await (connection??=connect());
-    const found=await ipc.request('thread-owner-discovery',{hostId:'local',conversationId:id},client,1);
+    // Same limit as the sessions scan: a thread Desktop has not loaded never answers.
+    const found=await ipc.request('thread-owner-discovery',{hostId:'local',conversationId:id},client,1,undefined,1500);
     return found.resultType==='success'&&typeof found.handledByClientId==='string'?found.handledByClientId:null;
    }catch{return null;}})();
    owners.set(id,result);return result;

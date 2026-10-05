@@ -17,7 +17,7 @@ function isAllowedLatin(run: string): boolean {
   const word = run.replace(/^[(\[「『"']+|[)\]」』"'.,:;!?、。]+$/g, '')
 
   // Numbers up to three digits and n/m: a longer number may be an argument or a key.
-  if (/^-/.test(run)) return false
+  if (/^-/.test(word)) return false
   if (!/[A-Za-z]/.test(word)) return /^\d{1,3}\/\d{1,3}$/.test(word) || (!/\d{4,}/.test(run) && !/[/\\:@`$=<>|{}]/.test(run))
 
   return FILE_NAME.test(word) || PRODUCT_NAMES.has(word)
@@ -35,7 +35,7 @@ export function plainText(text: unknown): string {
 
   const latin = flat.match(/[\x21-\x7e]+/g) ?? []
 
-  return isJapanese(flat) && latin.every(isAllowedLatin) ? flat : ''
+  return isJapanese(flat) && !/[０-９]{4,}/.test(flat) && latin.every(isAllowedLatin) ? flat : ''
 }
 
 /** A subagent's name: its description when plain Japanese, else its handle (an identifier such as `reviewer`), else a fixed word. */

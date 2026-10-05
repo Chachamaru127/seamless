@@ -198,6 +198,35 @@ function phraseOf(words: string[]): string | null {
 }
 
 /**
+ * The kind of work a tool call belongs to, for the line's middle grain when
+ * there is no plan: looking, writing, checking, talking to a peer, handing
+ * to a subagent. The spinner says the call itself; this says the stretch.
+ */
+export function stanceOf(tool: string, args: Record<string, unknown>): string {
+  if (tool.startsWith('mcp__seamless__')) return '相手とやりとりしている'
+  switch (tool) {
+    case 'Read': case 'Grep': case 'Glob': case 'WebFetch': case 'WebSearch': case 'ToolSearch': case 'Skill':
+      return '調べている'
+    case 'Edit': case 'Write': case 'NotebookEdit':
+      return '書いている'
+    case 'Agent': case 'Task':
+      return '子エージェントに任せている'
+    case 'TodoWrite':
+      return '段取りを決めている'
+    case 'Bash': case 'PowerShell': {
+      const purpose = commandPurpose(typeof args['command'] === 'string' ? args['command'] : '')
+      if (['ファイルを読む', 'ファイルの中を探す', 'ファイルの一覧を見る', '変更の状況を見る', '変更の中身を見る', '履歴を見る', 'ネットから取ってくる', 'GitHub を見る'].includes(purpose)) return '調べている'
+      if (['フォルダを作る', 'ファイルを消す', 'ファイルを写す', 'ファイルを移す', '保存する変更を選ぶ', '変更を履歴に保存する', '部品を入れる'].includes(purpose)) return '書いている'
+      if (purpose === 'GitHub に送る') return '送り出している'
+      if (purpose === 'Codex に頼む') return '相手とやりとりしている'
+      return '確かめている'
+    }
+  }
+  if (/browser|chrome|playwright|computer-use/i.test(tool)) return '画面で確かめている'
+  return '作業している'
+}
+
+/**
  * The string arguments a tool call's input has streamed so far, read from
  * its partial JSON: enough to name the file or command before it is whole.
  */

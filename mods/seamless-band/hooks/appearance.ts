@@ -52,3 +52,13 @@ export const marks = {
   halt: svg(`<rect x="4" y="4" width="6" height="6" rx="1" fill="${tone.idle}"/>`),
   pending: svg(`<circle cx="7" cy="7" r="5" fill="none" stroke="${tone.idle}"/>`),
 } as const
+
+const dot = (body: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8">${body}</svg>`
+
+/** The 8px dots of a request's way: a step seen, the step it stands at, one to come, one that failed. */
+export const dots = {
+  done: dot(`<circle cx="4" cy="4" r="3.5" fill="${tone.ok}"/>`),
+  now: dot(`<circle cx="4" cy="4" r="3.5" fill="${tone.attn}"/>`),
+  todo: dot(`<circle cx="4" cy="4" r="3" fill="none" stroke="${tone.idle}" stroke-width="1.2"/>`),
+  bad: dot(`<circle cx="4" cy="4" r="3.5" fill="${tone.fail}"/>`),
+} as const

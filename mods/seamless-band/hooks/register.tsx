@@ -1,6 +1,6 @@
-import { brandSvg, marks, stateTone, theme, tone } from './appearance'
-import { peersOf, talliesOf, latest, peerLabel, companyName, UNKNOWN } from './exchanges'
-import type { Peer } from './exchanges'
+import { brandSvg, dots, marks, theme, tone } from './appearance'
+import { peersOf, talliesOf, peerLabel, companyName, focusOf, noticesOf, stepsOf } from './exchanges'
+import type { Peer, Step } from './exchanges'
 import { atom, read, update } from 'claude-code'
 import type { AgentInfo, EngineInterface, Register, Timer, TurnCompleteReason, TurnStepChunk } from 'claude-code'
 
@@ -11,7 +11,7 @@ import type {
   ActivityOutcome,
   ActivityPlanItem,
 } from '../types'
-import { activityOf, agentNameOf, partialArgsOf, plainText } from './activity-of'
+import { activityOf, agentNameOf, partialArgsOf, plainText, stanceOf } from './activity-of'
 import { clip, durationOf, oneLine, printable, sizeOf, thoughtOf, charsIn } from './text'
 
 const IDLE: ActivityNow = {
@@ -37,6 +37,8 @@ const MAX_PLAN_ITEMS = 100
 const MAX_GOAL_SHOWN = 100
 const STREAM_THROTTLE_MS = 250
 const TICK_MS = 1000
+const STANCE_WINDOW = 5
+const MAX_PEER_REQUESTS = 3
 
 const now = atom({ plugin: 'seamless-band', key: 'now' } as const, IDLE)
 
@@ -97,6 +99,8 @@ type Live = {
   planEnds: Map<string, number>
   planSeen: Map<string, ActivityPlanItem['status']>
   readSinceMs: number | null
+  /** The kinds of work of this turn's calls, newest last: the line's middle grain when there is no plan. */
+  stances: string[]
   calls: Map<string, Call>
   agents: Map<string, Agent>
   agentNames: Map<string, string>
@@ -131,12 +135,13 @@ type Live = {
  * @param on the engine's registrar
  */
 export const register: Register = (on, options) => {
-  const exchanges: ExchangeLive = { desktop: false, ended: false, peers: [], unknown: true, error: null, busy: false, pending: false, generation: 0, snippets: new Map(), poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
+  const exchanges: ExchangeLive = { desktop: false, ended: false, peers: [], unknown: true, error: null, busy: false, pending: false, generation: 0, snippets: new Map(), seeded: false, poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
   const live: Live = {
     planStarts: new Map(),
     planEnds: new Map(),
     planSeen: new Map(),
     readSinceMs: null,
+    stances: [],
     calls: new Map(),
     agents: new Map(),
     agentNames: new Map(),
@@ -181,6 +186,7 @@ export const register: Register = (on, options) => {
     exchanges.generation += 1
     exchanges.pending = false
     exchanges.snippets.clear()
+    exchanges.seeded = false
     exchanges.peers = []
     exchanges.unknown = true
     exchanges.poller?.cancel()
@@ -220,6 +226,7 @@ export const register: Register = (on, options) => {
     live.resultsToReview = 0
     live.lastAction = null
     live.calls.clear()
+    live.stances = []
 
     const prompt = oneLine(e.text)
 
@@ -297,6 +304,7 @@ export const register: Register = (on, options) => {
     const startMs = await $.clock.now()
 
     live.calls.set(e.tool_use_id, { tool: e.tool, label, purpose, startMs, isAwaitingApproval: false })
+    live.stances = [...live.stances, stanceOf(e.tool, args)].slice(-STANCE_WINDOW)
     live.lastAction = label
     live.turnActions += 1
     await publish($, live)
@@ -488,13 +496,16 @@ export const register: Register = (on, options) => {
     const steps = await read($, plan)
     const nowMs = await $.clock.now()
 
-    const elapsed = durationOf(nowMs - headline.sinceMs)
+    // The turn's time, the stretch the line names; a wait for the person counts from when it began.
+    const isWaiting = headline.phase === 'approval' || headline.phase === 'question'
+    const elapsed = durationOf(nowMs - (isWaiting || live.turnStartMs === null ? headline.sinceMs : live.turnStartMs))
     // An Svg needs words of its own (an empty alt is not drawn), which also name the mark for a screen reader.
     const mark = (key: string, source: string) => <Svg key={key} alt={MARK_WORDS.get(source) ?? '印'} width={14} height={14} source={source} />
 
-    // One line, three grains: the turn's purpose (bold, it holds still), the
-    // plan's step with n/m, and the action of the moment (thin, it changes).
-    const line = lineOf(headline, entries, steps, purpose, live.lastTurn)
+    // One line, two grains: the turn's purpose (bold, it holds still) and the
+    // plan's step with n/m, or the kind of work without a plan. The action of
+    // the moment is the app's spinner's to say.
+    const line = lineOf(headline, entries, steps, purpose, live.lastTurn, stanceNow(live, headline))
     const isAsking = line.mark === 'attn' && headline.phase !== 'idle'
     const showsElapsed = headline.phase !== 'idle'
 
@@ -507,13 +518,22 @@ export const register: Register = (on, options) => {
       <Text key={key} color={theme.meso}>{`${arrow}${total}`}</Text>,
       ...(open > 0 ? [<Text key={`${key}-open`} color={theme.subtle}>{`(${open})`}</Text>] : []),
     ]
+    // The exchange that matters now, in words beside its company: a message
+    // to read, a request on its way or being read (with how long), one that
+    // did not arrive. The counts stay beside it, small.
+    const focal = exchanges.unknown ? null : focusOf(exchanges.peers, live.readSinceMs, nowMs)
+    const focusColor = focal === null ? theme.subtle : focal.tone === 'ok' ? theme.success : focal.tone === 'fail' ? theme.error : theme.warning
+    const focusWord = focal === null ? '' : `${focal.tone === 'fail' ? '! ' : ''}${focal.word}${focal.sinceMs === null ? '' : ` ${durationOf(nowMs - focal.sinceMs)}`}`
     const right = [
       ...tallies.map(t => <Box key={`company-${t.provider}`} flexDirection="row" alignItems="center" columnGap={0.5}>
         <Svg key={`badge-logo-${t.provider}`} alt={companyName(t.provider)} width={14} height={14} source={brandSvg(t.provider)} />
-        {count(`up-${t.provider}`, '↑', t.up, t.upPending)}
-        {count(`down-${t.provider}`, '↓', t.down, t.downUnread)}
+        {focal?.provider === t.provider ? <Box key={`focus-${t.provider}`} flexShrink={0}><Text color={focusColor} bold>{focusWord}</Text></Box> : null}
+        <Box key={`counts-${t.provider}`} flexDirection="row" alignItems="center">
+          {count(`up-${t.provider}`, '↑', t.up, t.upPending)}
+          {count(`down-${t.provider}`, '↓', t.down, t.downUnread)}
+        </Box>
       </Box>),
-      ...(hasTrouble ? [<Text key="trouble" color={theme.error} bold>!</Text>] : []),
+      ...(hasTrouble && focal?.tone !== 'fail' ? [<Text key="trouble" color={theme.error} bold>!</Text>] : []),
     ]
 
     const section = (key: string, label: string, rows: JSX.Element[]) => rows.length === 0 ? null : (
@@ -566,15 +586,39 @@ export const register: Register = (on, options) => {
       agentRows.push(<Text key="agents-more" color={theme.subtle}>{`ほか ${working.length - MAX_AGENT_ROWS}個`}</Text>)
     }
 
+    // Per peer: who, where, whether it runs; then its newest requests, each
+    // with its way so far: sent › arrived › read › answered, with the times.
+    const stepRow = (key: string, list: Step[]) => (
+      <Box key={key} flexDirection="row" alignItems="center" columnGap={0.5}>
+        {list.flatMap((step, j) => [
+          ...(j > 0 ? [<Text key={`${key}-bar-${j}`} color={step.state === 'todo' ? theme.subtle : theme.success}>─</Text>] : []),
+          <Svg key={`${key}-dot-${j}`} alt={STEP_DOT_WORDS[step.state]} width={8} height={8} source={dots[step.state]} />,
+          <Text key={`${key}-word-${j}`} color={step.state === 'now' ? theme.text : step.state === 'bad' ? theme.error : step.state === 'done' ? theme.meso : theme.subtle} bold={step.state === 'now' || step.state === 'bad'}>
+            {`${step.word}${step.at === null ? '' : ` ${clockOf(step.at)}${step.state === 'now' ? '〜' : ''}`}`}
+          </Text>,
+        ])}
+      </Box>
+    )
     const peerRows = exchanges.peers.map((peer, i) => {
-      const last = latest(peer.exchanges)
-      const state = exchanges.unknown ? UNKNOWN : last
-      const { key } = stateTone(state.color)
-      const snippet = last.direction === 'outbound' ? exchanges.snippets.get(last.id) : undefined
-      return <Box key={`peer-${i}`} flexDirection="row" alignItems="center" columnGap={1}>
-        <Svg key={`peer-logo-${i}`} alt={companyName(peer.provider)} width={14} height={14} source={brandSvg(peer.provider)} />
-        <Box key={`peer-text-${i}`} flexGrow={1} flexShrink={1}><Text color={theme.text} wrap="truncate-end">{printable(`${peerLabel(peer)}${snippet === undefined ? '' : `「${snippet}…」`}`, 240)}</Text></Box>
-        <Box key={`peer-state-box-${i}`} flexShrink={0}><Text key={`peer-state-${i}`} color={key} wrap="truncate-end">{state.label}</Text></Box>
+      const newest = [...peer.exchanges].sort((a, b) => (b.at ?? 0) - (a.at ?? 0)).slice(0, MAX_PEER_REQUESTS)
+      const where = peerLabel(peer).split(' · ').slice(1).join(' · ')
+      return <Box key={`peer-${i}`} flexDirection="column" marginTop={i > 0 ? 0.5 : 0}>
+        <Box key={`peer-head-${i}`} flexDirection="row" alignItems="center" columnGap={1}>
+          <Svg key={`peer-logo-${i}`} alt={companyName(peer.provider)} width={14} height={14} source={brandSvg(peer.provider)} />
+          <Text key={`peer-name-${i}`} color={theme.text} bold>{companyName(peer.provider)}</Text>
+          <Box key={`peer-where-${i}`} flexGrow={1} flexShrink={1}><Text color={theme.subtle} wrap="truncate-end">{printable(` · ${where}${peer.online === null ? '' : peer.online ? ' · 動いている' : ' · 止まっている'}`, 120)}</Text></Box>
+        </Box>
+        {newest.map((x, j) => {
+          const snippet = x.direction === 'outbound' ? exchanges.snippets.get(x.id) : undefined
+          const said = x.direction === 'inbound' ? '↓ 受け取った依頼' : snippet === undefined ? '↑ 送った依頼' : `↑「${snippet}…」`
+          return <Box key={`req-${i}-${j}`} flexDirection="column" marginLeft={2}>
+            <Text key={`req-text-${i}-${j}`} color={theme.meso} wrap="truncate-end">{printable(said, 120)}</Text>
+            {/* A failed look leaves the last state unconfirmed: it is not shown as if it stood. */}
+            {exchanges.unknown
+              ? <Text key={`req-unknown-${i}-${j}`} color={theme.subtle}>状態は未確認</Text>
+              : stepRow(`req-steps-${i}-${j}`, stepsOf(peer, x, live.readSinceMs))}
+          </Box>
+        })}
       </Box>
     })
 
@@ -587,11 +631,11 @@ export const register: Register = (on, options) => {
     const body = isOpen
       ? <Box key="details" flexDirection="column" marginLeft={4} marginTop={0.5}>
           {section('problems', '問題', problemRows)}
+          {section('exchanges', 'やりとり', peerRows)}
           {purpose === '' ? null : section('goal', '目的', [<Text key="goal-text" color={theme.text} wrap="wrap">{clip(purpose, MAX_GOAL_SHOWN)}</Text>])}
           {section('plan', `計画 ${position}`, planRows)}
           {section('steps', '手順', stepRows)}
           {section('agents', '子エージェント', agentRows)}
-          {section('exchanges', 'やりとり', peerRows)}
         </Box>
       : null
 
@@ -623,10 +667,10 @@ type LineMark = 'live' | 'idle' | 'ok' | 'attn' | 'fail' | 'stopped'
  * The closed band's one line: what to lead with (bold), the plan's step,
  * the action of the moment, and the mark before them.
  */
-function lineOf(headline: ActivityNow, entries: readonly ActivityEntry[], steps: readonly ActivityPlanItem[], purpose: string, lastTurn: string | null): { mark: LineMark; lead: string; meso: string; micro: string; joiner: string } {
+function lineOf(headline: ActivityNow, entries: readonly ActivityEntry[], steps: readonly ActivityPlanItem[], purpose: string, lastTurn: string | null, stance: string): { mark: LineMark; lead: string; meso: string; micro: string; joiner: string } {
   const macro = macroOf(purpose)
   const active = steps.find(step => step.status === 'in_progress')
-  const meso = active ? `${active.label} ${planPosition(steps)}` : ''
+  const meso = active ? `${active.label} ${planPosition(steps)}` : stance
   const action = printable(headline.label.split(TOOL_PREFIX).join(''), MAX_LABEL_CHARS)
 
   if (headline.phase === 'approval') {
@@ -643,8 +687,23 @@ function lineOf(headline: ActivityNow, entries: readonly ActivityEntry[], steps:
     return { mark, lead: macro || '前回の作業', meso: '', micro: summary, joiner: '·' }
   }
   return macro === ''
-    ? { mark: 'live', lead: action, meso, micro: '', joiner: '›' }
-    : { mark: 'live', lead: macro, meso, micro: action, joiner: '›' }
+    ? { mark: 'live', lead: meso, meso: '', micro: '', joiner: '›' }
+    : { mark: 'live', lead: macro, meso, micro: '', joiner: '›' }
+}
+
+/**
+ * The kind of work under way, when there is no plan to name: what most of
+ * the turn's last calls were (the newest breaks a tie), or the model's own
+ * phase before any call and while it writes the reply.
+ */
+function stanceNow(live: Live, headline: ActivityNow): string {
+  if (headline.phase === 'compacting') return '会話を整理している'
+  if (headline.phase === 'agent') return '子エージェントに任せている'
+  if (headline.phase === 'writing') return 'まとめている'
+  if (live.stances.length === 0) return headline.phase === 'requesting' && live.isFirstRequest ? '指示を読んでいる' : '考えている'
+  const counts = new Map<string, number>()
+  for (const stance of live.stances) counts.set(stance, (counts.get(stance) ?? 0) + 1)
+  return [...live.stances].reverse().reduce((best, stance) => (counts.get(stance) ?? 0) > (counts.get(best) ?? 0) ? stance : best)
 }
 
 /**
@@ -674,6 +733,8 @@ const MARK_WORDS = new Map<string, string>([
 ])
 
 const STEP_MARKS: Record<ActivityOutcome, string> = { ok: marks.tick, error: marks.cross, denied: marks.denied, interrupted: marks.halt }
+
+const STEP_DOT_WORDS: Record<Step['state'], string> = { done: '済み', now: '今ここ', todo: 'まだ', bad: '失敗' }
 
 /** The purpose as the line leads with it: its first sentence, short. */
 function macroOf(purpose: string): string {
@@ -1104,6 +1165,8 @@ type ExchangeLive = {
   pending: boolean
   generation: number
   snippets: Map<string, string>
+  /** Whether the exchanges were seen once since the reset: changes from then on are told by a toast. */
+  seeded: boolean
   poller: Timer | null
   node: string
   repository: string
@@ -1124,8 +1187,13 @@ async function refresh($: EngineInterface, state: ExchangeLive): Promise<void> {
     const result = await $.process.run([state.node, `${root}/src/cli.ts`, 'band'], { timeoutMs: 20_000 })
     if (generation !== state.generation) return
     if (result.exitCode !== 0) throw new Error(`終了コード ${result.exitCode}${result.stderr.trim() === '' ? '' : `: ${result.stderr.trim().split('\n')[0]}`}`)
-    state.peers = peersOf(result.stdout)
+    const peers = peersOf(result.stdout)
+    // Each change after the first look is told once, as a toast: a request taken up, answered, refused, or a message received.
+    const notices = state.seeded ? noticesOf(state.peers, peers) : []
+    state.peers = peers
+    state.seeded = true
     state.unknown = false
+    for (const notice of notices.slice(0, 3)) $.ui.toast(notice)
     state.error = null
   } catch (error) {
     if (generation === state.generation) {

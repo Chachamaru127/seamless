@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { peersOf, companiesOf } from '../hooks/exchanges'
+import { peersOf, companiesOf, focusOf, noticesOf, stepsOf } from '../hooks/exchanges'
 import { requestResults } from './fixtures/status-results'
 import { clip, durationOf } from '../hooks/text'
 
@@ -32,33 +32,34 @@ function seat(on: On, data: unknown) {
   return { clock, state }
 }
 
-for (const [name, requests, inbound, right, label] of [
-  ['processing', [request('processing')], [], '↑1', '既読'],
-  ['replied', [request('replied')], [], '↑1', '既読 · 返信あり'],
-  ['reached', [request('reached')], [], '↑1(1)', '届いた · 未読'],
-  ['unknown', [request('unknown')], [], '↑1(1)', '未確認'],
-  ['pending', [request('pending')], [], '↑1(1)', '未確認'],
-  ['submitted', [request('submitted')], [], '↑1(1)', '未確認'],
-  ['unknown but processing observed', [request('unknown processing')], [], '↑1', '既読'],
-  ['unknown but replied observed', [request('unknown replied')], [], '↑1', '既読 · 返信あり'],
-  ['rejected but reached observed', [request('rejected reached')], [], '↑1(1)', '届いた · 未読'],
-  ['missing delivery', [{ ...request('accepted'), delivery: undefined }], [], '↑1(1)', '未確認'],
-  ['rejected', [request('rejected')], [], '↑1', '届かなかった'],
-  ['accepted', [request('accepted')], [], '↑1(1)', '未確認'],
-  ['unobserved processing', [request('unobserved processing')], [], '↑1(1)', '未確認'],
-  ['verified inbound', [], [incoming('verified')], '↓1(1)', '受け取った'],
-  ['declared inbound', [], [incoming('declared')], '↓1(1)', '未確認'],
+for (const [name, requests, inbound, right, label, word] of [
+  ['processing', [request('processing')], [], '↑1', '読んでいる', '読んでいる'],
+  ['replied', [request('replied')], [], '↑1', '返信', '返信あり'],
+  ['reached', [request('reached')], [], '↑1(1)', '届いた', '届いた・未読'],
+  ['unknown', [request('unknown')], [], '↑1(1)', '未確認', '送った'],
+  ['pending', [request('pending')], [], '↑1(1)', '未確認', '送った'],
+  ['submitted', [request('submitted')], [], '↑1(1)', '未確認', '送った'],
+  ['unknown but processing observed', [request('unknown processing')], [], '↑1', '読んでいる', '読んでいる'],
+  ['unknown but replied observed', [request('unknown replied')], [], '↑1', '返信', '返信あり'],
+  ['rejected but reached observed', [request('rejected reached')], [], '↑1(1)', '届いた', '届いた・未読'],
+  ['missing delivery', [{ ...request('accepted'), delivery: undefined }], [], '↑1(1)', '未確認', '送った'],
+  ['rejected', [request('rejected')], [], '↑1', '届かなかった', '! 届かなかった'],
+  ['accepted', [request('accepted')], [], '↑1(1)', '未確認', '送った'],
+  ['unobserved processing', [request('unobserved processing')], [], '↑1(1)', '未確認', '送った'],
+  ['verified inbound', [], [incoming('verified')], '↓1(1)', 'まだ読んでいない', '依頼が届いた'],
+  ['declared inbound', [], [incoming('declared')], '↓1(1)', '未確認', '依頼が届いた'],
 ] as const) {
   test(`right side tally: ${name}`, async ($, on) => {
     const { clock } = seat(on, response([...requests], [...inbound]))
     await $.session.start(START); await $.ui.mount(BAND)
     await clock.settle()
     const ui = await $.ui.mount(BAND)
-    expect((await ui.find({ key: 'company-codex' }))?.text).toBe(right)
-    expect(await ui.find({ type: 'Text', text: '!' }) !== undefined).toBe(name === 'rejected')
+    expect((await ui.find({ key: 'counts-codex' }))?.text).toBe(right)
+    expect((await ui.find({ key: 'focus-codex' }))?.text).toMatch(new RegExp(`^${word}`))
+    expect((await ui.find({ type: 'Text', text: new RegExp(`^${word}`) }))?.props.color).toBe(name === 'rejected' ? 'error' : name.includes('inbound') || name.includes('replied') ? 'success' : 'warning')
     await ui.press({ key: 'toggle' })
     const peer = await ui.find({ key: 'peer-0' })
-    expect(peer?.text).toContain('Codex · project')
+    expect(peer?.text).toContain('Codex· project')
     expect(peer?.text).toContain(label)
     expect(peer?.text).not.toContain('本文は保存していません')
     const problems = (await ui.find({ key: 'problems' }))?.text
@@ -72,9 +73,9 @@ test('received requests count as unread until the next turn begins', async ($, o
   const { clock } = seat(on, response([], [{ ...incoming('verified'), at: '1970-01-01T00:00:00Z' }]))
   await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   const ui = await $.ui.mount(BAND)
-  expect((await ui.find({ key: 'company-codex' }))?.text).toBe('↓1(1)')
+  expect((await ui.find({ key: 'counts-codex' }))?.text).toBe('↓1(1)')
   await clock.advance(1); await $.turn.start({ text: 'read it', turnId: 't' })
-  expect((await ui.find({ key: 'company-codex' }))?.text).toBe('↓1')
+  expect((await ui.find({ key: 'counts-codex' }))?.text).toBe('↓1')
 })
 
 test('company totals include both directions and count what is not confirmed', async ($, on) => {
@@ -84,10 +85,10 @@ test('company totals include both directions and count what is not confirmed', a
   const { clock } = seat(on, data)
   await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   const ui = await $.ui.mount(BAND)
-  expect((await ui.find({ key: 'company-codex' }))?.text).toBe('↑2(1)↓1(1)')
+  expect((await ui.find({ key: 'counts-codex' }))?.text).toBe('↑2(1)↓1(1)')
   expect(await ui.find({ key: 'company-claude' })).toBeUndefined()
   await ui.press({ key: 'toggle' })
-  expect((await ui.find({ key: 'exchanges' }))?.text).toContain('Codex · project')
+  expect((await ui.find({ key: 'exchanges' }))?.text).toContain('Codex· project')
   expect((await ui.find({ key: 'exchanges' }))?.text).not.toContain('直近24時間')
 })
 
@@ -107,7 +108,7 @@ for (const mode of ['failure', 'timeout', 'json', 'status', 'shape']) {
     expect((await ui.find({ type: 'Text', text: '2秒' }))?.text).toBe('2秒')
     state.mode = 'ok'; state.data = response([request('replied')])
     await clock.advance(58000); await clock.settle()
-    expect((await ui.find({ key: 'company-codex' }))?.text).toBe('↑1')
+    expect((await ui.find({ key: 'counts-codex' }))?.text).toBe('↑1')
     expect(await ui.find({ type: 'Text', text: '!' })).toBeUndefined()
   })
 }
@@ -206,7 +207,7 @@ test('reset discards snippets and ignores an old query completing in the new con
   await ui.press({ key: 'toggle' })
   const rows = (await ui.find({ key: 'exchanges' }))?.text ?? ''
   expect(rows).not.toContain('private preview')
-  expect(rows).toContain('Codex · project')
+  expect(rows).toContain('Codex· project')
 })
 
 test('failed refresh grays existing peer rows instead of showing stale green', async ($, on) => {
@@ -217,7 +218,8 @@ test('failed refresh grays existing peer rows instead of showing stale green', a
   const ui = await $.ui.mount(BAND)
   await ui.press({ key: 'toggle' })
   expect((await ui.find({ key: 'peer-0' }))?.text).toContain('未確認')
-  expect((await ui.find({ key: 'peer-0' }))?.text).not.toContain('既読')
+  expect((await ui.find({ key: 'peer-0' }))?.text).not.toContain('返信')
+  expect(await ui.find({ key: 'focus-codex' })).toBeUndefined()
 })
 
 
@@ -285,8 +287,8 @@ test('desktop band draws inside the app card with theme colors: purpose bold, ac
   // The Desktop app drops an Svg whose alt is empty (2026-10-05, on screen).
   expect(stateMark?.props.alt).toBe('作業中')
   expect(await ui.find({ key: 'details' })).toBeUndefined()
-  expect((await ui.find({ key: 'company-codex' }))?.text).toBe('↑1')
-  expect((await ui.find({ key: 'company-claude' }))?.text).toBe('↑1(1)')
+  expect((await ui.find({ key: 'counts-codex' }))?.text).toBe('↑1')
+  expect((await ui.find({ key: 'counts-claude' }))?.text).toBe('↑1(1)')
   for (const provider of ['codex', 'claude']) {
     const badge = await ui.find({ key: `company-${provider}` })
     expect(badge?.props).not.toHaveProperty('backgroundColor')
@@ -303,9 +305,10 @@ test('desktop band draws inside the app card with theme colors: purpose bold, ac
   await ui.press({ key: 'toggle' })
   expect((await ui.find({ key: 'goal' }))?.text).toContain('見本に合わせる。細部は後で')
   for (const text of ['目的', 'やりとり']) expect((await ui.find({ type: 'Text', text }))?.props.color).toBe('subtle')
-  expect((await ui.find({ key: 'peer-0' }))?.text).toContain('Codex · project')
-  expect((await ui.find({ key: 'peer-0' }))?.text).toContain('既読 · 返信あり')
-  expect((await ui.find({ key: 'peer-1' }))?.text).toContain('届いた · 未読')
+  expect((await ui.find({ key: 'peer-0' }))?.text).toContain('Codex· project')
+  expect((await ui.find({ key: 'peer-0' }))?.text).toContain('返信')
+  expect((await ui.find({ key: 'peer-1' }))?.text).toContain('届いた')
+  expect((await ui.find({ key: 'peer-1' }))?.text).toContain('読む')
   expect(await ui.find({ key: 'plan' })).toBeUndefined()
   await ui.press({ key: 'toggle' })
   expect(await ui.find({ key: 'details' })).toBeUndefined()
@@ -351,4 +354,92 @@ test('desktop session waits for first AbovePrompt render and starts one 60 secon
   expect(state.calls.length).toBe(1)
   await clock.advance(1); await clock.settle()
   expect(state.calls.length).toBe(2)
+})
+
+const T = Date.parse(at)
+const staged = (stages: Partial<Record<'reached' | 'processing' | 'replied', number>>, extra: Record<string, unknown> = {}) => ({
+  status: 'ok', id: 'req1', delivery: 'submitted', at, ...extra,
+  stages: (['accepted', 'reached', 'processing', 'replied'] as const).map(stage => stage === 'accepted'
+    ? { stage, status: 'observed', evidence: [], at }
+    : { stage, status: stages[stage] === undefined ? 'unobserved' : 'observed', evidence: [], at: stages[stage] === undefined ? null : new Date(T + stages[stage]!).toISOString() }),
+})
+const peers = (requests: unknown[], inbound: unknown[] = [], status = 'online') =>
+  peersOf(JSON.stringify({ status: 'ok', candidates: [{ ...candidate(requests), status }], inbound }))
+
+test('the closed band names the exchange that matters: unread first, then the newest request on its way', () => {
+  expect(focusOf(peers([staged({})]), null, T + 5000)).toMatchObject({ provider: 'codex', word: '送った', tone: 'attn', sinceMs: T })
+  expect(focusOf(peers([staged({ reached: 1000 })]), null, T + 5000)).toMatchObject({ word: '届いた・未読', sinceMs: T + 1000 })
+  expect(focusOf(peers([staged({ reached: 1000, processing: 2000 })]), null, T + 5000)).toMatchObject({ word: '読んでいる', sinceMs: T + 2000 })
+  expect(focusOf(peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]), null, T + 5000)).toMatchObject({ word: '返信あり', tone: 'ok' })
+  // An answer older than half an hour says nothing more; the counts stay.
+  expect(focusOf(peers([staged({ replied: 3000 })]), null, T + 31 * 60_000)).toBeNull()
+  expect(focusOf(peers([{ ...staged({}), delivery: 'rejected', stages: [] }]), null, T)).toMatchObject({ word: '届かなかった', tone: 'fail' })
+  const reply = { ...incoming('verified'), at: new Date(T + 3000).toISOString() }
+  expect(focusOf(peers([staged({ reached: 1000, processing: 2000, replied: 3000 })], [reply]), null, T + 5000)).toMatchObject({ word: '返信が届いた', tone: 'ok' })
+  expect(focusOf(peers([staged({})], [incoming('verified')]), null, T)).toMatchObject({ word: '依頼が届いた' })
+  // Read once the next turn began after it came.
+  expect(focusOf(peers([staged({})], [incoming('verified')]), T + 1, T + 5000)).toMatchObject({ word: '送った' })
+  expect(focusOf([], null, T)).toBeNull()
+})
+
+test('a request is drawn as its way so far: sent, arrived, read, answered, with the times', () => {
+  const [peer] = peers([staged({ reached: 60_000, processing: 120_000 })])
+  expect(stepsOf(peer!, peer!.exchanges[0]!, null).map(step => [step.word, step.state])).toEqual([['送った', 'done'], ['届いた', 'done'], ['読んでいる', 'now'], ['返信', 'todo']])
+  expect(stepsOf(peer!, peer!.exchanges[0]!, null)[2]!.at).toBe(T + 120_000)
+  const [waiting] = peers([staged({ reached: 60_000 })])
+  expect(stepsOf(waiting!, waiting!.exchanges[0]!, null).map(step => step.state)).toEqual(['done', 'done', 'now', 'todo'])
+  const [done] = peers([staged({ reached: 1, processing: 2, replied: 3 })])
+  expect(stepsOf(done!, done!.exchanges[0]!, null).map(step => [step.word, step.state])).toEqual([['送った', 'done'], ['届いた', 'done'], ['読んだ', 'done'], ['返信', 'done']])
+  const [lost] = peers([{ ...staged({}), delivery: 'rejected', stages: [] }])
+  expect(stepsOf(lost!, lost!.exchanges[0]!, null).map(step => [step.word, step.state])).toEqual([['送った', 'done'], ['届かなかった', 'bad']])
+  const [received] = peers([], [incoming('verified')])
+  expect(stepsOf(received!, received!.exchanges[0]!, null).map(step => step.word)).toEqual(['受け取った', 'まだ読んでいない'])
+  expect(stepsOf(received!, received!.exchanges[0]!, T + 1).map(step => step.word)).toEqual(['受け取った', '読んだ'])
+  expect(peers([staged({})], [], 'offline')[0]!.online).toBe(false)
+  expect(peers([staged({})])[0]!.online).toBe(true)
+})
+
+test('changes between two looks become notices: taken up, answered, not delivered, received', () => {
+  const sent = peers([staged({ reached: 1000 })])
+  expect(noticesOf(sent, peers([staged({ reached: 1000, processing: 2000 })]))).toEqual(['Codex が依頼を読み始めました'])
+  expect(noticesOf(peers([staged({ reached: 1000, processing: 2000 })]), peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]))).toEqual(['Codex が依頼に返信しました'])
+  // An answer that also came here as a message is told once, as the message.
+  const reply = { ...incoming('verified'), at: new Date(T + 3000).toISOString() }
+  expect(noticesOf(peers([staged({ processing: 2000 })]), peers([staged({ processing: 2000, replied: 3000 })], [reply]))).toEqual(['Codex から返信が届きました'])
+  expect(noticesOf([], peers([], [incoming('verified')]))).toEqual(['Codex から依頼が届きました'])
+  expect(noticesOf(sent, peers([{ ...staged({}), delivery: 'rejected', stages: [] }]))).toEqual(['Codex に依頼が届きませんでした'])
+  expect(noticesOf([], peers([{ ...staged({}), id: 'req2', delivery: 'rejected', stages: [] }]))).toEqual(['Codex に依頼が届きませんでした'])
+  expect(noticesOf(sent, sent)).toEqual([])
+})
+
+test('a change seen by a later look is told as a toast; the first look tells nothing', async ($, on) => {
+  const { clock, state } = seat(on, response([staged({ reached: 1000 })]))
+  const toasts: string[] = []
+  on('ui.toast', ($, e) => { toasts.push(e.text); return {} as never })
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  expect(toasts).toEqual([])
+  state.data = response([staged({ reached: 1000, processing: 2000 })])
+  await clock.advance(60000); await clock.settle()
+  expect(toasts).toEqual(['Codex が依頼を読み始めました'])
+  await clock.advance(60000); await clock.settle()
+  expect(toasts).toEqual(['Codex が依頼を読み始めました'])
+})
+
+test('the open band puts the exchanges first: each peer, whether it runs, and each request with its steps', async ($, on) => {
+  const { clock } = seat(on, { status: 'ok', candidates: [{ ...candidate([staged({ reached: 60_000, processing: 120_000 })]), status: 'online' }], inbound: [] })
+  on('tool.call', () => ({ result: 'ok' }))
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  await $.turn.start({ text: '帯を仕上げる', turnId: 't' })
+  await $.tool.call({ tool: 'mcp__seamless__send', id: 'req1', text: '設計の疑問点を3件、返して' } as Parameters<Engine['tool']['call']>[0]); await clock.settle()
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'toggle' })
+  const details = (await ui.find({ key: 'details' }))?.text ?? ''
+  expect(details.indexOf('やりとり')).toBeLessThan(details.indexOf('目的'))
+  const peer = (await ui.find({ key: 'peer-0' }))?.text ?? ''
+  expect(peer).toContain('動いている')
+  expect(peer).toContain('「設計の疑問点を3件、返して…」')
+  expect(peer).toMatch(/送った \d+:\d\d─届いた \d+:\d\d─読んでいる \d+:\d\d〜─返信/)
+  const chain = (await ui.find({ key: 'req-steps-0-0' }))?.children as { type: string; props: Record<string, unknown> }[] | undefined
+  const now = chain?.find(node => node.type === 'Svg' && node.props.alt === '今ここ')
+  expect(now?.props.source).toContain('#d9752b')
 })

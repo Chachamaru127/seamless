@@ -62,3 +62,17 @@
 - 起動の確認: `mcp --panel-only` に initialize、tools/list、resources/list を送り、道具は status_panel だけ、資源は ui://seamless/status だけが返った。
 - 残り（承認待ち）: 導入。CJ-Plugin の wire.sh には Codex のプラグインを配る経路がまだ無い。
 - 判定（Codex Astra、別家系）PASS（重大、中なし。b5f3352）。軽: .mcp.json の絶対パスはこの Mac の配置に依存し、導入後もリポジトリの最新のコードを動かす（手元の利用には合う。移設や版の固定には直しが要る）。
+
+## 2026-10-05 夜間（立花さん「6h ねる間に進めて。Claude のアプリ版UIは朝にはできていること」）
+
+- 帯の問い合わせが重かった: `sessions`（scope any）1回 15 秒、current_work 65 秒。帯を全セッションで30秒ごとに走らせると重すぎる。
+- 第18便: 軽い照会 `band` を足した（全体の走査をせず、自分の依頼の宛先と受信の送り主だけを見る。seen.json を書かない）。帯は Desktop で描かれてから問い合わせを始め、60 秒ごと。ターミナルと claude -p では描かず問い合わせない（5794f64）。
+- 第19便: Claude の相手を探すとき会話 ID が合う pid だけを完全照合、相手ごとの処理を並列、Codex の owner の探索の接続を1回の呼出しの中で使い回し（78c78dc）。
+- 記録の取り方: `node --import` の前処理で子プロセスと接続の時間を記録。Claude の実行ファイル（225MB）の `codesign --verify --strict` が1回約5秒で2回（OpenAI のチームを先に試して空振り）。
+- 第20便: 期待するチームだけで検証し、通った結果を `~/.seamless/signature-cache.json`（0600。realpath と dev、ino、size、mtimeMs、ctimeMs と24時間で照合）で再利用（728dd8a）。
+- 判定（Claude Opus、第18〜20便）PASS、「有効にしてよい」。中-1（時計が全セッションで動く）は有効にする前に直した（113f236。時計も Desktop で描かれた後だけ）。中-2（署名の結果を保存すると ~/.seamless が信頼の入口に加わる。同じ利用者は他の経路でも同じことができるので受け入れを推奨）と中-3（壊れたキャッシュは作り直さない）は立花さんの判断と次便。
+- Mac の負荷: 夜の間 load average 260〜440（Chrome、Claude、Codex の描画プロセスが各 CPU 約95%）。子プロセスを使う試験と帯の試験が回ごとに数件「timed out after 5000 ms」になった（assert の失敗は無い）。実機の band の時間はこの負荷では測れなかった（呼ぶ側の特定の lsof も5秒を超えて止まった）。
+- 導入: CJ-Plugin #20（cj-plugin の marketplace 経由、v5）は Claude が「Path escapes plugin directory」で読み込まなかった。seamless 自体を手元の marketplace にした（a7e6cc9）。CJ-Plugin #21（v6）で `extraKnownMarketplaces.seamless` と `enabledPlugins.seamless-band@seamless` を配送（wire.sh plan → apply → check、in_sync）。`claude plugin marketplace add` と `claude plugin install seamless-band@seamless --scope user` で導入。`claude plugin list` で enabled、seamless のリポジトリから直接読む。
+- ターミナルの Claude（2.1.289）の記録で「hooks module seamless-band@seamless loaded」「plugin.register: admitted」。ターミナルでは band の問い合わせは0件。
+- 残り（外部条件）: Desktop アプリ（2.19675.0）の同梱 Claude Code は 2.1.286 で、mod の条件（2.1.287 以上）に届かない。Desktop アプリが新しい版を入れて再起動すれば、Code タブに帯が出る。記録（~/Library/Logs/Claude/main*.log の「[CCD] Initialized with version」）では Desktop の更新ごとに上がっている（9/25 の 2.1.281 から 10/3 の 2.1.286）。Desktop には開発用の差し替え `CLAUDE_CODE_LOCAL_BINARY`（アプリの起動時の環境変数）もあるが、アプリの再起動が要り、動いている会話を止めるので使っていない。
+- 気づいたこと: ターミナルの `claude -p` が「OAuth session expired and could not be refreshed」で止まる（10/5 10時ごろ）。Claude CLI のログインのやり直しが要る。

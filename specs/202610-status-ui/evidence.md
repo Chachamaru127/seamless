@@ -83,3 +83,9 @@
 - Claude Code の配信（https://downloads.claude.ai/claude-code-releases/）: `latest` は 2.1.289、`stable` は 2.1.285。
 - Desktop の中には Claude Code だけを自動で更新する仕組み（autoUpdateCandidates、download wait、auto-update-state.json）があるが、`~/Library/Application Support/Claude/claude-code/` に状態のファイルは無く、記録（main*.log）にも自動更新の行は無い。この Mac では働いていない（条件は未確認）。
 - 帯を Code タブに出す手段は、(1) 2.1.287 以上を同梱した Desktop の配信を待つ、(2) 開発用の差し替え `CLAUDE_CODE_LOCAL_BINARY`（Desktop の起動時の環境変数。例 `launchctl setenv CLAUDE_CODE_LOCAL_BINARY ~/.local/share/claude/versions/2.1.289` の後に Desktop を終了して開き直す。戻すのは `launchctl unsetenv CLAUDE_CODE_LOCAL_BINARY` と再起動）の2つ。(2) は Desktop の記録に「LOCAL OVERRIDE」と出る開発用の経路で、Desktop の再起動で動いている会話がいったん止まる。立花さんの判断。
+
+## 2026-10-05 11時台: 開発用の差し替えは配布版では効かない（実測）
+
+- 立花さんが `launchctl setenv CLAUDE_CODE_LOCAL_BINARY ~/.local/share/claude/versions/2.1.289` を実行し、Claude アプリを開き直した（11:30:55）。記録は「[CCD] Initialized with version 2.1.286」で、「LOCAL OVERRIDE」の行は出ず、この会話も claude-code/2.1.286 で動いた。
+- app.asar の該当箇所は、初期化の最後に `process.env.CLAUDE_CODE_LOCAL_BINARY` を式として読むだけで、`initLocalBinary` を呼ぶ処理が配布版には残っていない（開発版だけの経路と見られる）。リーダーは前日、この続きを読まずに方法 B を勧めた（誤り）。
+- 結論: Code タブに帯を出す手段は、Claude Code 2.1.287 以上を同梱した Desktop の配信を待つことだけ。環境変数は効果がないので `launchctl unsetenv CLAUDE_CODE_LOCAL_BINARY` で消してよい。

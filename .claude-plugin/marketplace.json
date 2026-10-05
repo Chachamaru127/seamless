@@ -1,0 +1,23 @@
+{
+  "name": "seamless",
+  "owner": {
+    "name": "CJ"
+  },
+  "metadata": {
+    "version": "0.1.0",
+    "description": "seamless の Claude 用プラグイン（状態の帯）を手元から入れるための marketplace"
+  },
+  "plugins": [
+    {
+      "name": "seamless-band",
+      "source": "./mods/seamless-band",
+      "version": "0.1.0",
+      "description": "Claude Desktop の Code タブの入力欄の上に、今していることと seamless のやりとりの状態を出す帯（mod）",
+      "author": {
+        "name": "CJ"
+      },
+      "category": "productivity",
+      "keywords": ["seamless", "mods", "status"]
+    }
+  ]
+}

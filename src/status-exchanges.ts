@@ -204,34 +204,43 @@ export function focusOf(peers: Peer[], readSinceMs: number | null, nowMs: number
 }
 
 /**
- * What changed between two looks at the exchanges, as notices for a toast:
- * a request taken up, answered, or not delivered, and a message received.
- * A request first met by the later look is told by where it stands. A reply
- * is told once, whether seen first as an answer or as a message: `told`
- * keeps the replies already told, across looks.
+ * What happened to the exchanges since this session began to look, as
+ * notices for a toast: a request taken up, answered, or not delivered, and a
+ * message received. Each event is told once: `told` keeps the events already
+ * told (or seen on the first look, `isTelling` false), so a stage that drops
+ * out of one look and comes back is not told again, and one reply, seen as
+ * an answer or as a message, is told once.
  */
-export function noticesOf(before: Peer[], after: Peer[], told: Set<string>): string[] {
-  const keyOf = (peer: Peer, x: Exchange) => `${peer.provider}:${peer.nativeId}:${x.direction}:${x.id}`
-  const known = new Map(before.flatMap(peer => peer.exchanges.map(x => [keyOf(peer, x), x] as const)))
-  const once = (peer: Peer, at: number | null, notice: string): string[] => {
-    const key = `${peer.provider}:${peer.nativeId}:reply:${at}`
-    if (at !== null && told.has(key)) return []
-    if (at !== null) told.add(key)
-    return [notice]
+export function noticesOf(peers: Peer[], told: Set<string>, isTelling: boolean): string[] {
+  const once = (key: string, notice: string): string[] => {
+    if (told.has(key)) return []
+    told.add(key)
+    return isTelling ? [notice] : []
   }
-  return after.flatMap(peer => peer.exchanges.flatMap(x => {
+  // The answers seen so far, by peer and time: a message that came then is that answer.
+  for (const peer of peers) for (const x of peer.exchanges) {
+    if (x.direction === 'outbound' && x.times.replied !== null) told.add(`answer-at:${peer.provider}:${peer.nativeId}:${x.times.replied}`)
+  }
+  return peers.flatMap(peer => peer.exchanges.flatMap(x => {
     const name = companyName(peer.provider)
-    const old = known.get(keyOf(peer, x))
+    const event = (what: string) => `${peer.provider}:${peer.nativeId}:${x.direction}:${x.id}:${what}`
     if (x.direction === 'inbound') {
-      if (old !== undefined) return []
-      return isReply(peer, x) ? once(peer, x.at, `${name} から返信が届きました`) : [`${name} から依頼が届きました`]
+      if (told.has(event('received'))) return []
+      const isAnswer = isReply(peer, x) || (x.at !== null && told.has(`answer-at:${peer.provider}:${peer.nativeId}:${x.at}`))
+      told.add(event('received'))
+      return isAnswer ? once(`reply:${peer.provider}:${peer.nativeId}:${x.at}`, `${name} から返信が届きました`) : isTelling ? [`${name} から依頼が届きました`] : []
     }
-    if (x.rejected) return old?.rejected === true ? [] : [`${name} に依頼が届きませんでした`]
-    if (x.times.replied !== null && (old === undefined || old.times.replied === null)) {
+    if (x.rejected) return once(event('rejected'), `${name} に依頼が届きませんでした`)
+    if (x.times.replied !== null) {
+      // An answered request has nothing earlier left to tell.
+      told.add(event('processing'))
+      if (told.has(event('replied'))) return []
       // A reply also received here as a message is told as that message.
-      return isReplyReceived(peer, x) ? [] : once(peer, x.times.replied, `${name} が依頼に返信しました`)
+      if (isReplyReceived(peer, x)) return []
+      told.add(event('replied'))
+      return once(`reply:${peer.provider}:${peer.nativeId}:${x.times.replied}`, `${name} が依頼に返信しました`)
     }
-    if (x.times.processing !== null && (old === undefined || old.times.processing === null)) return [`${name} が依頼を読み始めました`]
+    if (x.times.processing !== null) return once(event('processing'), `${name} が依頼を読み始めました`)
     return []
   }))
 }

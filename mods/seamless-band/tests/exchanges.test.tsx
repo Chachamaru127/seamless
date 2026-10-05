@@ -399,29 +399,53 @@ test('a request is drawn as its way so far: sent, arrived, read, answered, with 
   expect(peers([staged({})])[0]!.online).toBe(true)
 })
 
+/** The notices of a later look, the earlier one seen first with nothing told. */
+const notices = (before: ReturnType<typeof peers>, after: ReturnType<typeof peers>, told = new Set<string>()) => {
+  noticesOf(before, told, false)
+  return noticesOf(after, told, true)
+}
+
 test('changes between two looks become notices: taken up, answered, not delivered, received', () => {
   const sent = peers([staged({ reached: 1000 })])
-  expect(noticesOf(sent, peers([staged({ reached: 1000, processing: 2000 })]), new Set())).toEqual(['Codex が依頼を読み始めました'])
-  expect(noticesOf(peers([staged({ reached: 1000, processing: 2000 })]), peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]), new Set())).toEqual(['Codex が依頼に返信しました'])
+  expect(notices(sent, peers([staged({ reached: 1000, processing: 2000 })]), new Set())).toEqual(['Codex が依頼を読み始めました'])
+  expect(notices(peers([staged({ reached: 1000, processing: 2000 })]), peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]), new Set())).toEqual(['Codex が依頼に返信しました'])
   // An answer that also came here as a message is told once, as the message.
   const reply = { ...incoming('verified'), at: new Date(T + 3000).toISOString() }
-  expect(noticesOf(peers([staged({ processing: 2000 })]), peers([staged({ processing: 2000, replied: 3000 })], [reply]), new Set())).toEqual(['Codex から返信が届きました'])
-  expect(noticesOf([], peers([], [incoming('verified')]), new Set())).toEqual(['Codex から依頼が届きました'])
-  expect(noticesOf(sent, peers([{ ...staged({}), delivery: 'rejected', stages: [] }]), new Set())).toEqual(['Codex に依頼が届きませんでした'])
-  expect(noticesOf([], peers([{ ...staged({}), id: 'req2', delivery: 'rejected', stages: [] }]), new Set())).toEqual(['Codex に依頼が届きませんでした'])
-  expect(noticesOf(sent, sent, new Set())).toEqual([])
+  expect(notices(peers([staged({ processing: 2000 })]), peers([staged({ processing: 2000, replied: 3000 })], [reply]), new Set())).toEqual(['Codex から返信が届きました'])
+  expect(notices([], peers([], [incoming('verified')]), new Set())).toEqual(['Codex から依頼が届きました'])
+  expect(notices(sent, peers([{ ...staged({}), delivery: 'rejected', stages: [] }]), new Set())).toEqual(['Codex に依頼が届きませんでした'])
+  expect(notices([], peers([{ ...staged({}), id: 'req2', delivery: 'rejected', stages: [] }]), new Set())).toEqual(['Codex に依頼が届きませんでした'])
+  expect(notices(sent, sent, new Set())).toEqual([])
   // A request first met by the later look is told by where it stands.
-  expect(noticesOf([], peers([staged({ processing: 2000 })]), new Set())).toEqual(['Codex が依頼を読み始めました'])
-  expect(noticesOf([], peers([staged({ reached: 1000 })]), new Set())).toEqual([])
+  expect(notices([], peers([staged({ processing: 2000 })]), new Set())).toEqual(['Codex が依頼を読み始めました'])
+  expect(notices([], peers([staged({ reached: 1000 })]), new Set())).toEqual([])
   // A request and a message with the same id are two things.
   const both = peers([staged({ processing: 2000 })], [{ ...incoming('verified'), id: 'req1' }])
-  expect(noticesOf(peers([staged({ processing: 2000 })]), both, new Set())).toEqual(['Codex から依頼が届きました'])
-  expect(noticesOf(both, both, new Set())).toEqual([])
+  expect(notices(peers([staged({ processing: 2000 })]), both, new Set())).toEqual(['Codex から依頼が届きました'])
+  expect(notices(both, both, new Set())).toEqual([])
   // One reply seen first as an answer, then as a message, is told once.
   const told = new Set<string>()
   const answered = peers([staged({ processing: 2000, replied: 3000 })])
-  expect(noticesOf(peers([staged({ processing: 2000 })]), answered, told)).toEqual(['Codex が依頼に返信しました'])
-  expect(noticesOf(answered, peers([staged({ processing: 2000, replied: 3000 })], [reply]), told)).toEqual([])
+  expect(notices(peers([staged({ processing: 2000 })]), answered, told)).toEqual(['Codex が依頼に返信しました'])
+  expect(notices(answered, peers([staged({ processing: 2000, replied: 3000 })], [reply]), told)).toEqual([])
+})
+
+test('a stage that drops out of a look and comes back is not told again', () => {
+  const told = new Set<string>()
+  noticesOf(peers([staged({ reached: 1000 })]), told, false)
+  expect(noticesOf(peers([staged({ reached: 1000, processing: 2000 })]), told, true)).toEqual(['Codex が依頼を読み始めました'])
+  // The peer's history could not be read: the stages are gone for a look.
+  expect(noticesOf(peers([staged({})]), told, true)).toEqual([])
+  expect(noticesOf(peers([staged({ reached: 1000, processing: 2000 })]), told, true)).toEqual([])
+  // An answer told, then seen only as the message that carried it, is not told again, nor as a new request.
+  expect(noticesOf(peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]), told, true)).toEqual(['Codex が依頼に返信しました'])
+  const reply = { ...incoming('verified'), id: 'msg1', at: new Date(T + 3000).toISOString() }
+  expect(noticesOf(peers([staged({})], [reply]), told, true)).toEqual([])
+  // Taken up after it was answered says nothing.
+  const late = new Set<string>()
+  noticesOf(peers([staged({ reached: 1000 })]), late, false)
+  expect(noticesOf(peers([staged({ replied: 3000 })]), late, true)).toEqual(['Codex が依頼に返信しました'])
+  expect(noticesOf(peers([staged({ processing: 2000, replied: 3000 })]), late, true)).toEqual([])
 })
 
 test('a peer whose state is unknown is said neither running nor stopped', () => {

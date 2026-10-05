@@ -1173,7 +1173,7 @@ type ExchangeLive = {
   snippets: Map<string, string>
   /** Whether the exchanges were seen once since the reset: changes from then on are told by a toast. */
   seeded: boolean
-  /** The replies already told, so one reply seen first as an answer and then as a message is told once. */
+  /** The events of the exchanges already told (or seen on the first look): each is told once. */
   told: Set<string>
   poller: Timer | null
   node: string
@@ -1197,7 +1197,7 @@ async function refresh($: EngineInterface, state: ExchangeLive): Promise<void> {
     if (result.exitCode !== 0) throw new Error(`終了コード ${result.exitCode}${result.stderr.trim() === '' ? '' : `: ${result.stderr.trim().split('\n')[0]}`}`)
     const peers = peersOf(result.stdout)
     // Each change after the first look is told once, as a toast: a request taken up, answered, refused, or a message received.
-    const notices = state.seeded ? noticesOf(state.peers, peers, state.told) : []
+    const notices = noticesOf(peers, state.told, state.seeded)
     state.peers = peers
     state.seeded = true
     state.unknown = false

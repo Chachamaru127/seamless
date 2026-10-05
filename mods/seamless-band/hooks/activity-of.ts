@@ -17,6 +17,7 @@ function isAllowedLatin(run: string): boolean {
   const word = run.replace(/^[(\[「『"']+|[)\]」』"'.,:;!?、。]+$/g, '')
 
   // Numbers up to three digits and n/m: a longer number may be an argument or a key.
+  if (/^-/.test(run)) return false
   if (!/[A-Za-z]/.test(word)) return /^\d{1,3}\/\d{1,3}$/.test(word) || (!/\d{4,}/.test(run) && !/[/\\:@`$=<>|{}]/.test(run))
 
   return FILE_NAME.test(word) || PRODUCT_NAMES.has(word)
@@ -42,7 +43,8 @@ export function agentNameOf(description: unknown, handle?: unknown): string {
   const said = plainText(description)
 
   if (said !== '') return said
-  if (typeof handle === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(handle)) return handle
+  // A handle is a word or two of letters, `reviewer` or `code-reviewer`: no digits, no underscores, nothing key-shaped.
+  if (typeof handle === 'string' && /^[A-Za-z]+(-[A-Za-z]+)?$/.test(handle) && handle.length <= 24) return handle
 
   return '子エージェント'
 }
@@ -128,9 +130,8 @@ function serverPurpose(server: string): string {
   if (/computer-use/i.test(server)) return '画面を操作する'
   if (/^harness$/i.test(server)) return '記憶を探す'
   if (/^ccd_/i.test(server)) return 'アプリを操作する'
-  if (/^[0-9a-f]{8}-/i.test(server) || server === '') return '外部の道具を使う'
 
-  return `外部の道具を使う（${server}）`
+  return '外部の道具を使う'
 }
 
 /**

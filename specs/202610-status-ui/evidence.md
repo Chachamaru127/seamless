@@ -76,3 +76,10 @@
 - ターミナルの Claude（2.1.289）の記録で「hooks module seamless-band@seamless loaded」「plugin.register: admitted」。ターミナルでは band の問い合わせは0件。
 - 残り（外部条件）: Desktop アプリ（2.19675.0）の同梱 Claude Code は 2.1.286 で、mod の条件（2.1.287 以上）に届かない。Desktop アプリが新しい版を入れて再起動すれば、Code タブに帯が出る。記録（~/Library/Logs/Claude/main*.log の「[CCD] Initialized with version」）では Desktop の更新ごとに上がっている（9/25 の 2.1.281 から 10/3 の 2.1.286）。Desktop には開発用の差し替え `CLAUDE_CODE_LOCAL_BINARY`（アプリの起動時の環境変数）もあるが、アプリの再起動が要り、動いている会話を止めるので使っていない。
 - 気づいたこと: ターミナルの `claude -p` が「OAuth session expired and could not be refreshed」で止まる（10/5 10時ごろ）。Claude CLI のログインのやり直しが要る。
+
+## 2026-10-05 10時台: Desktop の更新では帯は出ない（実測）
+
+- Desktop アプリの配信の情報（https://downloads.claude.ai/releases/darwin/universal/RELEASES.json）: `currentRelease` は 2.19675.0（2026-10-01 公開）で、入っている版と同じ。アプリを更新しても Claude Code は 2.1.286 のまま。
+- Claude Code の配信（https://downloads.claude.ai/claude-code-releases/）: `latest` は 2.1.289、`stable` は 2.1.285。
+- Desktop の中には Claude Code だけを自動で更新する仕組み（autoUpdateCandidates、download wait、auto-update-state.json）があるが、`~/Library/Application Support/Claude/claude-code/` に状態のファイルは無く、記録（main*.log）にも自動更新の行は無い。この Mac では働いていない（条件は未確認）。
+- 帯を Code タブに出す手段は、(1) 2.1.287 以上を同梱した Desktop の配信を待つ、(2) 開発用の差し替え `CLAUDE_CODE_LOCAL_BINARY`（Desktop の起動時の環境変数。例 `launchctl setenv CLAUDE_CODE_LOCAL_BINARY ~/.local/share/claude/versions/2.1.289` の後に Desktop を終了して開き直す。戻すのは `launchctl unsetenv CLAUDE_CODE_LOCAL_BINARY` と再起動）の2つ。(2) は Desktop の記録に「LOCAL OVERRIDE」と出る開発用の経路で、Desktop の再起動で動いている会話がいったん止まる。立花さんの判断。

@@ -1,4 +1,4 @@
-import { clip, oneLine } from './text'
+import { clip, oneLine, visible } from './text'
 
 const MAX_DETAIL_CHARS = 60
 
@@ -31,11 +31,15 @@ export function isJapanese(text: string): boolean {
 /** Text the model wrote, as it may be shown: Japanese, with no command, address or key in it; else empty. */
 export function plainText(text: unknown): string {
   if (typeof text !== 'string') return ''
-  const flat = oneLine(text)
 
-  const latin = flat.match(/[\x21-\x7e]+/g) ?? []
+  // Judged as drawn, invisible characters out, and with full-width letters
+  // and digits folded to their plain forms, so neither slips past.
+  const shown = visible(text)
+  const folded = shown.normalize('NFKC')
+  const latin = folded.match(/[\x21-\x7e]+/g) ?? []
+  const isHostLike = /[^\x00-\x7f]\.|\.[^\x00-\x7f\s]/.test(folded)
 
-  return isJapanese(flat) && !/[０-９]{4,}/.test(flat) && latin.every(isAllowedLatin) ? flat : ''
+  return isJapanese(folded) && !isHostLike && latin.every(isAllowedLatin) ? shown : ''
 }
 
 /** A subagent's name: its description when plain Japanese, else its handle (an identifier such as `reviewer`), else a fixed word. */

@@ -56,9 +56,12 @@ export function durationOf(ms: number): string {
  * to `max`. Labels carry paths, commands and thoughts the model wrote.
  */
 export function printable(text: string, max: number): string {
-  const spaced = text.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, ' ').replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, '')
+  return clip(visible(text), max)
+}
 
-  return clip(oneLine(spaced), max)
+/** The text as drawn: control and separator characters spaced out, invisible ones dropped, whitespace collapsed. */
+export function visible(text: string): string {
+  return oneLine(text.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, ' ').replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, ''))
 }
 
 /** The characters a streamed chunk adds, spaces left out: Japanese has no words to count. */

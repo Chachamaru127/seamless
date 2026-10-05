@@ -228,6 +228,8 @@ export function noticesOf(peers: Peer[], told: Set<string>, isTelling: boolean):
       if (told.has(event('received'))) return []
       const isAnswer = isReply(peer, x) || (x.at !== null && told.has(`answer-at:${peer.provider}:${peer.nativeId}:${x.at}`))
       told.add(event('received'))
+      // Kept by time: an answer seen later at this time was told as this message.
+      if (x.at !== null) told.add(`message-at:${peer.provider}:${peer.nativeId}:${x.at}`)
       return isAnswer ? once(`reply:${peer.provider}:${peer.nativeId}:${x.at}`, `${name} から返信が届きました`) : isTelling ? [`${name} から依頼が届きました`] : []
     }
     if (x.rejected) return once(event('rejected'), `${name} に依頼が届きませんでした`)
@@ -235,9 +237,11 @@ export function noticesOf(peers: Peer[], told: Set<string>, isTelling: boolean):
       // An answered request has nothing earlier left to tell.
       told.add(event('processing'))
       if (told.has(event('replied'))) return []
-      // A reply also received here as a message is told as that message.
+      // A reply also received here as a message is told as that message,
+      // now or before (the message may have left the list since).
       if (isReplyReceived(peer, x)) return []
       told.add(event('replied'))
+      if (told.has(`message-at:${peer.provider}:${peer.nativeId}:${x.times.replied}`)) return []
       return once(`reply:${peer.provider}:${peer.nativeId}:${x.times.replied}`, `${name} が依頼に返信しました`)
     }
     if (x.times.processing !== null) return once(event('processing'), `${name} が依頼を読み始めました`)

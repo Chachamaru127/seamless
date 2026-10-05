@@ -446,6 +446,15 @@ test('a stage that drops out of a look and comes back is not told again', () => 
   noticesOf(peers([staged({ reached: 1000 })]), late, false)
   expect(noticesOf(peers([staged({ replied: 3000 })]), late, true)).toEqual(['Codex が依頼に返信しました'])
   expect(noticesOf(peers([staged({ processing: 2000, replied: 3000 })]), late, true)).toEqual([])
+  // A message seen first, its answer stage later, with the message gone or still there: told once.
+  for (const keepsMessage of [false, true]) {
+    const first = new Set<string>()
+    const message = { ...incoming('verified'), id: 'msg2', at: new Date(T + 3000).toISOString() }
+    noticesOf(peers([staged({ reached: 1000 })]), first, false)
+    expect(noticesOf(peers([staged({ reached: 1000 })], [message]), first, true)).toEqual(['Codex から依頼が届きました'])
+    expect(noticesOf(peers([staged({ reached: 1000, processing: 2000, replied: 3000 })], keepsMessage ? [message] : []), first, true)).toEqual([])
+    expect(noticesOf(peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]), first, true)).toEqual([])
+  }
 })
 
 test('a peer whose state is unknown is said neither running nor stopped', () => {

@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { peersOf, companiesOf, focusOf, noticesOf, stepsOf } from '../hooks/exchanges'
+import { peersOf, companiesOf, focusOf, noticesOf, settle, stepsOf } from '../hooks/exchanges'
 import { requestResults } from './fixtures/status-results'
 import { clip, durationOf } from '../hooks/text'
 
@@ -504,4 +504,27 @@ test('the open band puts the exchanges first: each peer, whether it runs, and ea
   const chain = (await ui.find({ key: 'req-steps-0-0' }))?.children as { type: string; props: Record<string, unknown> }[] | undefined
   const now = chain?.find(node => node.type === 'Svg' && node.props.alt === '今ここ')
   expect(now?.props.source).toContain('#d9752b')
+})
+
+test('a stage once seen stays: a look that misses it does not take the request back', () => {
+  const memory = new Map()
+  settle(peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]), memory)
+  const missed = settle(peers([staged({ reached: 1000 })]), memory)
+  expect(focusOf(missed, null, T + 5000)).toMatchObject({ word: '返信あり' })
+  expect(stepsOf(missed[0]!, missed[0]!.exchanges[0]!, null).map(step => step.state)).toEqual(['done', 'done', 'done', 'done'])
+  expect(missed[0]!.exchanges[0]!.color).toBe('#38c68e')
+  const bare = settle(peers([{ ...staged({}), stages: [] }]), memory)
+  expect(focusOf(bare, null, T + 5000)).toMatchObject({ word: '返信あり' })
+})
+
+test('the band does not step back when a later look misses a stage', async ($, on) => {
+  const { clock, state } = seat(on, response([staged({ reached: 1000, processing: 2000, replied: 3000 })]))
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  const ui = await $.ui.mount(BAND)
+  expect((await ui.find({ key: 'focus-codex' }))?.text).toBe('返信あり')
+  state.data = response([staged({ reached: 1000 })])
+  await clock.advance(60000); await clock.settle()
+  expect((await ui.find({ key: 'focus-codex' }))?.text).toBe('返信あり')
+  await ui.press({ key: 'toggle' })
+  expect((await ui.find({ key: 'peer-0' }))?.text).not.toContain('読んでいる')
 })

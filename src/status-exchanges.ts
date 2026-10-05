@@ -145,6 +145,30 @@ export function talliesOf(peers: Peer[], readSinceMs: number | null): Tally[] {
   })
 }
 
+/**
+ * The requests as far as they have been seen to go: a stage once observed
+ * happened, so a later look that misses it (the peer's history could not be
+ * read that time) does not take it back. `memory` keeps the furthest times
+ * seen, by peer and request, across looks.
+ */
+export function settle(peers: Peer[], memory: Map<string, Exchange['times']>): Peer[] {
+  return peers.map(peer => ({ ...peer, exchanges: peer.exchanges.map(x => {
+    if (x.direction !== 'outbound') return x
+    const key = `${peer.provider}:${peer.nativeId}:${x.id}`
+    const seen = memory.get(key)
+    const times = {
+      reached: x.times.reached ?? seen?.reached ?? null,
+      processing: x.times.processing ?? seen?.processing ?? null,
+      replied: x.times.replied ?? seen?.replied ?? null,
+    }
+    memory.set(key, times)
+    const state = times.processing !== null || times.replied !== null ? { color: palette.green, label: times.replied !== null ? '既読 · 返信あり' : '既読' }
+      : times.reached !== null && x.color !== palette.green ? { color: palette.orange, label: '届いた · 未読' }
+      : { color: x.color, label: x.label }
+    return { ...x, ...state, times, rejected: state.color === palette.red }
+  }) }))
+}
+
 /** A received message that answers one of this session's requests: it came when that request's reply was seen. */
 export function isReply(peer: Peer, exchange: Exchange): boolean {
   return exchange.direction === 'inbound' && exchange.at !== null

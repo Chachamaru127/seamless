@@ -1,6 +1,6 @@
 import { brandSvg, dots, marks, theme, tone } from './appearance'
-import { peersOf, talliesOf, peerLabel, companyName, focusOf, noticesOf, stepsOf } from './exchanges'
-import type { Peer, Step } from './exchanges'
+import { peersOf, talliesOf, peerLabel, companyName, focusOf, noticesOf, settle, stepsOf } from './exchanges'
+import type { Exchange, Peer, Step } from './exchanges'
 import { atom, read, update } from 'claude-code'
 import type { AgentInfo, EngineInterface, Register, Timer, TurnCompleteReason, TurnStepChunk } from 'claude-code'
 
@@ -137,7 +137,7 @@ type Live = {
  * @param on the engine's registrar
  */
 export const register: Register = (on, options) => {
-  const exchanges: ExchangeLive = { desktop: false, ended: false, peers: [], unknown: true, error: null, busy: false, pending: false, generation: 0, snippets: new Map(), seeded: false, told: new Set(), poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
+  const exchanges: ExchangeLive = { desktop: false, ended: false, peers: [], unknown: true, error: null, busy: false, pending: false, generation: 0, snippets: new Map(), seeded: false, told: new Set(), furthest: new Map(), poller: null, node: typeof options.nodePath === 'string' ? options.nodePath : DEFAULT_NODE, repository: typeof options.repositoryPath === 'string' ? options.repositoryPath : '' }
   const live: Live = {
     planStarts: new Map(),
     planEnds: new Map(),
@@ -190,6 +190,7 @@ export const register: Register = (on, options) => {
     exchanges.snippets.clear()
     exchanges.seeded = false
     exchanges.told.clear()
+    exchanges.furthest.clear()
     exchanges.peers = []
     exchanges.unknown = true
     exchanges.poller?.cancel()
@@ -1175,6 +1176,8 @@ type ExchangeLive = {
   seeded: boolean
   /** The events of the exchanges already told (or seen on the first look): each is told once. */
   told: Set<string>
+  /** The furthest stage times seen per request: a look that misses a stage does not take it back. */
+  furthest: Map<string, Exchange['times']>
   poller: Timer | null
   node: string
   repository: string
@@ -1195,7 +1198,7 @@ async function refresh($: EngineInterface, state: ExchangeLive): Promise<void> {
     const result = await $.process.run([state.node, `${root}/src/cli.ts`, 'band'], { timeoutMs: 20_000 })
     if (generation !== state.generation) return
     if (result.exitCode !== 0) throw new Error(`終了コード ${result.exitCode}${result.stderr.trim() === '' ? '' : `: ${result.stderr.trim().split('\n')[0]}`}`)
-    const peers = peersOf(result.stdout)
+    const peers = settle(peersOf(result.stdout), state.furthest)
     // Each change after the first look is told once, as a toast: a request taken up, answered, refused, or a message received.
     const notices = noticesOf(peers, state.told, state.seeded)
     state.peers = peers

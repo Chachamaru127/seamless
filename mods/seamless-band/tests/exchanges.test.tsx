@@ -292,8 +292,10 @@ test('desktop band draws inside the app card with theme colors: purpose bold, ac
     expect(badge?.props).not.toHaveProperty('backgroundColor')
     const logo = badge?.children[0] as { type: string; props: Record<string, unknown> }
     expect(logo.type).toBe('Svg')
-    expect(logo.props).toMatchObject({ width: 13, height: 13, alt: provider === 'codex' ? 'Codex' : 'Claude' })
-    expect(logo.props.source).toContain('#8d8b85')
+    expect(logo.props).toMatchObject({ width: 14, height: 14, alt: provider === 'codex' ? 'Codex' : 'Claude' })
+    // A white mark on the company's color, legible on the light and the dark card (2026-10-05, dark on screen).
+    expect(logo.props.source).toContain(provider === 'codex' ? '#10a37f' : '#d97757')
+    expect(logo.props.source).toContain('#ffffff')
     expect(logo.props.source).toContain(provider === 'codex' ? 'M12 3.2a4.4' : 'M13.8 4h3.1')
   }
   expect((await ui.find({ type: 'Text', text: '↑1' }))?.props.color).toBe('inactive')

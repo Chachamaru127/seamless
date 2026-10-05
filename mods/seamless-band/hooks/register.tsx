@@ -1,4 +1,4 @@
-import { logoSvg, marks, stateTone, theme, tone } from './appearance'
+import { brandSvg, marks, stateTone, theme, tone } from './appearance'
 import { peersOf, talliesOf, latest, peerLabel, companyName, UNKNOWN } from './exchanges'
 import type { Peer } from './exchanges'
 import { atom, read, update } from 'claude-code'
@@ -30,7 +30,7 @@ const MAX_AGENT_NAME_CHARS = 40
 const MAX_AGENT_ROWS = 6
 const TOOL_PREFIX = '道具を使っている: '
 const MAX_GOAL_CHARS = 400
-const MAX_MACRO_CHARS = 18
+const MAX_MACRO_CHARS = 28
 const MAX_PLAN_ROWS = 6
 const MAX_STEP_ROWS = 5
 const MAX_PLAN_ITEMS = 100
@@ -513,7 +513,7 @@ export const register: Register = (on, options) => {
     ]
     const right = [
       ...tallies.map(t => <Box key={`company-${t.provider}`} flexDirection="row" alignItems="center" columnGap={0.5}>
-        <Svg key={`badge-logo-${t.provider}`} alt={companyName(t.provider)} width={13} height={13} source={logoSvg(t.provider, t.problems.length > 0 ? tone.fail : tone.idle)} />
+        <Svg key={`badge-logo-${t.provider}`} alt={companyName(t.provider)} width={14} height={14} source={brandSvg(t.provider)} />
         {count(`up-${t.provider}`, '↑', t.up, t.upPending)}
         {count(`down-${t.provider}`, '↓', t.down, t.downUnread)}
       </Box>),
@@ -573,12 +573,12 @@ export const register: Register = (on, options) => {
     const peerRows = exchanges.peers.map((peer, i) => {
       const last = latest(peer.exchanges)
       const state = exchanges.unknown ? UNKNOWN : last
-      const { key, mark: tint } = stateTone(state.color)
+      const { key } = stateTone(state.color)
       const snippet = last.direction === 'outbound' ? exchanges.snippets.get(last.id) : undefined
       return <Box key={`peer-${i}`} flexDirection="row" alignItems="center" columnGap={1}>
-        <Svg key={`peer-logo-${i}`} alt={companyName(peer.provider)} width={13} height={13} source={logoSvg(peer.provider, tint)} />
+        <Svg key={`peer-logo-${i}`} alt={companyName(peer.provider)} width={14} height={14} source={brandSvg(peer.provider)} />
         <Box key={`peer-text-${i}`} flexGrow={1} flexShrink={1}><Text color={theme.text} wrap="truncate-end">{printable(`${peerLabel(peer)}${snippet === undefined ? '' : `「${snippet}…」`}`, 240)}</Text></Box>
-        <Text key={`peer-state-${i}`} color={key}>{state.label}</Text>
+        <Box key={`peer-state-box-${i}`} flexShrink={0}><Text key={`peer-state-${i}`} color={key} wrap="truncate-end">{state.label}</Text></Box>
       </Box>
     })
 

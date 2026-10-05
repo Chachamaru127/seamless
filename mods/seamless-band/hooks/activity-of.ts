@@ -50,6 +50,15 @@ function purposeOf(tool: string, args: Record<string, unknown>): string {
       return `skill を使う: ${arg('skill')}`
   }
 
+  // seamless's own tools, said as what they do between the conversations.
+  const seamless: Record<string, string> = {
+    mcp__seamless__sessions: '相手の会話を探す',
+    mcp__seamless__send: arg('track') ? '依頼の届き方を確かめる' : '相手の会話に送る',
+    mcp__seamless__read: '相手の会話を読む',
+    mcp__seamless__limits: 'seamless の制限を見る',
+  }
+  if (seamless[tool] !== undefined) return seamless[tool]
+
   if (tool.startsWith('mcp__')) {
     const [, server = '', name = ''] = tool.split('__')
 

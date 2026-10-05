@@ -18,6 +18,16 @@ export const theme = { text: 'text', meso: 'inactive', subtle: 'subtle', success
 /** Mid tones for the SVG marks, legible on the light and the dark card. */
 export const tone = { live: '#8070f0', ok: '#2f8f5b', attn: '#d9752b', fail: '#d64545', idle: '#8d8b85' } as const
 
+/** Brand tiles for the right side: a white mark on the company's color, legible on the light and the dark card. */
+const BRAND = { codex: '#10a37f', claude: '#d97757' } as const
+export function brandSvg(provider: 'codex' | 'claude'): string {
+  // The mark's paint (fill, stroke) sits on its <svg> tag: carry it onto the group that replaces the tag.
+  const source = logoSvg(provider, '#ffffff')
+  const paint = (source.match(/^<svg ([^>]*)>/)?.[1] ?? '').replace(/\s*(xmlns|viewBox)="[^"]*"/g, '')
+  const mark = source.replace(/^<svg [^>]*>/, '').replace(/<\/svg>$/, '')
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" rx="6" fill="${BRAND[provider]}"/><g transform="translate(4 4) scale(.6667)" ${paint.trim()}>${mark}</g></svg>`
+}
+
 /** A state color of the exchanges (the first band's palette) as a theme key and a mark tone. */
 export function stateTone(color: string): { key: string; mark: string } {
   if (color === palette.green) return { key: theme.success, mark: tone.ok }

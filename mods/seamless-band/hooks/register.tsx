@@ -899,7 +899,7 @@ async function sweepListed($: EngineInterface, live: Live, listed: readonly Agen
         live.agentNames.set(agentId, described)
       }
 
-      const name = described ?? handle
+      const name = handle === undefined && described === undefined ? undefined : agentNameOf(described, handle)
 
       if (name !== undefined && name !== agent.name) {
         agent.name = name

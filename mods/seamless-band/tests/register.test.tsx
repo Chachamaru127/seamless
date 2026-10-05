@@ -476,11 +476,11 @@ test('desktop line: the plan step with n/m from TodoWrite, the action of the mom
   expect(await box.read()).toContain('待機中')
   await $.tool.call({ tool: 'TodoWrite', todos: [{ content: 'read', activeForm: '読む', status: 'completed' }, { content: 'plan', activeForm: '計画\u202eを作成中', status: 'in_progress' }, { content: 'ship', activeForm: '出す', status: 'pending' }] } as Parameters<Engine['tool']['call']>[0])
   box.onTool = async () => {
-    expect(await box.read()).toContain('Bashの目的')
+    expect(await box.read()).toContain('コマンドの目的')
     expect(await box.read()).toContain('計画を作成中 2/3')
     expect(await box.read()).not.toContain('\u202e')
   }
-  await $.tool.call({ tool: 'Bash', command: 'test', description: 'Bashの目的' })
+  await $.tool.call({ tool: 'Bash', command: 'test', description: 'コマンドの目的' })
   box.onTool = async () => {}
   await ui.press({ key: 'toggle' })
   const plan = (await ui.find({ key: 'plan' }))?.text ?? ''
@@ -491,10 +491,10 @@ test('desktop line: the plan step with n/m from TodoWrite, the action of the mom
   expect(await ui.find({ key: 'steps' })).toBeUndefined()
   await $.tool.call({ tool: 'TodoWrite', todos: [{ content: 'plan', activeForm: '計画を作成中', status: 'completed' }] } as Parameters<Engine['tool']['call']>[0])
   box.onTool = async () => {
-    expect(await box.read()).toContain('Bashの目的')
+    expect(await box.read()).toContain('コマンドの目的')
     expect(await box.read()).not.toContain('計画を作成中')
   }
-  await $.tool.call({ tool: 'Bash', command: 'test', description: 'Bashの目的' })
+  await $.tool.call({ tool: 'Bash', command: 'test', description: 'コマンドの目的' })
 })
 
 test('desktop line leads with the purpose, drops the generic tool word, and goes quiet with the turn', async ($, on) => {
@@ -664,8 +664,12 @@ test('steps are said in plain Japanese: what the model wrote in English is not s
   expect(said('Grep', { pattern: '手順' })).toBe('「手順」をファイルの中から探す')
   expect(said('Bash', { command: 'curl x', description: '実行: curl --token secret' })).toBe('ネットから取ってくる')
   expect(said('WebSearch', { query: '調査 https://example.com/?token=secret' })).toBe('ウェブで調べる')
-  expect(said('WebFetch', { url: `https://${'a'.repeat(70)}.example.com/path?token=secret` })).not.toContain('token')
-  expect(said('WebFetch', { url: `https://${'a'.repeat(70)}.example.com/path` })).not.toBe('ページ を読む')
+  expect(said('WebFetch', { url: 'https://DEMO_SECRET.example.com/private?token=FAKE' })).toBe('ウェブのページを読む')
+  expect(said('Bash', { command: 'curl x', description: '実行: curl secret.example.co.uk' })).toBe('ネットから取ってくる')
+  expect(said('Grep', { pattern: '確認 git status' })).toBe('ファイルの中を探す')
+  expect(said('WebSearch', { query: '調査 ftp://DEMO_SECRET.example.co.uk' })).toBe('ウェブで調べる')
+  expect(said('Bash', { command: 'bash scripts/verify.sh', description: 'verify.sh で試験を走らせる（3/7）' })).toBe('verify.sh で試験を走らせる（3/7）')
+  expect(said('Agent', { description: 'Codex の判定を待つ' })).toBe('子エージェントに頼む: Codex の判定を待つ')
   expect(said('WebSearch', { query: 'claude mods desktop' })).toBe('ウェブで調べる')
   expect(said('Agent', { description: 'Review the diff' })).toBe('子エージェントに頼む')
   expect(said('Agent', { description: '差分を見る' })).toBe('子エージェントに頼む: 差分を見る')
@@ -712,7 +716,7 @@ test('agents with English descriptions go by their handle or a fixed word', asyn
 test('a Japanese thought is quoted, an English one is not; replies count characters', async ($, on) => {
   const { box } = seat(on, [
     [{ kind: 'thinking', index: 0, text: '設定がおかしい。読み込みを先に見る。' }],
-    [{ kind: 'thinking', index: 0, text: 'Check https://x.example/?token=abc first.' }],
+    [{ kind: 'thinking', index: 0, text: '確認: `git status` を見る。' }],
     [{ kind: 'text', index: 0, text: '直しました。読み込みは正常です。' }],
   ])
 
@@ -721,7 +725,37 @@ test('a Japanese thought is quoted, an English one is not; replies count charact
   await step($, 0)
   expect(box.seen.join(' ')).toContain('考えている: 設定がおかしい。 読み込みを先に見る。')
   await step($, 1)
-  expect(box.seen.join(' ')).not.toContain('token')
+  expect(box.seen.join(' ')).not.toContain('git status')
   await step($, 2)
   expect(box.seen.join(' ')).toContain('返事を書いている / 16字')
+  await $.turn.complete({ ...DONE, turnId: 't1' })
+})
+
+test('a thought is counted in characters in the history', async ($, on) => {
+  const { box } = seat(on, [
+    [{ kind: 'thinking', index: 0, text: '設定を見る。' }],
+    [{ kind: 'text', index: 0, text: '済み。' }],
+  ])
+  const ui = await mount($, box)
+
+  await $.turn.start({ text: '確認', turnId: 't1' })
+  await step($, 0)
+  await step($, 1)
+  await ui.press({ key: 'toggle' })
+  expect(box.seen.join(' ') + ((await ui.find({ key: 'steps' }))?.text ?? '')).not.toContain('語')
+})
+
+test('an agent the engine lists under an English sentence goes by a fixed word', async ($, on) => {
+  const { box, clock } = seat(on, [])
+
+  on('agent.list', () => ({
+    value: [{ id: 'ax-1', description: 'Review https://x.example', name: 'Review https://x.example', type: 'general-purpose', status: 'running' }],
+  }))
+
+  await mount($, box)
+  await $.tool.call({ tool: 'Read', file_path: 'src/app.ts', agentId: 'ax-1' } as Parameters<Engine['tool']['call']>[0])
+  await clock.advance(1000)
+
+  expect(await box.read()).toContain('子エージェント › app.ts を読む')
+  expect(await box.read()).not.toContain('x.example')
 })

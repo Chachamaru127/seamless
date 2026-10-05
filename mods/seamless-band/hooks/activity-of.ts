@@ -5,8 +5,21 @@ const MAX_DETAIL_CHARS = 60
 /** Kana and kanji: the text a model wrote is shown only when it is Japanese. */
 const JAPANESE = /[぀-ヿ㐀-鿿]/
 
-/** What may carry a command, an address or a key: such text is never shown, Japanese or not. */
-const UNSAFE = /https?:\/\/|www\.|[`$=<>|\\{}]|(^|\s)--?[A-Za-z]|[A-Za-z0-9_]{16,}|\b[\w-]+\.(com|net|org|io|dev|ai|jp|app)\b/i
+/**
+ * The Latin a shown text may hold: a file name, a few product names, and
+ * numbers and marks with no letters. Anything else, a command, an address
+ * or a key among them, sends the text back to a fixed phrase.
+ */
+const FILE_NAME = /^[\w-]+\.(tsx?|jsx?|mjs|json|md|sh|py|html|css|txt|ya?ml|toml)$/
+const PRODUCT_NAMES = new Set(['Claude', 'Codex', 'GitHub', 'seamless', 'MCP', 'UI', 'PR'])
+
+function isAllowedLatin(run: string): boolean {
+  const word = run.replace(/^[(\[「『"']+|[)\]」』"'.,:;!?、。]+$/g, '')
+
+  if (!/[A-Za-z]/.test(word)) return /^\d+\/\d+$/.test(word) || !/[/\\:@`$=<>|{}]/.test(run)
+
+  return FILE_NAME.test(word) || PRODUCT_NAMES.has(word)
+}
 
 /** True when `text` has kana or kanji in it. */
 export function isJapanese(text: string): boolean {
@@ -18,7 +31,9 @@ export function plainText(text: unknown): string {
   if (typeof text !== 'string') return ''
   const flat = oneLine(text)
 
-  return isJapanese(flat) && !UNSAFE.test(flat) ? flat : ''
+  const latin = flat.match(/[\x21-\x7e]+/g) ?? []
+
+  return isJapanese(flat) && latin.every(isAllowedLatin) ? flat : ''
 }
 
 /** A subagent's name: its description when plain Japanese, else its handle (an identifier such as `reviewer`), else a fixed word. */
@@ -68,7 +83,7 @@ function purposeOf(tool: string, args: Record<string, unknown>): string {
     case 'Glob':
       return 'ファイルを探す'
     case 'WebFetch':
-      return `${clip(hostOf(typeof args['url'] === 'string' ? args['url'] : ''), MAX_DETAIL_CHARS) || 'ページ'} を読む`
+      return 'ウェブのページを読む'
     case 'WebSearch':
       return said('query') ? `「${said('query')}」をウェブで調べる` : 'ウェブで調べる'
     case 'Agent':
@@ -202,14 +217,6 @@ function unescaped(raw: string): string {
 
 function baseName(path: string): string {
   return path.split(/[\\/]/).pop() || path
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host
-  } catch {
-    return ''
-  }
 }
 
 export function activityOf(tool: string, args: Record<string, unknown>): string {

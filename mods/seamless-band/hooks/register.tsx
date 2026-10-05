@@ -11,7 +11,7 @@ import type {
   ActivityOutcome,
   ActivityPlanItem,
 } from '../types'
-import { activityOf, isJapanese, partialArgsOf } from './activity-of'
+import { activityOf, agentNameOf, partialArgsOf, plainText } from './activity-of'
 import { clip, durationOf, oneLine, printable, sizeOf, thoughtOf, charsIn } from './text'
 
 const IDLE: ActivityNow = {
@@ -320,8 +320,8 @@ export const register: Register = (on, options) => {
 
         // A named agent runs as a teammate, which the engine lists by the
         // call's `name`; the call's `description` is what to show for it.
-        if (typeof handle === 'string' && typeof description === 'string' && oneLine(description) !== '') {
-          live.described.set(handle, description)
+        if (typeof handle === 'string' && plainText(description) !== '') {
+          live.described.set(handle, plainText(description))
           void sweep($, live)
         }
 
@@ -384,7 +384,7 @@ export const register: Register = (on, options) => {
 
     if (result.agentId !== undefined) {
       const startMs = await $.clock.now()
-      const name = e.description || e.name || 'Agent'
+      const name = agentNameOf(e.description, e.name)
 
       live.agentNames.set(result.agentId, name)
       live.agents.set(result.agentId, {
@@ -745,7 +745,7 @@ function current(live: Live): ActivityNow {
       // turned to thinking's color; before any, the prompt is what it reads.
       // The thought is quoted only when it is Japanese; English stays unsaid.
       const snippet = thoughtOf(live.thought, MAX_THOUGHT_CHARS)
-      const label = snippet === '' ? standingLabel(live) : isJapanese(snippet) ? `考えている: ${snippet}` : '考えている'
+      const label = snippet === '' ? standingLabel(live) : plainText(snippet) !== '' ? `考えている: ${snippet}` : '考えている'
 
       return { phase: 'thinking', label, sinceMs }
     }
@@ -818,7 +818,7 @@ async function agentOf($: EngineInterface, live: Live, agentId: string): Promise
 
   const startMs = await $.clock.now()
   const agent: Agent = {
-    name: live.agentNames.get(agentId) ?? 'Agent',
+    name: live.agentNames.get(agentId) ?? '子エージェント',
     label: '開始している',
     startMs,
     activeMs: startMs,
@@ -1057,13 +1057,8 @@ async function launched(
     return
   }
 
-  const name = [asked, description].find(
-    (text): text is string => typeof text === 'string' && oneLine(text) !== '',
-  )
-
-  if (name === undefined) {
-    return
-  }
+  // The launching call's description, or the result's; either only as plain Japanese.
+  const name = plainText(asked) || plainText(description) || '子エージェント'
 
   const agent = await agentOf($, live, agentId)
 

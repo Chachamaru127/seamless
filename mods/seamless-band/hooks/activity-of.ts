@@ -5,9 +5,30 @@ const MAX_DETAIL_CHARS = 60
 /** Kana and kanji: the text a model wrote is shown only when it is Japanese. */
 const JAPANESE = /[぀-ヿ㐀-鿿]/
 
+/** What may carry a command, an address or a key: such text is never shown, Japanese or not. */
+const UNSAFE = /https?:\/\/|www\.|[`$=<>|\\{}]|(^|\s)--?[A-Za-z]|[A-Za-z0-9_]{16,}|\b[\w-]+\.(com|net|org|io|dev|ai|jp|app)\b/i
+
 /** True when `text` has kana or kanji in it. */
 export function isJapanese(text: string): boolean {
   return JAPANESE.test(text)
+}
+
+/** Text the model wrote, as it may be shown: Japanese, with no command, address or key in it; else empty. */
+export function plainText(text: unknown): string {
+  if (typeof text !== 'string') return ''
+  const flat = oneLine(text)
+
+  return isJapanese(flat) && !UNSAFE.test(flat) ? flat : ''
+}
+
+/** A subagent's name: its description when plain Japanese, else its handle (an identifier such as `reviewer`), else a fixed word. */
+export function agentNameOf(description: unknown, handle?: unknown): string {
+  const said = plainText(description)
+
+  if (said !== '') return said
+  if (typeof handle === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(handle)) return handle
+
+  return '子エージェント'
 }
 
 /**
@@ -28,7 +49,7 @@ function purposeOf(tool: string, args: Record<string, unknown>): string {
   }
 
   const file = (key: string): string => baseName(arg(key))
-  const said = (key: string): string => isJapanese(arg(key)) ? arg(key) : ''
+  const said = (key: string): string => clip(plainText(args[key]), MAX_DETAIL_CHARS)
 
   switch (tool) {
     case 'Bash':
@@ -42,15 +63,12 @@ function purposeOf(tool: string, args: Record<string, unknown>): string {
       return `${file('file_path') || 'ファイル'} を書く`
     case 'NotebookEdit':
       return `${file('notebook_path') || 'ノート'} を直す`
-    case 'Grep': {
-      const pattern = arg('pattern')
-
-      return isPlainWord(pattern) ? `「${pattern}」をファイルの中から探す` : 'ファイルの中を探す'
-    }
+    case 'Grep':
+      return said('pattern') ? `「${said('pattern')}」をファイルの中から探す` : 'ファイルの中を探す'
     case 'Glob':
       return 'ファイルを探す'
     case 'WebFetch':
-      return `${hostOf(arg('url')) || 'ページ'} を読む`
+      return `${clip(hostOf(typeof args['url'] === 'string' ? args['url'] : ''), MAX_DETAIL_CHARS) || 'ページ'} を読む`
     case 'WebSearch':
       return said('query') ? `「${said('query')}」をウェブで調べる` : 'ウェブで調べる'
     case 'Agent':
@@ -156,11 +174,6 @@ function phraseOf(words: string[]): string | null {
   if (['node', 'python', 'python3', 'deno', 'tsx'].includes(name) || /\.(sh|py|js|ts|mjs)$/.test(name)) return 'スクリプトを動かす'
 
   return null
-}
-
-/** A search word a reader can take in: letters, digits and Japanese, no regex. */
-function isPlainWord(pattern: string): boolean {
-  return pattern !== '' && /^[A-Za-z0-9\u3040-\u30ff\u3400-\u9fff _-]+$/.test(pattern)
 }
 
 /**

@@ -298,8 +298,8 @@ describe('register', () => {
     const ui = await mount($, box)
     const { turnId } = await $.turn.start({ text: 'launch the panel', turnId: 't1' })
 
-    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Draft the plan' })
-    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu2', description: 'Storyboard the video' })
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: '計画を書く' })
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu2', description: '絵コンテを作る' })
     await $.turn.complete({ ...DONE, turnId })
     // A call made inside a subagent's loop, which carries its id.
     await $.tool.call({ tool: 'Read', file_path: 'README.md', agentId: 'a1' } as Parameters<Engine['tool']['call']>[0])
@@ -309,12 +309,12 @@ describe('register', () => {
     const team = (await ui.find({ key: 'agents' }))?.text ?? ''
 
     expect(await box.read()).toContain('2個の子エージェントが作業中')
-    expect(team).toContain('Draft the plan › README.md を読む')
-    expect(team).toContain('Storyboard the video › 開始している')
+    expect(team).toContain('計画を書く › README.md を読む')
+    expect(team).toContain('絵コンテを作る › 開始している')
 
     await $.turn.complete({ ...DONE, turnId: 't2', agentId: 'a2' })
 
-    expect(await box.read()).toContain('Draft the plan › README.md を読む')
+    expect(await box.read()).toContain('計画を書く › README.md を読む')
     expect(await ui.find({ key: 'agents' })).toBeUndefined()
 
     await $.turn.complete({ ...DONE, turnId: 't3', agentId: 'a1', reason: 'error' })
@@ -322,8 +322,8 @@ describe('register', () => {
 
     expect(await box.read()).toContain('launch the panel')
     expect(await box.read()).toContain('で完了')
-    expect(history).toContain('子エージェント: Storyboard the video')
-    expect(history).toContain('子エージェント: Draft the plan')
+    expect(history).toContain('子エージェント: 絵コンテを作る')
+    expect(history).toContain('子エージェント: 計画を書く')
   })
 
   test('a named agent is shown by its Agent call description, never its prompt', async ($, on) => {
@@ -351,12 +351,12 @@ describe('register', () => {
     await $.tool.call({
       tool: 'Agent',
       name: 'reviewer',
-      description: 'Review the diff',
+      description: '差分を見る',
       prompt: 'You are reviewing the diff. Read every file and…',
     } as Parameters<Engine['tool']['call']>[0])
     await clock.advance(1000)
 
-    expect(await box.read()).toContain('Review the diff › app.ts を読む')
+    expect(await box.read()).toContain('差分を見る › app.ts を読む')
     expect(await box.read()).not.toContain('You are reviewing')
     expect(await ui.find({ key: 'agents' })).toBeUndefined()
   })
@@ -370,14 +370,14 @@ describe('register', () => {
       result: { status: 'async_launched', agentId: 'b1', description: 'This is a long prompt. Read it all.' },
     } as never
 
-    await $.tool.call({ tool: 'Agent', description: 'Tour the source', prompt: 'Read it.' } as Parameters<Engine['tool']['call']>[0])
+    await $.tool.call({ tool: 'Agent', description: 'ソースを見て回る', prompt: 'Read it.' } as Parameters<Engine['tool']['call']>[0])
 
-    expect(await box.read()).toContain('Tour the source › 開始している')
+    expect(await box.read()).toContain('ソースを見て回る › 開始している')
 
     await $.tool.call({ tool: 'Read', file_path: 'src/app.ts', agentId: 'b1' } as Parameters<Engine['tool']['call']>[0])
     await clock.advance(300)
 
-    expect(await box.read()).toContain('Tour the source › app.ts を読む')
+    expect(await box.read()).toContain('ソースを見て回る › app.ts を読む')
   })
 })
 
@@ -659,7 +659,13 @@ test('steps are said in plain Japanese: what the model wrote in English is not s
   expect(said('Read', { file_path: '/a/b/register.tsx' })).toBe('register.tsx を読む')
   expect(said('Edit', { file_path: 'x/app.ts' })).toBe('app.ts を直す')
   expect(said('Grep', { pattern: 'TOOL_PREFIX\\|activityOf' })).toBe('ファイルの中を探す')
-  expect(said('Grep', { pattern: 'activityOf' })).toBe('「activityOf」をファイルの中から探す')
+  expect(said('Grep', { pattern: 'activityOf' })).toBe('ファイルの中を探す')
+  expect(said('Grep', { pattern: 'sk_test_SECRET123' })).toBe('ファイルの中を探す')
+  expect(said('Grep', { pattern: '手順' })).toBe('「手順」をファイルの中から探す')
+  expect(said('Bash', { command: 'curl x', description: '実行: curl --token secret' })).toBe('ネットから取ってくる')
+  expect(said('WebSearch', { query: '調査 https://example.com/?token=secret' })).toBe('ウェブで調べる')
+  expect(said('WebFetch', { url: `https://${'a'.repeat(70)}.example.com/path?token=secret` })).not.toContain('token')
+  expect(said('WebFetch', { url: `https://${'a'.repeat(70)}.example.com/path` })).not.toBe('ページ を読む')
   expect(said('WebSearch', { query: 'claude mods desktop' })).toBe('ウェブで調べる')
   expect(said('Agent', { description: 'Review the diff' })).toBe('子エージェントに頼む')
   expect(said('Agent', { description: '差分を見る' })).toBe('子エージェントに頼む: 差分を見る')
@@ -678,4 +684,44 @@ test('a command is said by what it does, and nothing of the command is shown', (
   expect(commandPurpose('npm test --silent')).toBe('試験を走らせる')
   expect(commandPurpose('curl -H "Authorization: Bearer abc" https://x.example/y')).toBe('ネットから取ってくる')
   expect(commandPurpose('frobnicate --token=abc')).toBe('コマンドを動かす')
+})
+
+test('agents with English descriptions go by their handle or a fixed word', async ($, on) => {
+  const { box, clock } = seat(on, [])
+
+  on('agent.spawn', ($, e) => ({ model: 'claude-opus-5-5', agentId: e.tool_use_id === 'tu1' ? 'a1' : 'a2' }))
+
+  const ui = await mount($, box)
+  const { turnId } = await $.turn.start({ text: 'launch', turnId: 't1' })
+
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Draft the plan' })
+  await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu2', description: 'Storyboard the video', name: 'boarder' } as never)
+  await $.turn.complete({ ...DONE, turnId })
+  await $.tool.call({ tool: 'Read', file_path: 'README.md', agentId: 'a1' } as Parameters<Engine['tool']['call']>[0])
+  await clock.advance(300)
+  await ui.press({ key: 'toggle' })
+
+  const team = (await ui.find({ key: 'agents' }))?.text ?? ''
+
+  expect(team).toContain('子エージェント › README.md を読む')
+  expect(team).toContain('boarder › 開始している')
+  expect(team).not.toContain('Draft the plan')
+  expect(team).not.toContain('Storyboard')
+})
+
+test('a Japanese thought is quoted, an English one is not; replies count characters', async ($, on) => {
+  const { box } = seat(on, [
+    [{ kind: 'thinking', index: 0, text: '設定がおかしい。読み込みを先に見る。' }],
+    [{ kind: 'thinking', index: 0, text: 'Check https://x.example/?token=abc first.' }],
+    [{ kind: 'text', index: 0, text: '直しました。読み込みは正常です。' }],
+  ])
+
+  await mount($, box)
+  await $.turn.start({ text: '確認', turnId: 't1' })
+  await step($, 0)
+  expect(box.seen.join(' ')).toContain('考えている: 設定がおかしい。 読み込みを先に見る。')
+  await step($, 1)
+  expect(box.seen.join(' ')).not.toContain('token')
+  await step($, 2)
+  expect(box.seen.join(' ')).toContain('返事を書いている / 16字')
 })

@@ -11,8 +11,8 @@ import type {
   ActivityOutcome,
   ActivityPlanItem,
 } from '../types'
-import { activityOf, partialArgsOf } from './activity-of'
-import { clip, durationOf, oneLine, printable, sizeOf, thoughtOf, wordsAdded } from './text'
+import { activityOf, isJapanese, partialArgsOf } from './activity-of'
+import { clip, durationOf, oneLine, printable, sizeOf, thoughtOf, charsIn } from './text'
 
 const IDLE: ActivityNow = {
   phase: 'idle',
@@ -108,10 +108,8 @@ type Live = {
   isFirstRequest: boolean
   resultsToReview: number
   thought: string
-  thoughtWords: number
-  isThoughtInWord: boolean
-  replyWords: number
-  isReplyInWord: boolean
+  thoughtChars: number
+  replyChars: number
   composing: { tool: string; head: string; chars: number } | null
   lastAction: string | null
   lastTurn: string | null
@@ -150,10 +148,8 @@ export const register: Register = (on, options) => {
     isFirstRequest: false,
     resultsToReview: 0,
     thought: '',
-    thoughtWords: 0,
-    isThoughtInWord: false,
-    replyWords: 0,
-    isReplyInWord: false,
+    thoughtChars: 0,
+    replyChars: 0,
     composing: null,
     lastAction: null,
     lastTurn: null,
@@ -747,15 +743,16 @@ function current(live: Live): ActivityNow {
     case 'thinking': {
       // With no thought text to quote, the last action stands, the dot
       // turned to thinking's color; before any, the prompt is what it reads.
+      // The thought is quoted only when it is Japanese; English stays unsaid.
       const snippet = thoughtOf(live.thought, MAX_THOUGHT_CHARS)
-      const label = snippet ? `考えている: ${snippet}` : standingLabel(live)
+      const label = snippet === '' ? standingLabel(live) : isJapanese(snippet) ? `考えている: ${snippet}` : '考えている'
 
       return { phase: 'thinking', label, sinceMs }
     }
     case 'writing':
       return {
         phase: 'writing',
-        label: `返事を書いている / ${live.replyWords}語`,
+        label: `返事を書いている / ${live.replyChars}字`,
         sinceMs,
       }
     case 'composing': {
@@ -949,20 +946,20 @@ async function enter($: EngineInterface, live: Live, next: ModelPhase): Promise<
   const durationMs = nowMs - live.phaseStartMs
 
   if (live.phase === 'thinking') {
-    const words = live.thoughtWords
+    const chars = live.thoughtChars
 
     await remember($, {
       kind: 'thought',
-      label: words > 0 ? `考えた (${words}語)` : '考えた',
+      label: chars > 0 ? `考えた (${chars}字)` : '考えた',
       durationMs,
       outcome: 'ok',
     })
   }
 
-  if (live.phase === 'writing' && live.replyWords > 0) {
+  if (live.phase === 'writing' && live.replyChars > 0) {
     await remember($, {
       kind: 'reply',
-      label: `返事を書いた (${live.replyWords}語)`,
+      label: `返事を書いた (${live.replyChars}字)`,
       durationMs,
       outcome: 'ok',
     })
@@ -970,13 +967,11 @@ async function enter($: EngineInterface, live: Live, next: ModelPhase): Promise<
 
   if (next === 'thinking') {
     live.thought = ''
-    live.thoughtWords = 0
-    live.isThoughtInWord = false
+    live.thoughtChars = 0
   }
 
   if (next === 'writing') {
-    live.replyWords = 0
-    live.isReplyInWord = false
+    live.replyChars = 0
   }
 
   live.phase = next
@@ -991,11 +986,8 @@ async function follow($: EngineInterface, live: Live, chunk: TurnStepChunk): Pro
 
       await enter($, live, 'thinking')
       live.resultsToReview = 0
-      const { added, isInWord } = wordsAdded(chunk.text, live.isThoughtInWord)
-
       live.thought = (live.thought + chunk.text).slice(-MAX_THOUGHT_BUFFER)
-      live.thoughtWords += added
-      live.isThoughtInWord = isInWord
+      live.thoughtChars += charsIn(chunk.text)
       await publish($, live, isNew)
 
       return
@@ -1005,10 +997,7 @@ async function follow($: EngineInterface, live: Live, chunk: TurnStepChunk): Pro
 
       await enter($, live, 'writing')
       live.resultsToReview = 0
-      const { added, isInWord } = wordsAdded(chunk.text, live.isReplyInWord)
-
-      live.replyWords += added
-      live.isReplyInWord = isInWord
+      live.replyChars += charsIn(chunk.text)
       await publish($, live, isNew)
 
       return

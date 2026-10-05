@@ -2,13 +2,23 @@ import { clip, oneLine } from './text'
 
 const MAX_DETAIL_CHARS = 60
 
+/** Kana and kanji: the text a model wrote is shown only when it is Japanese. */
+const JAPANESE = /[぀-ヿ㐀-鿿]/
+
+/** True when `text` has kana or kanji in it. */
+export function isJapanese(text: string): boolean {
+  return JAPANESE.test(text)
+}
+
 /**
- * Says in a few words what a tool call is doing, for What's Agent Doing.
+ * Says in plain Japanese what a tool call is doing, for What's Agent Doing.
+ * Text the model wrote (a command's description, an agent's description, a
+ * search) is shown only when it is Japanese; otherwise a fixed phrase stands.
  *
  * @param tool the tool's name; a string, as the declared names are only the
  *   tools of the build that wrote the types (Grep and Glob are on some only)
  * @param args the call's arguments, whole or as far as they have streamed
- * @returns a short label such as `Reading register.tsx`
+ * @returns a short label such as `register.tsx を読む`
  */
 function purposeOf(tool: string, args: Record<string, unknown>): string {
   const arg = (key: string): string => {
@@ -18,36 +28,48 @@ function purposeOf(tool: string, args: Record<string, unknown>): string {
   }
 
   const file = (key: string): string => baseName(arg(key))
+  const said = (key: string): string => isJapanese(arg(key)) ? arg(key) : ''
 
   switch (tool) {
     case 'Bash':
     case 'PowerShell':
-      return arg('description') || `コマンドを実行: ${arg('command')}`
+      return said('description') || commandPurpose(typeof args['command'] === 'string' ? args['command'] : '')
     case 'Read':
-      return `ファイルを読む: ${file('file_path')}`
+      return `${file('file_path') || 'ファイル'} を読む`
     case 'Edit':
-      return `ファイルを編集: ${file('file_path')}`
+      return `${file('file_path') || 'ファイル'} を直す`
     case 'Write':
-      return `ファイルを書く: ${file('file_path')}`
+      return `${file('file_path') || 'ファイル'} を書く`
     case 'NotebookEdit':
-      return `ノートを編集: ${file('notebook_path')}`
-    case 'Grep':
-      return `内容を検索: "${arg('pattern')}"`
+      return `${file('notebook_path') || 'ノート'} を直す`
+    case 'Grep': {
+      const pattern = arg('pattern')
+
+      return isPlainWord(pattern) ? `「${pattern}」をファイルの中から探す` : 'ファイルの中を探す'
+    }
     case 'Glob':
-      return `ファイルを探す: ${arg('pattern')}`
+      return 'ファイルを探す'
     case 'WebFetch':
-      return `ページを取得: ${hostOf(arg('url'))}`
+      return `${hostOf(arg('url')) || 'ページ'} を読む`
     case 'WebSearch':
-      return `ウェブを検索: "${arg('query')}"`
+      return said('query') ? `「${said('query')}」をウェブで調べる` : 'ウェブで調べる'
     case 'Agent':
     case 'Task':
-      return `子エージェントを実行: ${arg('description')}`
+      return said('description') ? `子エージェントに頼む: ${said('description')}` : '子エージェントに頼む'
     case 'TodoWrite':
-      return '作業一覧を更新'
+      return '作業一覧を更新する'
     case 'AskUserQuestion':
-      return '回答待ち'
+      return 'あなたの回答を待っている'
     case 'Skill':
-      return `skill を使う: ${arg('skill')}`
+      return arg('skill') ? `手順書を使う: ${arg('skill')}` : '手順書を使う'
+    case 'ToolSearch':
+      return '使う道具を用意する'
+    case 'SendUserFile':
+      return 'あなたにファイルを送る'
+    case 'Monitor':
+      return '様子を見張る'
+    case 'advisor':
+      return '助言を聞く'
   }
 
   // seamless's own tools, said as what they do between the conversations.
@@ -60,12 +82,85 @@ function purposeOf(tool: string, args: Record<string, unknown>): string {
   if (seamless[tool] !== undefined) return seamless[tool]
 
   if (tool.startsWith('mcp__')) {
-    const [, server = '', name = ''] = tool.split('__')
-
-    return `${server} を使う: ${name}`
+    return serverPurpose(tool.split('__')[1] ?? '')
   }
 
-  return `${tool} を使う`
+  return '道具を使う'
+}
+
+/** What an MCP server's tools do, by the server's name. */
+function serverPurpose(server: string): string {
+  if (/browser|chrome|playwright/i.test(server)) return 'ブラウザを操作する'
+  if (/computer-use/i.test(server)) return '画面を操作する'
+  if (/^harness$/i.test(server)) return '記憶を探す'
+  if (/^ccd_/i.test(server)) return 'アプリを操作する'
+  if (/^[0-9a-f]{8}-/i.test(server) || server === '') return '外部の道具を使う'
+
+  return `外部の道具を使う（${server}）`
+}
+
+/**
+ * What a shell command does, in a fixed phrase. The command itself is never
+ * shown: it can carry URLs, tokens and environment values.
+ */
+export function commandPurpose(command: string): string {
+  const segments = command.split(/&&|\|\||[|;\n]/)
+
+  for (const segment of segments) {
+    const words = segment.trim().split(/\s+/).filter(word => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word) && word !== 'sudo')
+    const purpose = phraseOf(words)
+
+    if (purpose !== null) return purpose
+  }
+
+  return 'コマンドを動かす'
+}
+
+function phraseOf(words: string[]): string | null {
+  const [head = '', sub = ''] = words
+  const name = baseName(head)
+
+  if (name === '' || name === 'cd') return null
+  if (['bash', 'sh', 'zsh', 'env', 'time', 'npx', 'bunx'].includes(name)) return phraseOf(words.slice(1)) ?? (name === 'npx' || name === 'bunx' ? 'スクリプトを動かす' : null)
+
+  if (name === 'git') {
+    const git: Record<string, string> = {
+      status: '変更の状況を見る', diff: '変更の中身を見る', log: '履歴を見る', show: '履歴を見る',
+      add: '保存する変更を選ぶ', commit: '変更を履歴に保存する', push: 'GitHub に送る',
+      pull: '最新を取り込む', fetch: '最新を取り込む', checkout: 'ブランチを切り替える', switch: 'ブランチを切り替える',
+    }
+
+    return git[sub] ?? 'git を使う'
+  }
+
+  if (/verify\.sh$/.test(name) || name === 'vitest' || name === 'jest') return '試験を走らせる'
+  if (['npm', 'pnpm', 'yarn', 'bun'].includes(name)) {
+    if (sub === 'test' || words.includes('test')) return '試験を走らせる'
+    if (sub === 'install' || sub === 'i' || sub === 'add') return '部品を入れる'
+
+    return 'スクリプトを動かす'
+  }
+  if (name === 'tsc') return '型を確かめる'
+  if (['cat', 'head', 'tail', 'sed', 'less', 'wc', 'awk'].includes(name)) return 'ファイルを読む'
+  if (['grep', 'rg', 'ag'].includes(name)) return 'ファイルの中を探す'
+  if (['ls', 'find', 'tree', 'fd'].includes(name)) return 'ファイルの一覧を見る'
+  if (name === 'mkdir') return 'フォルダを作る'
+  if (name === 'rm') return 'ファイルを消す'
+  if (name === 'cp') return 'ファイルを写す'
+  if (name === 'mv') return 'ファイルを移す'
+  if (name === 'curl' || name === 'wget') return 'ネットから取ってくる'
+  if (name === 'codex') return 'Codex に頼む'
+  if (name === 'claude') return 'Claude Code を使う'
+  if (name === 'gh') return 'GitHub を見る'
+  if (name === 'sleep') return '待つ'
+  if (['node', 'python', 'python3', 'deno', 'tsx'].includes(name) || /\.(sh|py|js|ts|mjs)$/.test(name)) return 'スクリプトを動かす'
+
+  return null
+}
+
+/** A search word a reader can take in: letters, digits and Japanese, no regex. */
+function isPlainWord(pattern: string): boolean {
+  return pattern !== '' && /^[A-Za-z0-9\u3040-\u30ff\u3400-\u9fff _-]+$/.test(pattern)
 }
 
 /**
@@ -100,7 +195,7 @@ function hostOf(url: string): string {
   try {
     return new URL(url).host
   } catch {
-    return url
+    return ''
   }
 }
 

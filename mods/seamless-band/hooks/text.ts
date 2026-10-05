@@ -23,20 +23,12 @@ export function thoughtOf(thought: string, max: number): string {
     return ''
   }
 
-  const sentences = flat.split(/(?<=[.!?:])\s+/)
+  const sentences = flat.split(/(?<=[.!?:])\s+|(?<=[。！？])/).filter(Boolean)
   const last = sentences.at(-1) ?? ''
   const before = sentences.at(-2)
   const tail = last.length < 25 && before !== undefined ? `${before} ${last}` : last
 
   return tail.length > max ? `…${tail.slice(-(max - 1))}` : tail
-}
-
-export function wordsIn(text: string): number {
-  return text.split(/\s+/).filter(Boolean).length
-}
-
-export function plural(count: number, word: string): string {
-  return `${count} ${word}${count === 1 ? '' : 's'}`
 }
 
 /** `840 B`, `2.3 KB`, `1.1 MB`. */
@@ -69,19 +61,7 @@ export function printable(text: string, max: number): string {
   return clip(oneLine(spaced), max)
 }
 
-/**
- * Counts the words a streamed chunk adds, carrying whether the text so far
- * ends inside a word, so a reply is never counted again from its start.
- *
- * @param chunk the newly streamed text
- * @param isInWord whether the text before it ended inside a word
- */
-export function wordsAdded(chunk: string, isInWord: boolean): { added: number; isInWord: boolean } {
-  const words = chunk.match(/\S+/g)?.length ?? 0
-  const continues = isInWord && /^\S/.test(chunk)
-
-  return {
-    added: continues ? words - 1 : words,
-    isInWord: chunk === '' ? isInWord : /\S$/.test(chunk),
-  }
+/** The characters a streamed chunk adds, spaces left out: Japanese has no words to count. */
+export function charsIn(chunk: string): number {
+  return Array.from(chunk.replace(/\s+/g, '')).length
 }

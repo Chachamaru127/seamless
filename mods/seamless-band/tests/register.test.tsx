@@ -1,6 +1,7 @@
 import type { On, TurnStepChunk } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
+import { activityOf, commandPurpose } from '../hooks/activity-of'
 
 const BAND = {
   plugin: 'seamless-band',
@@ -166,19 +167,20 @@ describe('register', () => {
 
     await step($, 0)
 
-    expect(box.seen[0]).toContain('考えている: I should check the loader first')
+    expect(box.seen[0]).toContain('考えている')
+    expect(box.seen[0]).not.toContain('I should check')
     expect(box.seen[1]).toContain('指示を読んでいる')
-    expect(box.seen[2]).toContain('ファイルを読む: app.ts')
+    expect(box.seen[2]).toContain('app.ts を読む')
     expect(box.seen.join(' ')).not.toContain('Preparing')
 
     await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })
 
-    expect(box.seen[3]).toContain('ファイルを読む: app.ts')
+    expect(box.seen[3]).toContain('app.ts を読む')
     expect(await box.read()).toContain('1手順の結果を確認している')
 
     await step($, 1)
 
-    expect(box.seen[4]).toContain('返事を書いている / 7語')
+    expect(box.seen[4]).toContain('返事を書いている / 29字')
 
     await $.turn.complete({ ...DONE, turnId })
 
@@ -208,7 +210,7 @@ describe('register', () => {
     const steps = (await ui.find({ key: 'steps' }))?.text ?? ''
 
     expect((await ui.find({ key: 'goal' }))?.text).toContain('fix the config')
-    expect(steps).toContain('ファイルを読む: app.ts')
+    expect(steps).toContain('app.ts を読む')
     expect(steps).not.toContain('道具を使っている')
     expect(steps).not.toContain('考えた')
     expect(steps).not.toContain('返事を書いた')
@@ -228,11 +230,11 @@ describe('register', () => {
     await step($, 1)
 
     expect(box.seen[0]).toContain('指示を読んでいる')
-    expect(box.seen[2]).toContain('ファイルを読む: app.ts')
+    expect(box.seen[2]).toContain('app.ts を読む')
     expect(box.seen.join(' ')).not.toContain('Thinking')
   })
 
-  test('a command being written shows its description, never the command', async ($, on) => {
+  test('a command being written is said in Japanese, never as the command or an English description', async ($, on) => {
     const { box } = seat(on, [
       [
         { kind: 'tool', index: 0, id: 'tu1', name: 'Bash' },
@@ -246,8 +248,9 @@ describe('register', () => {
     await step($, 0)
 
     expect(box.seen[1]).toContain('指示を読んでいる')
-    expect(box.seen[2]).toContain('Run the tests')
+    expect(box.seen[2]).toContain('試験を走らせる')
     expect(box.seen.join(' ')).not.toContain('npm test')
+    expect(box.seen.join(' ')).not.toContain('Run the tests')
   })
 
   test('control characters in a label never take the box down', async ($, on) => {
@@ -264,8 +267,7 @@ describe('register', () => {
 
     const history = (await ui.find({ key: 'steps' }))?.text ?? ''
 
-    expect(box.seen[0]).toContain('ファイルを読む')
-    expect(box.seen[0]).toContain('red.ts')
+    expect(box.seen[0]).toContain('red.ts を読む')
     expect(box.seen[0]).not.toContain(esc)
     expect(box.seen[0]).not.toContain(rlo)
     expect(box.seen[1]?.length ?? 0).toBeLessThan(400)
@@ -284,7 +286,7 @@ describe('register', () => {
     await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests' })
 
     expect(box.seen[0]).toContain('承認を待っています')
-    expect(box.seen[0]).toContain('Run the tests')
+    expect(box.seen[0]).toContain('試験を走らせる')
     expect(box.seen[0]).not.toContain('承認待ち:')
   })
 
@@ -307,12 +309,12 @@ describe('register', () => {
     const team = (await ui.find({ key: 'agents' }))?.text ?? ''
 
     expect(await box.read()).toContain('2個の子エージェントが作業中')
-    expect(team).toContain('Draft the plan › ファイルを読む: README.md')
+    expect(team).toContain('Draft the plan › README.md を読む')
     expect(team).toContain('Storyboard the video › 開始している')
 
     await $.turn.complete({ ...DONE, turnId: 't2', agentId: 'a2' })
 
-    expect(await box.read()).toContain('Draft the plan › ファイルを読む: README.md')
+    expect(await box.read()).toContain('Draft the plan › README.md を読む')
     expect(await ui.find({ key: 'agents' })).toBeUndefined()
 
     await $.turn.complete({ ...DONE, turnId: 't3', agentId: 'a1', reason: 'error' })
@@ -343,7 +345,7 @@ describe('register', () => {
     await clock.advance(1000)
 
     // Before its Agent call is seen, the engine's handle for it stands.
-    expect(await box.read()).toContain('reviewer › ファイルを読む: app.ts')
+    expect(await box.read()).toContain('reviewer › app.ts を読む')
 
     box.toolAnswer = { result: { status: 'teammate_spawned' } } as never
     await $.tool.call({
@@ -354,7 +356,7 @@ describe('register', () => {
     } as Parameters<Engine['tool']['call']>[0])
     await clock.advance(1000)
 
-    expect(await box.read()).toContain('Review the diff › ファイルを読む: app.ts')
+    expect(await box.read()).toContain('Review the diff › app.ts を読む')
     expect(await box.read()).not.toContain('You are reviewing')
     expect(await ui.find({ key: 'agents' })).toBeUndefined()
   })
@@ -375,7 +377,7 @@ describe('register', () => {
     await $.tool.call({ tool: 'Read', file_path: 'src/app.ts', agentId: 'b1' } as Parameters<Engine['tool']['call']>[0])
     await clock.advance(300)
 
-    expect(await box.read()).toContain('Tour the source › ファイルを読む: app.ts')
+    expect(await box.read()).toContain('Tour the source › app.ts を読む')
   })
 })
 
@@ -506,7 +508,7 @@ test('desktop line leads with the purpose, drops the generic tool word, and goes
     expect(text).toContain('plan it')
     expect(text).not.toContain('then ship')
     expect(text).toContain('計画を作成中 1/1')
-    expect(text).toContain('ファイルを読む: app.ts')
+    expect(text).toContain('app.ts を読む')
     expect(text).not.toContain('道具を使っている')
   }
   await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })
@@ -647,4 +649,33 @@ for (const [how, answer] of [['refused', { deny: 'no' }], ['failed', { result: '
   box.todoAnswer = { result: 'ok' }
   await $.tool.call(todos(['completed', 'in_progress']))
   expect((await ui.find({ key: 'plan' }))?.text).toContain('計画 2/2')
+})
+
+test('steps are said in plain Japanese: what the model wrote in English is not shown', () => {
+  const said = (tool: string, args: Record<string, unknown>) => activityOf(tool, args).replace('道具を使っている: ', '')
+
+  expect(said('Bash', { command: 'git status', description: 'Show working tree status' })).toBe('変更の状況を見る')
+  expect(said('Bash', { command: 'git status', description: '変更を確かめる' })).toBe('変更を確かめる')
+  expect(said('Read', { file_path: '/a/b/register.tsx' })).toBe('register.tsx を読む')
+  expect(said('Edit', { file_path: 'x/app.ts' })).toBe('app.ts を直す')
+  expect(said('Grep', { pattern: 'TOOL_PREFIX\\|activityOf' })).toBe('ファイルの中を探す')
+  expect(said('Grep', { pattern: 'activityOf' })).toBe('「activityOf」をファイルの中から探す')
+  expect(said('WebSearch', { query: 'claude mods desktop' })).toBe('ウェブで調べる')
+  expect(said('Agent', { description: 'Review the diff' })).toBe('子エージェントに頼む')
+  expect(said('Agent', { description: '差分を見る' })).toBe('子エージェントに頼む: 差分を見る')
+  expect(said('Skill', { skill: 'team-design' })).toBe('手順書を使う: team-design')
+  expect(said('mcp__Claude_Browser__navigate', {})).toBe('ブラウザを操作する')
+  expect(said('mcp__1a59c906-04da-521d-bda7-7f71b9f9e01c__batch', {})).toBe('外部の道具を使う')
+  expect(said('SomethingNew', {})).toBe('道具を使う')
+})
+
+test('a command is said by what it does, and nothing of the command is shown', () => {
+  expect(commandPurpose('cd /repo && git commit -m "x"')).toBe('変更を履歴に保存する')
+  expect(commandPurpose('FOO=1 bash scripts/verify.sh')).toBe('試験を走らせる')
+  expect(commandPurpose('bash ./scripts/build.sh')).toBe('スクリプトを動かす')
+  expect(commandPurpose('scripts/verify.sh')).toBe('試験を走らせる')
+  expect(commandPurpose('cd mods && claude plugin test .')).toBe('Claude Code を使う')
+  expect(commandPurpose('npm test --silent')).toBe('試験を走らせる')
+  expect(commandPurpose('curl -H "Authorization: Bearer abc" https://x.example/y')).toBe('ネットから取ってくる')
+  expect(commandPurpose('frobnicate --token=abc')).toBe('コマンドを動かす')
 })

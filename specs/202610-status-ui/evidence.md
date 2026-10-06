@@ -125,3 +125,10 @@
 - 実画面（ライト、立花さんの撮影）: 閉じた1行は「送るし今後この確認は不要 › 調べている 15秒」から「› 書いている 25秒」へ変わり、今の一手は出ない。開いた状態は目的と手順（印つき、失敗は赤の ✗）。やりとりはこの会話に無いので右側は空。
 - Codex → Claude: `codex exec` から seamless の send を試したが `caller_unobserved`（`native_identity_unobserved`）で送れなかった。seamless は Codex アプリが持つ会話でないと送り主を確かめない作り（src/caller.ts の codexIdentity が持ち主を探す）。`codex exec` の会話は持ち主がいないので、何度試しても同じになる。
 - seamless のフォルダの Codex の会話は、この時点で全件 unreachable（アプリで開かれていない）。Codex アプリを裏で操作して新しい会話を開こうとしたが、裏ではアプリが画面を描かず、画面の操作の許可は時間切れだった。
+
+## 2026-10-06 Codex → Claude が届かなかった原因と直し
+
+- 現象: 10-05 04:47 以降、Codex から Claude への send は seamless の記録では `submitted` なのに、Claude の会話の待ち行列（`queue-operation enqueue`）に入らなかった（3回）。10-04 16:34 には届いていた。
+- 切り分け（この会話の窓口 /tmp/cc-socks/9810.sock へ試しの1行、Claude Code 2.1.288）: 合言葉なしでも届く。中身が封筒の形でも届く。書いた直後に `destroy()` で切ると届かない（中身によらない）。`end()` で半分だけ閉じると、Claude Code は約2ミリ秒で受け取り、自分の側を閉じ返す。何もしないと、相手は閉じない（8秒で打ち切り）。
+- 直し: `sendClaudeFrame` は、書いたら `end()` で半分閉じ、相手が閉じ返したときに `submitted`、閉じ返しが来ずに時間切れなら `unknown` とする。verify.sh 終了 0（本体 380件、帯 85件）。
+- 反映の条件: Codex アプリが動かしている seamless の MCP は起動時のコードを持ち続けるので、Codex 側の MCP が起動し直すまで直しは効かない。

@@ -21,13 +21,18 @@ class TestSocket extends EventEmitter{
  destroyed=false;writes=0;callback:((error?:Error|null)=>void)|undefined;
  setTimeout(){return this;}
  destroy(){this.destroyed=true;return this;}
+ ended=false;end(){this.ended=true;return this;}
  write(_frame:string,callback:(error?:Error|null)=>void){this.writes++;this.callback=callback;return true;}
 }
 const immediate=()=>new Promise<void>(resolve=>setImmediate(resolve));
 test('Claude write callback error is unknown, never submitted',async()=>{const s=new TestSocket();const p=sendClaudeFrame(s as unknown as Socket,async()=>true,'payload','m');s.emit('connect');await immediate();assert.equal(s.writes,1);s.callback!(new Error('write failed'));assert.deepEqual(await p,{status:'unknown'});});
 test('Claude disconnect while identity is rechecked never writes',async()=>{const s=new TestSocket();let done!:(v:boolean)=>void;const p=sendClaudeFrame(s as unknown as Socket,()=>new Promise(resolve=>done=resolve),'payload','m');s.emit('connect');s.destroy();s.emit('close');done(true);await immediate();assert.equal(s.writes,0);assert.deepEqual(await p,{status:'rejected'});});
 test('Claude disconnect after write attempt stays unknown',async()=>{const s=new TestSocket();const p=sendClaudeFrame(s as unknown as Socket,async()=>true,'payload','m');s.emit('connect');await immediate();s.destroy();s.emit('close');s.callback!();assert.deepEqual(await p,{status:'unknown'});});
-test('Claude successful flush submits once',async()=>{const s=new TestSocket();const p=sendClaudeFrame(s as unknown as Socket,async()=>true,'payload','m');s.emit('connect');await immediate();s.callback!();assert.deepEqual(await p,{status:'submitted',nativeMessageId:'m'});assert.equal(s.writes,1);});
+test('Claude successful flush half-closes, and submits once Claude closes its side',async()=>{const s=new TestSocket();let settled=false;const p=sendClaudeFrame(s as unknown as Socket,async()=>true,'payload','m');p.then(()=>settled=true);s.emit('connect');await immediate();s.callback!();await immediate();
+ // Destroying right after the write made Claude Code drop the line (2026-10-06, measured): the socket is half-closed instead and left open.
+ assert.equal(s.ended,true);assert.equal(s.destroyed,false);assert.equal(settled,false);
+ s.emit('close');assert.deepEqual(await p,{status:'submitted',nativeMessageId:'m'});assert.equal(s.writes,1);});
+test('Claude flush with no close from Claude times out unknown',async()=>{const s=new TestSocket();const p=sendClaudeFrame(s as unknown as Socket,async()=>true,'payload','m');s.emit('connect');await immediate();s.callback!();await immediate();s.emit('timeout');assert.deepEqual(await p,{status:'unknown'});});
 test('Codex failure response after native frame is unknown',async()=>{
  const home=await mkdtemp(join(tmpdir(),'cldx-codex-'));const dir=join(home,'.codex','ipc');await mkdir(dir,{recursive:true,mode:0o700});await chmod(dir,0o700);const path=join(dir,'ipc.sock');let writes=0;
  const sockets:Socket[]=[];const server=createServer(socket=>{sockets.push(socket);let buffer=Buffer.alloc(0);socket.on('data',part=>{buffer=Buffer.concat([buffer,part]);while(buffer.length>=4){const size=buffer.readUInt32LE(0);if(buffer.length<4+size)return;const request=JSON.parse(buffer.subarray(4,size+4).toString());buffer=buffer.subarray(size+4);const response={type:'response',requestId:request.requestId,handledByClientId:'owner',resultType:request.method==='thread-follower-start-turn'?'error':'success',result:request.method==='initialize'?{clientId:'client'}:{}};if(request.method==='thread-follower-start-turn')writes++;const body=Buffer.from(JSON.stringify(response)),head=Buffer.alloc(4);head.writeUInt32LE(body.length);socket.write(Buffer.concat([head,body]));}});});
@@ -57,7 +62,9 @@ for(const provider of ['claude','codex'] as const)for(const mark of [undefined,f
  if(mark!==undefined&&mark!=='legacy')await fs.writeFile(path,JSON.stringify({...unrestricted,markUnapproved:mark}),{mode:0o600});
  let payload:Record<string,unknown>|undefined,content:string|undefined;
  class Transport extends EventEmitter{
-  destroyed=false;setTimeout(){return this;}destroy(){this.destroyed=true;return this;}end(){return this;}
+  destroyed=false;setTimeout(){return this;}destroy(){this.destroyed=true;return this;}
+  // Like Claude Code, closes its side once the sender half-closes.
+  end(){queueMicrotask(()=>this.emit('close'));return this;}
   write(frame:string|Buffer,callback?:(error?:Error|null)=>void){
    if(provider==='claude'){content=JSON.parse(String(frame)).message.content;payload=JSON.parse(content!);callback?.();return true;}
    const bytes=frame as Buffer,request=JSON.parse(bytes.subarray(4).toString());

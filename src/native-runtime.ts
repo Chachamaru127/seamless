@@ -46,16 +46,17 @@ export async function findClaudeIdentity(nativeId:string,home=homedir(),options:
 }
 export function sendClaudeFrame(socket:Socket,revalidate:()=>Promise<boolean>,frame:string,messageId:string):Promise<Receipt>{
  return new Promise(resolve=>{
-  let attempted=false,settled=false;
+  let attempted=false,flushed=false,settled=false;
   const finish=(status:Receipt['status'])=>{if(settled)return;settled=true;socket.destroy();resolve(status==='submitted'?{status,nativeMessageId:messageId}:{status});};
   socket.setTimeout(5000);
   socket.on('error',()=>finish(attempted?'unknown':'rejected'));
-  socket.on('close',()=>finish(attempted?'unknown':'rejected'));
+  // Claude Code takes a line once the sender half-closes; it then closes its side.
+  socket.on('close',()=>finish(flushed?'submitted':attempted?'unknown':'rejected'));
   socket.on('timeout',()=>finish(attempted?'unknown':'rejected'));
   socket.on('connect',async()=>{
    try{if(!await revalidate()||settled||socket.destroyed){finish('rejected');return;}
     attempted=true;
-    socket.write(frame,error=>{if(error){finish('unknown');return;}if(socket.destroyed){finish('unknown');return;}finish('submitted');});
+    socket.write(frame,error=>{if(error){finish('unknown');return;}if(socket.destroyed){finish('unknown');return;}flushed=true;socket.end();});
    }catch{finish(attempted?'unknown':'rejected');}
   });
  });

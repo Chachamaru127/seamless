@@ -67,3 +67,5 @@
   - 設定 crossSessionInbound=accept の実地の試しも、同じ理由で未実施。コード上は、利用者の設定があれば受け手のモードによらず accept。
 - Codex の会話のモードは rollout の turn_context から読める（01a10630: approval_policy never、sandbox danger-full-access、つまりバイパス相当）。
 - Desktop で保留の承認の画面が出るかは未確認（これまで立花さんの画面には出ていない）。
+- 受け手（この会話）がバイパス、Codex が「代わりに承認」（rollout の turn_context: approval_policy on-request、sandbox workspace-write、approvals_reviewer auto_review、active_permission_profile :workspace）での実地（09:56）: Claude → Codex は届いて1秒で読み始め。Codex の seamless の send は審査で止まらず `submitted`（reply-band-v3-check-4）。この会話の待ち行列には入らず、保留（名乗りなし、受け手バイパス）。Desktop に承認の画面が出るかは立花さんに確認中。
+- Claude Code の分類では、承認を審査役に任せるモード（Claude の auto）は bypass ではなく prompting に入る（auto の受け手は名乗りなしを受け入れた）。なので「代わりに承認」の Codex の本当のモードは prompting に当たる。案 B（本当のモードを名乗る）なら、受け手がバイパスのときは保留のまま（mode-mismatch）、受け手が通常のモードなら届く。

@@ -126,9 +126,19 @@
 - Codex → Claude: `codex exec` から seamless の send を試したが `caller_unobserved`（`native_identity_unobserved`）で送れなかった。seamless は Codex アプリが持つ会話でないと送り主を確かめない作り（src/caller.ts の codexIdentity が持ち主を探す）。`codex exec` の会話は持ち主がいないので、何度試しても同じになる。
 - seamless のフォルダの Codex の会話は、この時点で全件 unreachable（アプリで開かれていない）。Codex アプリを裏で操作して新しい会話を開こうとしたが、裏ではアプリが画面を描かず、画面の操作の許可は時間切れだった。
 
-## 2026-10-06 Codex → Claude が届かなかった原因と直し
+## 2026-10-06 Codex → Claude が届かなかった原因（調査中）
 
 - 現象: 10-05 04:47 以降、Codex から Claude への send は seamless の記録では `submitted` なのに、Claude の会話の待ち行列（`queue-operation enqueue`）に入らなかった（3回）。10-04 16:34 には届いていた。
-- 切り分け（この会話の窓口 /tmp/cc-socks/9810.sock へ試しの1行、Claude Code 2.1.288）: 合言葉なしでも届く。中身が封筒の形でも届く。書いた直後に `destroy()` で切ると届かない（中身によらない）。`end()` で半分だけ閉じると、Claude Code は約2ミリ秒で受け取り、自分の側を閉じ返す。何もしないと、相手は閉じない（8秒で打ち切り）。
-- 直し: `sendClaudeFrame` は、書いたら `end()` で半分閉じ、相手が閉じ返したときに `submitted`、閉じ返しが来ずに時間切れなら `unknown` とする。verify.sh 終了 0（本体 380件、帯 85件）。
-- 反映の条件: Codex アプリが動かしている seamless の MCP は起動時のコードを持ち続けるので、Codex 側の MCP が起動し直すまで直しは効かない。
+- 切り分け（この会話の窓口 /tmp/cc-socks/9810.sock へ試しの1行、Claude Code 2.1.288）:
+
+| 送り手 | 送った後 | 届いたか |
+|---|---|---|
+| この Claude の子孫、すぐ終了 | 直後に destroy | 届かない |
+| この Claude の子孫、すぐ終了 | end で半分閉じる | 届かない |
+| この Claude の子孫、数秒生きる | 直後に destroy | 届く |
+| この Claude の子孫、数秒生きる | end で半分閉じる | 届く（中身が封筒の形でも届く） |
+| 親から切り離したプロセス（ppid=1）、数秒生きる | end で半分閉じる | 届かない（Claude Code は受け取って閉じ返すが、待ち行列に入れない） |
+
+- 見立て（確信度 medium）: Claude Code は、窓口へ書いたプロセスを親をたどって見分け、Claude の会話の子孫でない送り手の行を、合言葉なしでは捨てる。窓口の説明の「auth line optional here」（合言葉の行は、ここでは省略できる）と合う。Codex の seamless の MCP は Codex アプリの子なので当たる。10-04 に届いた理由は未確認。
+- 86b1c1b の「直後に destroy すると捨てる」は誤り（送り手がすぐ終了したことと取り違えた）。半分閉じて閉じ返しを待つ形は、書けたことの確かめとして残す。
+- 未着手: 合言葉（受け手の `~/.claude/sessions/<pid>.<hash>.key`、0600）を seamless が読んで送る直し。秘密の扱いと受け手の境界が変わるので、立花さんの判断待ち。

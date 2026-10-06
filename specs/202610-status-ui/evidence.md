@@ -56,3 +56,14 @@
 - 直し方の候補: 利用者の設定 `crossSessionInbound` を `accept` にする（組織の設定と repo の設定が厳しくしていれば、そちらが勝つ）。seamless が送り手のモードを名乗る形は、安全の仕組みの迂回になりうるので採らない。
 - 86b1c1b の「直後に destroy すると捨てる」は誤り（送り手がすぐ終了したことと取り違えた）。半分閉じて閉じ返しを待つ形は、書けたことの確かめとして残す。
 - seamless に合言葉を読ませる直しは不要になった（実装していない）。設定を変えるかは立花さんの判断待ち。
+
+## 2026-10-06 受け手が「権限をバイパス」のときの案の検証
+
+- この会話は 09:40 に auto へ変わった。auto（通常のモード）では、名乗りなしの Codex の返信 reply-band-v3-check-3 がそのまま届いた（Codex → Claude の初の実着、09:42 台）。
+- 使い捨ての会話（Claude Code 2.1.289、`--permission-mode bypassPermissions`、.local/bypass-probe）へ、親から切り離したプロセスから送った:
+  - 名乗りなし: 保留。ターミナルに承認の画面「Held message from another session … The sender did not attest its permission mode, and this session bypasses permission prompts.」と Deny / Deliver の選択、「crossSessionInbound を accept に」の案内が出た。
+  - `<cross-session-message from="seamless" from-mode="bypass">` で包む: すぐ届いた（origin に fromMode: bypass）。
+  - `from-mode="prompting"`: 単独の試しは、auto モードの自動判定が「安全を弱める」（Security Weaken）として止めたので未実施。コード上は保留（mode-mismatch）。
+  - 設定 crossSessionInbound=accept の実地の試しも、同じ理由で未実施。コード上は、利用者の設定があれば受け手のモードによらず accept。
+- Codex の会話のモードは rollout の turn_context から読める（01a10630: approval_policy never、sandbox danger-full-access、つまりバイパス相当）。
+- Desktop で保留の承認の画面が出るかは未確認（これまで立花さんの画面には出ていない）。

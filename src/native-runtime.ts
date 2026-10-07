@@ -33,16 +33,26 @@ export async function claudeSessionRecord(pid:number,home=homedir()):Promise<any
 export async function claudeProcessMatches(pid:number,procStart:string,run:typeof command=command):Promise<boolean>{
  try{const [uid,...start]=(await run('ps',['-p',String(pid),'-o','uid=,lstart='])).trim().split(/\s+/);return Number(uid)===process.getuid?.()&&start.join(' ')===procStart.replace(/\s+/g,' ').trim();}catch{return false;}
 }
-export async function findClaudeIdentityByPid(pid:number,home=homedir(),options:ClaudeInspection={},allowUnsupportedVersion=false):Promise<NativeIdentity|null>{
+// One lsof listing of a process: its working directory, its executable (first txt entry) and its unix sockets.
+export type ProcessFiles={cwd:string|null;executable:string|null;sockets:string[]};
+export async function processFiles(pid:number,run:typeof command=command):Promise<ProcessFiles>{
+ const files:ProcessFiles={cwd:null,executable:null,sockets:[]};let fd='',type='';
+ for(const line of (await run('lsof',['-p',String(pid),'-Fnft'])).split('\n')){
+  const value=line.slice(1);
+  if(line.startsWith('f')){fd=value;type='';}else if(line.startsWith('t'))type=value;
+  else if(line.startsWith('n')){if(fd==='cwd')files.cwd??=value;else if(fd==='txt')files.executable??=value;else if(type==='unix')files.sockets.push(value);}
+ }
+ return files;
+}
+export async function findClaudeIdentityByPid(pid:number,home=homedir(),options:ClaudeInspection={},allowUnsupportedVersion=false,files?:ProcessFiles):Promise<NativeIdentity|null>{
  try{
   const m=await claudeSessionRecord(pid,home);
   if(!m||!allowUnsupportedVersion&&!isClaudeVersionAllowed(m.version,options))return null;
   const run=options.command??command;
   if(!await claudeProcessMatches(pid,m.procStart,run))return null;
-  const cwd=(await run('lsof',['-a','-p',String(pid),'-d','cwd','-Fn'])).split('\n').find(x=>x.startsWith('n'))?.slice(1);
+  const {cwd,sockets}=files??await processFiles(pid,run);
   if(!cwd||await realpath(cwd)!==await realpath(m.cwd)||!await (options.socket??ownedSocket)(m.messagingSocketPath))return null;
-  const sockets=await run('lsof',['-a','-p',String(pid),'-U','-Fn']);
-  if(!sockets.split('\n').includes('n'+m.messagingSocketPath))return null;
+  if(!sockets.includes(m.messagingSocketPath))return null;
   return {version:m.version,nativeId:m.sessionId,generation:`${pid}@${m.startedAt}`,cwd:await realpath(cwd),socket:m.messagingSocketPath,pid};
  }catch{return null;}
 }

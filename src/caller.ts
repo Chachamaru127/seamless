@@ -5,11 +5,12 @@ import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {realpath,readdir,stat} from 'node:fs/promises';
 import {readPrivateJson,writePrivateJson} from './limits.ts';
-import {command,findClaudeIdentityByPid,claudeSessionRecord,claudeProcessMatches} from './native-runtime.ts';
+import {command,findClaudeIdentityByPid,claudeSessionRecord,claudeProcessMatches,processFiles,type ProcessFiles} from './native-runtime.ts';
 import {codexIdentity,type SessionIdentity,type ScanOptions} from './sessions-scan.ts';
 export type Caller=SessionIdentity&{source:'claude-ancestor'|'codex-turn-metadata'};
 export type CallerResult={status:'ok';caller:Caller}|{status:'caller_unobserved';reason:string}|{status:'unsupported_version';reason:string;version:string};
-export type Ancestor={pid:number;ppid:number;executable:string;command?:string};
+// executable is read with lsof only when the process may be a Claude or Codex ancestor; command is argv[0] from ps.
+export type Ancestor={pid:number;ppid:number;executable:string|null;command?:string};
 export type CallerOptions=ScanOptions&{signature?:SignatureVerifier;codexLocations?:()=>Promise<string[]>;pid?:number;env?:NodeJS.ProcessEnv;cwd?:string;processCwd?:(pid:number)=>Promise<string|null>;process?:(pid:number)=>Promise<Ancestor|null>;previous?:Caller};
 export async function codexLocations(home=homedir()):Promise<string[]>{
  const releases=join(home,'.codex','packages','standalone','releases');
@@ -58,7 +59,7 @@ export async function signed(path:string,provider:'claude'|'codex',verify:Signat
  }catch{return false;}
 }
 export async function processInfo(pid:number):Promise<Ancestor|null>{
- try{const line=(await command('ps',['-p',String(pid),'-o','ppid=,command='])).trim(),m=/^(\d+)\s+(.+)$/.exec(line);if(!m)return null;const paths=await command('lsof',['-a','-p',String(pid),'-d','txt','-Fn']);const executable=paths.split('\n').find(line=>line.startsWith('n'))?.slice(1);return executable?{pid,ppid:Number(m[1]),executable,command:m[2]}:null;}catch{return null;}
+ try{const line=(await command('ps',['-p',String(pid),'-o','ppid=,comm='])).trim(),m=/^(\d+)\s+(.+)$/.exec(line);if(!m)return null;return {pid,ppid:Number(m[1]),executable:null,command:m[2]};}catch{return null;}
 }
 export async function processCwd(pid:number):Promise<string|null>{
  try{return (await command('lsof',['-a','-p',String(pid),'-d','cwd','-Fn'])).split('\n').find(line=>line.startsWith('n'))?.slice(1)??null;}catch{return null;}
@@ -84,14 +85,29 @@ export async function identifyCaller(context:{kind:'cli'|'mcp';meta?:unknown},op
  if(options.previous&&await stillCaller(options.previous,options))return {status:'ok',caller:options.previous};
  try{
   const home=options.home??homedir(),inspect=options.process??processInfo;
-  let current=await inspect(options.pid??process.pid);let codex=false;const seen=new Set<number>();
-  for(let i=0;i<8&&current&&current.ppid>1;i++){
-   if(seen.has(current.ppid))break;seen.add(current.ppid);
-   current=await inspect(current.ppid);if(!current)break;
-   const n=await findClaudeIdentityByPid(current.pid,home,{...options,...options.claude},true);
-   if(n){if(!await signed(current.executable,'claude',options.signature??verifySignature,home))return fail('signature_untrusted');if(!isClaudeVersionAllowed(n.version??'unknown',{...options,...options.claude}))return {status:'unsupported_version',reason:n.version??'unknown',version:n.version??'unknown'};return {status:'ok',caller:{...n,provider:'claude',source:'claude-ancestor'}};}
-   if(await knownCodex(current.executable,options.codexLocations??(()=>codexLocations(home)))){if(!await signed(current.executable,'codex',options.signature??verifySignature,home))return fail('signature_untrusted');codex=true;break;}
-  }
+  const locations=options.codexLocations??(()=>codexLocations(home)),run=options.claude?.command??command;
+  // The executable is listed with lsof only for a process that has a Claude session record or whose argv[0] is a known
+  // Codex binary; other ancestors are passed over. If that finds nothing, every ancestor is listed once more, as before.
+  // The executable that is verified always comes from lsof, never from argv[0].
+  let skipped=false;
+  const walk=async(every:boolean):Promise<CallerResult|'codex'|null>=>{
+   let current=await inspect(options.pid??process.pid);const seen=new Set<number>();
+   for(let i=0;i<8&&current&&current.ppid>1;i++){
+    if(seen.has(current.ppid))break;seen.add(current.ppid);
+    current=await inspect(current.ppid);if(!current)break;
+    let files:ProcessFiles|undefined;
+    const candidate=every||await claudeSessionRecord(current.pid,home)!==null||typeof current.command==='string'&&await knownCodex(current.command,locations);
+    if(current.executable===null&&candidate){files=await processFiles(current.pid,run);current={...current,executable:files.executable};}
+    if(current.executable===null){skipped=true;continue;}
+    const n=await findClaudeIdentityByPid(current.pid,home,{...options,...options.claude},true,files);
+    if(n){if(!await signed(current.executable,'claude',options.signature??verifySignature,home))return fail('signature_untrusted');if(!isClaudeVersionAllowed(n.version??'unknown',{...options,...options.claude}))return {status:'unsupported_version',reason:n.version??'unknown',version:n.version??'unknown'};return {status:'ok',caller:{...n,provider:'claude',source:'claude-ancestor'}};}
+    if(await knownCodex(current.executable,locations)){if(!await signed(current.executable,'codex',options.signature??verifySignature,home))return fail('signature_untrusted');return 'codex';}
+   }
+   return null;
+  };
+  let found=await walk(false);if(found===null&&skipped)found=await walk(true);
+  if(found!==null&&found!=='codex')return found;
+  const codex=found==='codex';
   if(!codex)return fail('native_ancestor_missing');
   let id:unknown,source:Caller['source'];
   if(context.kind==='mcp'){

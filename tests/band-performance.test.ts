@@ -20,12 +20,11 @@ for(const duplicate of [false,true])test(`Claude filters cheap records before fu
  const found=await findClaudeIdentity('wanted',home,{command:async(file,args)=>{
   calls.push([file,args]);const pid=args[args.indexOf('-p')+1];
   if(file==='ps')return `${process.getuid?.()} start`;
-  if(args.includes('cwd'))return 'n'+home;
-  return 'n'+home+'/'+(pid==='132'?'imposter':pid)+'.sock';
+  return `fcwd\ntDIR\nn${home}\nf3\ntunix\nn${home}/${pid==='132'?'imposter':pid}.sock`;
  },socket:async path=>{sockets.push(path);return true;}});
  assert.equal(found?.pid,133);
  assert.deepEqual(calls.filter(([file])=>file==='ps').map(([,args])=>args[1]),duplicate?['132','133']:['133']);
- assert.equal(calls.filter(([file])=>file==='lsof').length,duplicate?4:2);
+ assert.equal(calls.filter(([file])=>file==='lsof').length,duplicate?2:1);
  assert.equal(sockets.length,duplicate?2:1);
 });
 

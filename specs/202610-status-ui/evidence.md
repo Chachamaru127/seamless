@@ -83,3 +83,4 @@
 - Codex アプリの更新で再起動すると、以前の会話 01a10630 は持ち主がいなくなった（thread-owner-discovery が no-client-found）。アプリの中身では、窓の窓口の操作は thread-follower-* だけで、開かれていない会話を読み込ませる操作はない。スケジュールはアプリの本体が app-server に thread/resume と turn/start を直接頼んでいる。外から会話を開く正規の入口は codex://threads/<id>。
 - auto × フルアクセス（03:29〜）: 立花さんの許可の後、reply-inbound-accept-4 が届いた。これで4つの組み合わせすべてで、Codex → Claude と Claude → Codex の往復を確かめた（crossSessionInbound=accept の後）。
 - 送信の承認の扱いの食い違い: Codex は共通の契約の Risk Gates の「外部送信」に当てて、seamless の返信の前に毎回立花さんの許可を待つ。Claude は立花さんの「今後この確認は不要」（2026-10-06）を自分の記憶に持つので待たない。共通の契約に例外を足す編集は、auto モードの判定（Instruction Poisoning）が止めたので元に戻した。立花さんの判断待ち。
+- 案 A の試し（2026-10-07 14:15）: Codex アプリの会話 01a114c3（Rappiness、originator は Codex Desktop）は持ち主がいなかった（thread-owner-discovery が成功を返さない）。`open "codex://threads/01a114c3-020e-7ef1-9de7-c983372f5b7c"` で開かせると、2秒後の問い合わせで持ち主ができた。依頼は送っていない。Codex アプリの画面はこの会話に切り替わった。今日の rollout のうち codex_exec（裏の実行）と codex-imagegen の会話は、アプリの一覧に出ない会話で、持ち主も無い。

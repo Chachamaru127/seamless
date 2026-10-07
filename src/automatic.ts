@@ -46,8 +46,10 @@ export function createAutomatic(options:AutomaticOptions={}){
   const strictVersions=method!=='limits'&&(options.compatTest===true||loaded.status==='ok'&&loaded.value.strictVersions===true);
   // One call observes each workspace's git state and the Desktop version once: the scope check and the ticket
   // branch run per candidate, and Codex can hold a hundred threads in one repository (measured 2026-10-07: 1512 git runs, 25s).
+  // The key is the resolved path: Codex records a workspace by the path it was opened with (a symlink such as the
+  // repository's former name), the scan resolves it, and both spellings must share one observation.
   const gitOnce=new Map<string,ReturnType<typeof observeGit>>(),baseGit=options.scanOptions?.git??observeGit;
-  const git=(cwd:string)=>{let v=gitOnce.get(cwd);if(!v){v=baseGit(cwd);gitOnce.set(cwd,v);}return v;};
+  const git=async(cwd:string)=>{const key=await realpath(cwd).catch(()=>cwd);let v=gitOnce.get(key);if(!v){v=baseGit(cwd);gitOnce.set(key,v);}return v;};
   let versionOnce:Promise<string|null>|undefined;const baseVersion=options.scanOptions?.version??desktopVersion;
   const version=()=>versionOnce??=baseVersion();
   const scanOptions={includeUnavailable:!options.compatTest,...options.scanOptions,git,version,home,strictVersions,claude:{...options.scanOptions?.claude,strictVersions}};
@@ -102,7 +104,8 @@ export function createAutomatic(options:AutomaticOptions={}){
    return rejectedVersion(candidate??{...n,version:null},limits);
   };
   const callerVersion=rejectedVersion(c,l);if(callerVersion)return callerVersion;
-  const status=createStatus({parallelReads:method==='band',dir:options.reservationDir??join(home,'.seamless','reservations'),adapter,caller:{...c,id:idOf(c)},clock:options.clock,canRead:async n=>{const current=await caller(context);if(current.status!=='ok'||idOf(current.caller)!==idOf(c)||current.caller.generation!==c.generation)return false;const limits=await readLimits(limitsPath);if(limits.status==='unusable')return false;const currentLimits=limits.status==='ok'?limits.value:unrestricted;return !rejectedVersion(current.caller,currentLimits)&&!await policy(n,c,currentLimits,'read','any')&&!await targetCompatibility(n,currentLimits);}});
+  // Both sides of a request are read together, as the band already does; each read still re-observes the caller.
+  const status=createStatus({parallelReads:true,dir:options.reservationDir??join(home,'.seamless','reservations'),adapter,caller:{...c,id:idOf(c)},clock:options.clock,canRead:async n=>{const current=await caller(context);if(current.status!=='ok'||idOf(current.caller)!==idOf(c)||current.caller.generation!==c.generation)return false;const limits=await readLimits(limitsPath);if(limits.status==='unusable')return false;const currentLimits=limits.status==='ok'?limits.value:unrestricted;return !rejectedVersion(current.caller,currentLimits)&&!await policy(n,c,currentLimits,'read','any')&&!await targetCompatibility(n,currentLimits);}});
   if(method==='send'&&input&&typeof input==='object'&&'track' in input){const p=object(input,['track','waitSeconds','scope']);scope(p.scope);return status.track(p.track,p.waitSeconds);}
   const keys=method==='sessions'?['operation','scope','target','includeOffline','peek']:method==='select'?['operation','scope','target']:method==='read'?['target','scope','cursor','limit']:method==='send'?['ticket','id','text','replyTo','scope']:method==='revalidate'?['ticket','operation','scope']:[];
   if(!keys.length&&method!=='band')throw new ContractError('unknown_method');
@@ -175,7 +178,7 @@ export function createAutomatic(options:AutomaticOptions={}){
    let inbound:Awaited<ReturnType<typeof verifyInbound>>=[];
    if(!options.compatTest&&l.operations?.read!==false&&adapter.received){
     try{const records=registrations([c,...found.sessions.filter(n=>idOf(n)!==idOf(c))]);
-     inbound=await verifyInbound({parallel:method==='band',caller:records[0],received:method==='band'?bandReceived:await adapter.received(records[0]),targets:records.slice(1),now:options.clock?.now()??Date.now(),sentIds:adapter.sentIds,canRead:async target=>{
+     inbound=await verifyInbound({parallel:true,caller:records[0],received:method==='band'?bandReceived:await adapter.received(records[0]),targets:records.slice(1),now:options.clock?.now()??Date.now(),sentIds:adapter.sentIds,canRead:async target=>{
       const current=await caller(context),limits=await readLimits(limitsPath);
       return current.status==='ok'&&idOf(current.caller)===idOf(c)&&current.caller.generation===c.generation&&limits.status!=='unusable'&&!await policy({provider:target.provider,nativeId:target.nativeId,generation:target.generation,cwd:target.workspace},c,limits.status==='ok'?limits.value:unrestricted,'read',s)&&!await targetCompatibility(target,limits.status==='ok'?limits.value:unrestricted);
      }});

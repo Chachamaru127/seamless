@@ -80,6 +80,7 @@ class IPC{
 }
 async function codexConnection(nativeId:string,home:string,ownerTimeoutMs=8000,versionOf?:()=>Promise<string|null>,options:CompatibilityOptions={}){const path=join(home,'.codex','ipc','ipc.sock');const {desktopVersion}=await import('./adapters/codex.ts');const version=await (versionOf??desktopVersion)();if(!isVersionAllowed('codex',version,options))throw new Error('unsupported_version');if(!await ownedSocket(path,false))throw new Error('unsafe_socket');const ipc=new IPC(path);try{const initial=await ipc.request('initialize',{clientType:'seamless-native-runtime'},'initializing-client',0);if(initial.resultType!=='success')throw new Error('initialize');const client=initial.result.clientId;const found=await ipc.request('thread-owner-discovery',{hostId:'local',conversationId:nativeId},client,1,undefined,ownerTimeoutMs);if(found.resultType!=='success'||typeof found.handledByClientId!=='string')throw new Error('owner');return {ipc,client,owner:found.handledByClientId,sendSupported:found.result?.supportsUntrustedAppInput===true,path};}catch(e){ipc.close();throw e;}}
 // A band owns this lookup and closes it in finally. Discovery remains per conversation.
+export const OWNER_LIMIT_MS=500;
 export function createCodexOwnerLookup(home=homedir(),versionOf?:()=>Promise<string|null>,options:CompatibilityOptions={}){
  let connection:Promise<{ipc:IPC;client:string}>|undefined;
  const owners=new Map<string,Promise<string|null>>();
@@ -98,8 +99,10 @@ export function createCodexOwnerLookup(home=homedir(),versionOf?:()=>Promise<str
    let result=owners.get(id);if(result)return result;
    result=(async()=>{try{
     const {ipc,client}=await (connection??=connect());
-    // Same limit as the sessions scan: a thread Desktop has not loaded never answers.
-    const found=await ipc.request('thread-owner-discovery',{hostId:'local',conversationId:id},client,1,undefined,1500);
+    // Same limit as the sessions scan. Desktop answers a loaded thread within tens of milliseconds (measured 2026-10-07:
+    // median 3ms, max 36ms, 11ms inside a wave of 64) and an unloaded one only after its own 10s wait, so the limit is
+    // paid in full by every unloaded thread and sets the floor of a sessions call.
+    const found=await ipc.request('thread-owner-discovery',{hostId:'local',conversationId:id},client,1,undefined,OWNER_LIMIT_MS);
     return found.resultType==='success'&&typeof found.handledByClientId==='string'?found.handledByClientId:null;
    }catch{return null;}})();
    owners.set(id,result);return result;

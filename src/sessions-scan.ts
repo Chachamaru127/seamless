@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {desktopVersion} from './adapters/codex.ts';
-import {findClaudeIdentityByPid,findCodexOwner,createCodexOwnerLookup,codexReachable,type NativeIdentity,type ClaudeInspection} from './native-runtime.ts';
+import {findClaudeIdentityByPid,findCodexOwner,createCodexOwnerLookup,OWNER_LIMIT_MS,codexReachable,type NativeIdentity,type ClaudeInspection} from './native-runtime.ts';
 import {observeGit,type GitContext} from './git-context.ts';
 import type {AutoScope} from './limits.ts';
 export type SessionIdentity=NativeIdentity&{provider:'claude'|'codex';status?:'online'|'offline'|'unknown';reason?:'process_exited'|'generation_changed'|'unsupported_version'|'unreachable'};
@@ -43,6 +43,7 @@ export async function wakeCodexThread(id:string,options:ScanOptions={}):Promise<
  if(!(await (options.rows??(()=>readThreadRows(home)))())?.some(r=>r.id===id&&r.archived===0))return null;
  if(!await (options.reachable??(()=>codexReachable(home,options.version,options)))())return null;
  await (options.openUrl??(async url=>{await run('open',['-g',url]);}))(`codex://threads/${id}`);
+ // A thread just opened by link is one lookup, so it keeps the wider 1.5s limit; the scan's limit is for a hundred unloaded threads.
  const owner=options.owner??((id:string)=>findCodexOwner(id,home,1500,options.version,options));
  for(let i=0;i<(options.wakeAttempts??5);i++){const found=await owner(id);if(found)return found;await new Promise(r=>setTimeout(r,options.wakeIntervalMs??1000));}
  return null;
@@ -85,8 +86,8 @@ export async function scanSessions(callerCwd:string,scope:AutoScope='current_wor
  if(options.expectedPairCaller){const keys=[...sessions.map(n=>`${n.provider}:${n.nativeId}`),...candidates.map(n=>`codex:${n.id}`)];if(keys.length!==2||!keys.includes(options.expectedPairCaller))return {sessions:[],codexWorkspace:'unknown'};}
  candidates.sort((a,b)=>b.updated_at_ms-a.updated_at_ms);
  // Owner lookups share one Desktop connection and run in wide parallel waves: a thread Desktop has not loaded is
- // answered only after Desktop's own 10s wait, so each lookup costs the full 1.5s limit and only the wave count matters
- // (measured 2026-10-07: 101 threads in waves of 16 took 10.5s; one wave of 120 took 1.5s).
+ // answered only after Desktop's own 10s wait, so each lookup costs the full limit and only the wave count matters
+ // (measured 2026-10-07: 101 threads in waves of 16 at 1.5s took 10.5s; one wave of 120 took one limit).
  const shared=options.owner||!supported?undefined:createCodexOwnerLookup(home,options.version,options);
  const owner=options.owner??((id:string)=>shared!.owner(id)),list=scope==='any'?candidates.slice(0,50):candidates;
  try{

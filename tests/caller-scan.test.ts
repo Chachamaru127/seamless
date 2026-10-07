@@ -112,7 +112,8 @@ test('same_repository prefilter uses worktree list before candidate git and owne
  await mkdir(inside,{recursive:true});await mkdir(other);await mkdir(second);
  const gitCalls:string[]=[],owners:string[]=[],listCalls:string[]=[];
  const result=await scanSessions(worktree,'same_repository',{...f.options,git:async cwd=>{gitCalls.push(cwd);return {state:'git',workspace:cwd,worktree,repository:'/fake/repo',headState:'attached',branch:'main',head:'a',dirty:false};},worktreeList:async cwd=>{listCalls.push(cwd);return `worktree ${worktree}\nHEAD a\n\nworktree ${second}\nHEAD b\n\n`;},rows:async()=>[inside,other,second].map((cwd,i)=>({id:String(i),cwd,archived:0,updated_at_ms:i})),owner:async id=>{owners.push(id);return 'owner';}});
- assert.deepEqual(listCalls,[worktree]);assert.deepEqual(gitCalls,[worktree,inside,second]);assert.deepEqual(owners,['2','0']);assert.equal(result.sessions.length,2);
+ // The caller's workspace is observed first; the surviving candidates are checked in parallel, so only their set is fixed.
+ assert.deepEqual(listCalls,[worktree]);assert.equal(gitCalls[0],worktree);assert.deepEqual(gitCalls.slice(1).sort(),[inside,second].sort());assert.deepEqual(owners,['2','0']);assert.equal(result.sessions.length,2);
 });
 
 for(const name of ['codex','runner'])test(`nearest known Codex ancestor blocks outer Claude identity: ${name}`,async t=>{

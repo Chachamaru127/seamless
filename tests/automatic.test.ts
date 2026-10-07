@@ -397,11 +397,12 @@ test('peek preserves AC34 inbound verification and refuses unproven senders',asy
  }});
  const before=await seamlessSnapshot(f.home);
  const result=await auto('sessions',{peek:true});
- assert.equal(result.inbound.length,2);assert.deepEqual(Object.fromEntries(result.inbound.map((r:any)=>[r.id,r.sender])),{proven:'verified',forged:'declared'});assert.equal(proofs,2);
+ // Both ids are proven in one read of the sender's record, as the band does.
+ assert.equal(result.inbound.length,2);assert.deepEqual(Object.fromEntries(result.inbound.map((r:any)=>[r.id,r.sender])),{proven:'verified',forged:'declared'});assert.equal(proofs,1);
  assert.deepEqual(await seamlessSnapshot(f.home),before);
  await writeLimits({...unrestricted,exclude:[{nativeId:'b'}]},null,f.path);
  const denied=await auto('sessions',{peek:true});
- assert.deepEqual(denied.inbound.map((r:any)=>r.sender),['declared','declared']);assert.equal(proofs,2);
+ assert.deepEqual(denied.inbound.map((r:any)=>r.sender),['declared','declared']);assert.equal(proofs,1);
 });
 
 test('band inspects only related peers, never scans or touches seen, and times one query',async t=>{

@@ -84,3 +84,6 @@
 - auto × フルアクセス（03:29〜）: 立花さんの許可の後、reply-inbound-accept-4 が届いた。これで4つの組み合わせすべてで、Codex → Claude と Claude → Codex の往復を確かめた（crossSessionInbound=accept の後）。
 - 送信の承認の扱いの食い違い: Codex は共通の契約の Risk Gates の「外部送信」に当てて、seamless の返信の前に毎回立花さんの許可を待つ。Claude は立花さんの「今後この確認は不要」（2026-10-06）を自分の記憶に持つので待たない。共通の契約に例外を足す編集は、auto モードの判定（Instruction Poisoning）が止めたので元に戻した。立花さんの判断待ち。
 - 案 A の試し（2026-10-07 14:15）: Codex アプリの会話 01a114c3（Rappiness、originator は Codex Desktop）は持ち主がいなかった（thread-owner-discovery が成功を返さない）。`open "codex://threads/01a114c3-020e-7ef1-9de7-c983372f5b7c"` で開かせると、2秒後の問い合わせで持ち主ができた。依頼は送っていない。Codex アプリの画面はこの会話に切り替わった。今日の rollout のうち codex_exec（裏の実行）と codex-imagegen の会話は、アプリの一覧に出ない会話で、持ち主も無い。
+- 再起動の後に起こして送る（2026-10-07 16:05、f63b67f）: 立花さんが Codex アプリを再起動し、seamless の会話を開かずにおいた。再起動の直後は 01a114be、01a10630、01a10594 の3つとも持ち主がなく、送り先の一覧から消えた（offlineHidden 100）。`sessions` に target `codex:01a114be-…` を付けると、seamless が `open -g codex://threads/…` で会話を開き、online（世代は再起動後の新しい番号 4923ad22）と券が返った。この券で wake-after-restart-20261007-1 を送ると、1秒で読み始め、返信「受け取りました」が届いた。立花さんは会話を手で開いていない。
+- open -g でも Codex アプリは前面に出た（前面のアプリが Claude から ChatGPT に変わった）。持ち主ができるまで、開かれていない Rappiness の会話では4秒、再起動の後の 01a114be でも数秒。
+- 既知の別件: CLI からの sessions は、名指しの有無にかかわらず毎回25〜26秒かかる（今回の変更の前からの遅さ）。進み具合の追跡（status）は、返信が届いた後も replied を拾わず wait_limit で終わる（変更の前の 05:04 の確認でも同じ）。

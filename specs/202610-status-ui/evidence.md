@@ -81,3 +81,5 @@
 - バイパス × フルアクセス（03:15〜、Codex アプリは 26.1002.51308 に更新済みで、開かれていた会話 01a10594 を使った）: Claude → Codex は1秒で読み始め。Codex は repo の決まり（相手の会話への送信は了承を得てから）で立花さんの許可を待ち、許可の後に reply-inbound-accept-3 を送り、届いた。
 - auto × フルアクセス（03:29）: Claude → Codex は1秒で読み始め。Codex は立花さんの許可待ち。
 - Codex アプリの更新で再起動すると、以前の会話 01a10630 は持ち主がいなくなった（thread-owner-discovery が no-client-found）。アプリの中身では、窓の窓口の操作は thread-follower-* だけで、開かれていない会話を読み込ませる操作はない。スケジュールはアプリの本体が app-server に thread/resume と turn/start を直接頼んでいる。外から会話を開く正規の入口は codex://threads/<id>。
+- auto × フルアクセス（03:29〜）: 立花さんの許可の後、reply-inbound-accept-4 が届いた。これで4つの組み合わせすべてで、Codex → Claude と Claude → Codex の往復を確かめた（crossSessionInbound=accept の後）。
+- 送信の承認の扱いの食い違い: Codex は共通の契約の Risk Gates の「外部送信」に当てて、seamless の返信の前に毎回立花さんの許可を待つ。Claude は立花さんの「今後この確認は不要」（2026-10-06）を自分の記憶に持つので待たない。共通の契約に例外を足す編集は、auto モードの判定（Instruction Poisoning）が止めたので元に戻した。立花さんの判断待ち。

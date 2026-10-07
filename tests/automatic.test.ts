@@ -214,6 +214,16 @@ test('sessions default hides offline and unknown, counts hidden and observes eve
  const all=await automatic('sessions',{includeOffline:true});assert.equal(all.candidates.length,4);assert.equal(all.offlineHidden,0);
  const filtered=await automatic('sessions',{includeOffline:false});assert.equal(filtered.candidates.length,2);assert.equal(filtered.offlineHidden,2);
 });
+test('one sessions call observes git once per workspace, however many Codex threads share it',async t=>{
+ const f=await fixture(t);
+ const sessions=[f.caller,...Array.from({length:50},(_,i)=>({...f.target,provider:'codex' as const,nativeId:String(i),cwd:join(f.home,'threads')}))];
+ const gitCalls:string[]=[];
+ const automatic=createAutomatic({home:f.home,caller:async()=>({status:'ok',caller:f.caller}),scan:async()=>({sessions,codexWorkspace:'observed'}),scanOptions:{git:async cwd=>{gitCalls.push(cwd);return {state:'git',workspace:cwd,worktree:f.home,repository:join(f.home,'.git'),headState:'attached',branch:'refs/heads/main',head:'a'.repeat(40),dirty:false};}},adapter:{read:async()=>null,send:async()=>({status:'rejected'})}});
+ const result=await automatic('sessions',{scope:'same_repository'});
+ assert.equal(result.candidates.length,50);
+ assert.deepEqual([...new Set(gitCalls)].sort(),[f.home,join(f.home,'threads')].sort());
+ assert.equal(gitCalls.length,2);
+});
 test('sessions includeOffline rejects non-booleans through automatic and MCP',async t=>{
  const f=await fixture(t),call=await mcp(f.automatic);
  for(const includeOffline of [null,0,1,'true',[],{}]){

@@ -3,6 +3,7 @@ import {requests,DAY} from './request-store.ts';
 import {verifyInbound} from './inbound.ts';
 import {createStatus,type StatusClock} from './status.ts';
 import {observeGit} from './git-context.ts';
+import {desktopVersion} from './adapters/codex.ts';
 import {observeSeen} from './seen.ts';
 import {realpath} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -43,7 +44,13 @@ export function createAutomatic(options:AutomaticOptions={}){
   const loaded=await readLimits(limitsPath);
   // limits reads and writes only seamless's own file, so strict never locks an updated caller out of turning strict off.
   const strictVersions=method!=='limits'&&(options.compatTest===true||loaded.status==='ok'&&loaded.value.strictVersions===true);
-  const scanOptions={includeUnavailable:!options.compatTest,...options.scanOptions,home,strictVersions,claude:{...options.scanOptions?.claude,strictVersions}};
+  // One call observes each workspace's git state and the Desktop version once: the scope check and the ticket
+  // branch run per candidate, and Codex can hold a hundred threads in one repository (measured 2026-10-07: 1512 git runs, 25s).
+  const gitOnce=new Map<string,ReturnType<typeof observeGit>>(),baseGit=options.scanOptions?.git??observeGit;
+  const git=(cwd:string)=>{let v=gitOnce.get(cwd);if(!v){v=baseGit(cwd);gitOnce.set(cwd,v);}return v;};
+  let versionOnce:Promise<string|null>|undefined;const baseVersion=options.scanOptions?.version??desktopVersion;
+  const version=()=>versionOnce??=baseVersion();
+  const scanOptions={includeUnavailable:!options.compatTest,...options.scanOptions,git,version,home,strictVersions,claude:{...options.scanOptions?.claude,strictVersions}};
   const ownerLookup=method==='band'&&!options.scanOptions?.owner?createCodexOwnerLookup(home,scanOptions.version,scanOptions):undefined;
   const ownerCache=new Map<string,Promise<string|null>>();
   const bandOwner=method==='band'?(id:string)=>{let value=ownerCache.get(id);if(!value){value=(scanOptions.owner??ownerLookup!.owner)(id);ownerCache.set(id,value);}return value;}:undefined;
@@ -60,7 +67,7 @@ export function createAutomatic(options:AutomaticOptions={}){
    const key=JSON.stringify([target.provider,target.nativeId,target.generation,target.workspace]);
    let value=structures.get(key);if(!value){value=baseAdapter.structure!(target);structures.set(key,value);}return value;
   }}:baseAdapter;
-  const branch=async(cwd:string)=>{const git=await (scanOptions.git??observeGit)(cwd);return git.state==='git'?git.branch:git.state==='no_git'?null:undefined;};
+  const branch=async(cwd:string,observe=scanOptions.git)=>{const git=await observe(cwd);return git.state==='git'?git.branch:git.state==='no_git'?null:undefined;};
   const ticketFor=async(n:SessionIdentity)=>{const observed=await branch(n.cwd);return observed===undefined?null:issueTicket({...n,branch:observed});};
   const policy=async(n:Ticket,c:Caller,l:Limits,op:Operation,s:AutoScope)=>{
    if(l.operations?.[op]===false)return 'operation_not_permitted';
@@ -120,7 +127,8 @@ export function createAutomatic(options:AutomaticOptions={}){
     const unsupported=await targetCompatibility(target,currentLimits);if(unsupported){unsupportedVersion=unsupported.version;return unsupported.status;}
     let n=await inspect(target);if(!n&&target.provider==='codex'&&await wake(target.nativeId))n=await inspect(target);if(!n)return 'target_offline';
     if(n.nativeId!==ticket.nativeId||n.generation!==ticket.generation)return 'generation_mismatch';
-    if(n.cwd!==ticket.cwd||await branch(n.cwd)!==ticket.branch)return 'workspace_changed';return null;
+    // The branch is observed afresh here: a ticket issued earlier in this same call must not vouch for itself.
+    if(n.cwd!==ticket.cwd||await branch(n.cwd,baseGit)!==ticket.branch)return 'workspace_changed';return null;
    };
    const denied=await validate();if(denied)return {status:denied,...(unsupportedVersion!==undefined?{reason:unsupportedVersion,version:unsupportedVersion}:{})};
    if(method==='revalidate')return {status:'validated',target:idOf(ticket)};

@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {desktopVersion} from './adapters/codex.ts';
-import {findClaudeIdentityByPid,findCodexOwner,codexReachable,type NativeIdentity,type ClaudeInspection} from './native-runtime.ts';
+import {findClaudeIdentityByPid,findCodexOwner,createCodexOwnerLookup,codexReachable,type NativeIdentity,type ClaudeInspection} from './native-runtime.ts';
 import {observeGit,type GitContext} from './git-context.ts';
 import type {AutoScope} from './limits.ts';
 export type SessionIdentity=NativeIdentity&{provider:'claude'|'codex';status?:'online'|'offline'|'unknown';reason?:'process_exited'|'generation_changed'|'unsupported_version'|'unreachable'};
@@ -71,20 +71,29 @@ export async function scanSessions(callerCwd:string,scope:AutoScope='current_wor
  const scoped=new Map<string,Promise<boolean>>();
  const within=(cwd:string)=>{let v=scoped.get(cwd);if(!v){v=(async()=>{if(roots){let real:string;try{real=await realpath(cwd);}catch{return false;}if(!roots.some(r=>real===r||real.startsWith(r+'/')))return false;}return inScope(cwd,callerCwd,scope,git);})();scoped.set(cwd,v);}return v;};
  let names:string[]=[];try{names=await readdir(join(home,'.claude','sessions'));}catch{}
- for(const name of names){if(!/^\d+\.json$/.test(name))continue;const n=await findClaudeIdentityByPid(Number(name.slice(0,-5)),home,{...options,...options.claude});if(n&&await within(n.cwd)&&(!options.include||await options.include({...n,provider:'claude'})))sessions.push({...n,provider:'claude'});else if(!n&&options.includeUnavailable){try{const {privateJson}=await import('./request-store.ts');const raw=await privateJson(join(home,'.claude','sessions',name));if(typeof raw?.sessionId!=='string')continue;const {findClaudeSession}=await import('./adapters/claude.ts');const record=await findClaudeSession(raw.sessionId,{home});if(!record||record==='unreadable'||!await within(record.cwd))continue;const candidate:SessionIdentity={version:record.version==='unknown'?null:record.version||null,provider:'claude',nativeId:record.sessionId,generation:record.generation,cwd:record.cwd,socket:record.messagingSocketPath??'',status:'unknown',reason:'unreachable'};if(!isVersionAllowed('claude-code',record.version,{...options,...options.claude})){candidate.reason='unsupported_version';}else{const {processStart}=await import('./adapters/claude.ts');const started=await (options.processStart??processStart)(record.pid);if(started===null){candidate.status='offline';candidate.reason='process_exited';}else if(Math.abs(started-record.startedAt)>=2000){candidate.status='offline';candidate.reason='process_exited';}}if(!options.include||await options.include(candidate))sessions.push(candidate);}catch{}}}
+ // Each Claude process is inspected with ps and lsof; the records are checked in parallel and kept in directory order.
+ const claudeCandidate=async(name:string):Promise<SessionIdentity|null>=>{if(!/^\d+\.json$/.test(name))return null;const n=await findClaudeIdentityByPid(Number(name.slice(0,-5)),home,{...options,...options.claude});if(n&&await within(n.cwd)&&(!options.include||await options.include({...n,provider:'claude'})))return {...n,provider:'claude'};if(!n&&options.includeUnavailable){try{const {privateJson}=await import('./request-store.ts');const raw=await privateJson(join(home,'.claude','sessions',name));if(typeof raw?.sessionId!=='string')return null;const {findClaudeSession}=await import('./adapters/claude.ts');const record=await findClaudeSession(raw.sessionId,{home});if(!record||record==='unreadable'||!await within(record.cwd))return null;const candidate:SessionIdentity={version:record.version==='unknown'?null:record.version||null,provider:'claude',nativeId:record.sessionId,generation:record.generation,cwd:record.cwd,socket:record.messagingSocketPath??'',status:'unknown',reason:'unreachable'};if(!isVersionAllowed('claude-code',record.version,{...options,...options.claude})){candidate.reason='unsupported_version';}else{const {processStart}=await import('./adapters/claude.ts');const started=await (options.processStart??processStart)(record.pid);if(started===null){candidate.status='offline';candidate.reason='process_exited';}else if(Math.abs(started-record.startedAt)>=2000){candidate.status='offline';candidate.reason='process_exited';}}if(!options.include||await options.include(candidate))return candidate;}catch{}}return null;};
+ for(const n of await Promise.all(names.map(claudeCandidate)))if(n)sessions.push(n);
  const version=await (options.version??desktopVersion)();
  const supported=isVersionAllowed('codex',version,options);
  if(!supported&&!options.includeUnavailable)return {sessions,codexWorkspace:'unknown'};
  const rows=await (options.rows??(()=>readThreadRows(home)))();if(!rows)return {sessions,codexWorkspace:'unknown'};
  const candidates:ThreadRow[]=[];
- for(const r of rows){if(r.archived===0&&await within(r.cwd)&&(!options.include||await options.include({provider:'codex',nativeId:r.id,generation:'',cwd:await realpath(r.cwd).catch(()=>r.cwd)})))candidates.push(r);}
+ // The scope check runs one git observation per distinct workspace; rows are checked in parallel and kept in order.
+ const inRange=await Promise.all(rows.map(async r=>r.archived===0&&await within(r.cwd)&&(!options.include||await options.include({provider:'codex',nativeId:r.id,generation:'',cwd:await realpath(r.cwd).catch(()=>r.cwd)}))));
+ for(const [i,r] of rows.entries())if(inRange[i])candidates.push(r);
  if(options.expectedPairCaller){const keys=[...sessions.map(n=>`${n.provider}:${n.nativeId}`),...candidates.map(n=>`codex:${n.id}`)];if(keys.length!==2||!keys.includes(options.expectedPairCaller))return {sessions:[],codexWorkspace:'unknown'};}
  candidates.sort((a,b)=>b.updated_at_ms-a.updated_at_ms);
- // Owner lookups run in small parallel waves; a thread not loaded in Desktop simply has no owner.
- const owner=options.owner??((id:string)=>findCodexOwner(id,home,1500,options.version,options)),list=scope==='any'?candidates.slice(0,50):candidates;
- for(let i=0;i<list.length;i+=16){
-  const wave=await Promise.all(list.slice(i,i+16).map(async r=>({r,owner:supported?await owner(r.id):null})));
-  for(const {r,owner} of wave){if(!owner&&!options.includeUnavailable)continue;try{sessions.push({version:version||null,provider:'codex',nativeId:r.id,generation:owner??'',...(owner?{owner}:{status:'unknown' as const,reason:supported?'unreachable' as const:'unsupported_version' as const}),cwd:await realpath(r.cwd),socket:join(home,'.codex','ipc','ipc.sock')});}catch{}}
- }
+ // Owner lookups share one Desktop connection and run in wide parallel waves: a thread Desktop has not loaded is
+ // answered only after Desktop's own 10s wait, so each lookup costs the full 1.5s limit and only the wave count matters
+ // (measured 2026-10-07: 101 threads in waves of 16 took 10.5s; one wave of 120 took 1.5s).
+ const shared=options.owner||!supported?undefined:createCodexOwnerLookup(home,options.version,options);
+ const owner=options.owner??((id:string)=>shared!.owner(id)),list=scope==='any'?candidates.slice(0,50):candidates;
+ try{
+  for(let i=0;i<list.length;i+=128){
+   const wave=await Promise.all(list.slice(i,i+128).map(async r=>({r,owner:supported?await owner(r.id):null})));
+   for(const {r,owner} of wave){if(!owner&&!options.includeUnavailable)continue;try{sessions.push({version:version||null,provider:'codex',nativeId:r.id,generation:owner??'',...(owner?{owner}:{status:'unknown' as const,reason:supported?'unreachable' as const:'unsupported_version' as const}),cwd:await realpath(r.cwd),socket:join(home,'.codex','ipc','ipc.sock')});}catch{}}
+  }
+ }finally{await shared?.close();}
  return {sessions,codexWorkspace:supported?'observed':'unknown',...(candidates.length>list.length?{codexTruncated:candidates.length-list.length}:{})};
 }

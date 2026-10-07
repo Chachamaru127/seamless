@@ -96,3 +96,14 @@
 - 本番（17:08、この会話 13b9af9a、作業ツリーは worktree、Codex 01a114be は名指しの sessions で起こして online）: `send` の 3 秒後に `status --wait 240` を Bash から実行。返信 replied-while-busy-20261007-1-reply は 08:08:58Z に届き、status は `replied observed`（根拠 `queue:2026-10-07T08:08:58.895Z`）で `ok` を返した。待ち上限まで待たずに 17:09:24 に戻った。
 - 範囲: Codex が送り手のときの replied 検知は今回見ていない。CLI の sessions が毎回 25〜26 秒かかる件は未着手。
 - 効き始め: seamless の MCP は起動時に読んだコードで動く。すでに開いている Claude と Codex の会話の MCP（`send` の `track`、帯の表示）は会話を立ち上げ直すまで前のままで、返信が届いても wait_limit のまま。今回の本番は作業ツリーの `node src/cli.ts` で確かめた。
+
+## 2026-10-07 sessions が毎回 25〜26 秒かかった原因と修正
+
+- 計測（この会話 13b9af9a、same_repository、Codex の会話 101 件、Claude の会話の記録 35 件）: 子プロセスの起動が 1811 回、うち git が 1512 回（累計 29 秒）。1 回の git の観測は 7 コマンドなので、観測が約 216 回。発生源は候補ごとの範囲判定（automatic の policy の inScope）とチケットのブランチ観測で、キャッシュの無い observeGit を候補ごとに呼んでいた。scanSessions の中のキャッシュは scanSessions の外には効いていなかった。
+- 残りの時間は Codex の持ち主問い合わせ（thread-owner-discovery）。持ち主がいる会話は 4〜17 ms で返るが、いない会話は Codex アプリが「no-client-found」を返すまで 10 秒かかる（要求の timeoutMs を 50 ms にしても変わらない）。seamless は 1.5 秒で見切るので、1 件あたり 1.5 秒が下限で、16 件ずつの波では 101 件で 7 波 = 10.5 秒。1 本の接続で 120 件を同時に問い合わせても 1.5 秒で、持ち主のいる会話は正しく見つかった。
+- 修正（4 点）: (1) automatic の 1 回の呼び出しの間、cwd ごとの git の観測と Desktop の版の観測を 1 回に絞る。送る直前のブランチの再確認だけはキャッシュを使わない（同じ呼び出しの中で発行したチケットが自分を保証しないため。branch-ticket の試験がこれを守る）。(2) scanSessions の持ち主問い合わせを帯と同じ 1 本の接続（createCodexOwnerLookup）に変え、波を 16 件から 128 件にする。(3) Claude の会話の記録（ps と lsof）の確認を並列にする。(4) Codex の会話の範囲判定を並列にする（git の観測は cwd ごとに 1 回のまま）。
+- 結果: CLI の sessions が 25.4 秒 → 4.1〜4.2 秒（3 回）。名指し（target 付き）も 4.6 秒。内訳は、持ち主問い合わせ 1.5 秒（下限）、git の観測 16 回で 1.4〜1.7 秒、呼び手の特定（ps と lsof）14 回で 0.75 秒、その他。verify.sh exit 0（388 件）。
+- 残している理由: 呼び手の特定の繰り返し（読み取りの直前の再確認）は安全側の確認なので触っていない。持ち主のいない会話の 1.5 秒は Codex アプリの応答の仕様で、縮めるには持ち主の一覧を別の方法で得る必要がある（未調査）。
+- 回帰試験: automatic.test.ts に「1 回の sessions で git の観測は cwd ごとに 1 回（Codex の会話 50 件が同じ cwd でも 2 回）」を追加。
+- 最終のコードでの本番（17:54）: 名指しの sessions が 4 秒、send は submitted、Bash で待つ間に届いた返信 final-code-check-20261007-1-reply（08:55:36Z）を status が replied で拾い、ok で返った（17:55:58、次の 30 秒の確認で検知）。
+- この記録が status-ui の evidence にあるのは、元の「既知の別件」の記述がここにあったため。sessions の走査の仕様書は別（specs/202610-session-discovery）。

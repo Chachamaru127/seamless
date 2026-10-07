@@ -1,12 +1,16 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import type { Engine } from 'claude-code/testing'
-import { peersOf, companiesOf, focusOf, noticesOf, settle, stepsOf } from '../hooks/exchanges'
+import { peersOf, companiesOf, focusOf, noticesOf, settle, stepsOf, peerName } from '../hooks/exchanges'
+import { trackSvg } from '../hooks/appearance'
 import { requestResults } from './fixtures/status-results'
 import { clip, durationOf } from '../hooks/text'
 
 const BAND = { plugin: 'seamless-band', surface: 'desktop', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 120, scroll: { offset: 0, bodyRows: 30 }, view: {} } } as const
 const START = { surface: 'desktop', isInteractive: true, cwd: '/work' } as const
+const PANE = { ...BAND, component: 'Pane', requestId: 'seamless-team' } as never
+/** The team pane's tally line, as the pane says it. */
+const tally = (sent: number, received: number, unread: number) => `送った ${sent} · 受け取った ${received} · 未読 ${unread}`
 const at = '2026-10-04T09:00:00Z'
 const request = (name: keyof typeof requestResults) => requestResults[name]
 const candidate = (requests: unknown[], provider = 'codex', nativeId = '12345678-abc') => ({ id: `${provider}:${nativeId}`, provider, nativeId, cwd: '/work/project', generation: 'g1', requests })
@@ -54,16 +58,21 @@ for (const [name, requests, inbound, right, label, word] of [
     await $.session.start(START); await $.ui.mount(BAND)
     await clock.settle()
     const ui = await $.ui.mount(BAND)
-    expect((await ui.find({ key: 'counts-codex' }))?.text).toBe(right)
+    // The counts moved to the team pane: the line names the peer and its state, and ×n opens the pane.
+    expect((await ui.find({ key: 'team' }))?.props.label).toBe('×1')
+    const pane = await $.ui.mount(PANE)
+    expect((await pane.find({ key: 'pane-tally' }))?.text).toContain(right.startsWith('↑') ? tally(1, 0, 0) : tally(0, 1, 1))
+    expect((await pane.find({ key: 'card-0' }))?.text).toContain('project')
     expect((await ui.find({ key: 'focus-codex' }))?.text).toMatch(new RegExp(`^${word}`))
     expect((await ui.find({ type: 'Text', text: new RegExp(`^${word}`) }))?.props.color).toBe(name === 'rejected' ? 'error' : name.includes('inbound') || name.includes('replied') ? 'success' : 'warning')
     await ui.press({ key: 'toggle' })
     const peer = await ui.find({ key: 'peer-0' })
-    expect(peer?.text).toContain('Codex· project')
+    expect(peer?.text).toContain('project')
+    expect(peer?.text).toContain('Codex 12345678')
     expect(peer?.text).toContain(label)
     expect(peer?.text).not.toContain('本文は保存していません')
     const problems = (await ui.find({ key: 'problems' }))?.text
-    if (name === 'rejected') expect(problems).toContain('Codex · project への依頼')
+    if (name === 'rejected') expect(problems).toContain('project への依頼')
     else expect(problems).toBeUndefined()
   })
 }
@@ -73,9 +82,10 @@ test('received requests count as unread until the next turn begins', async ($, o
   const { clock } = seat(on, response([], [{ ...incoming('verified'), at: '1970-01-01T00:00:00Z' }]))
   await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   const ui = await $.ui.mount(BAND)
-  expect((await ui.find({ key: 'counts-codex' }))?.text).toBe('↓1(1)')
+  const pane = await $.ui.mount(PANE)
+  expect((await pane.find({ key: 'pane-tally' }))?.text).toContain(tally(0, 1, 1))
   await clock.advance(1); await $.turn.start({ text: 'read it', turnId: 't' })
-  expect((await ui.find({ key: 'counts-codex' }))?.text).toBe('↓1')
+  expect((await pane.find({ key: 'pane-tally' }))?.text).toContain(tally(0, 1, 0))
 })
 
 test('company totals include both directions and count what is not confirmed', async ($, on) => {
@@ -85,10 +95,13 @@ test('company totals include both directions and count what is not confirmed', a
   const { clock } = seat(on, data)
   await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   const ui = await $.ui.mount(BAND)
-  expect((await ui.find({ key: 'counts-codex' }))?.text).toBe('↑2(1)↓1(1)')
-  expect(await ui.find({ key: 'company-claude' })).toBeUndefined()
+  // Two conversations with exchanges; the one without any is not a peer.
+  expect((await ui.find({ key: 'team' }))?.props.label).toBe('×2')
+  const pane = await $.ui.mount(PANE)
+  expect((await pane.find({ key: 'pane-title' }))?.text).toBe('チーム · 2 会話')
+  expect((await pane.find({ key: 'pane-tally' }))?.text).toContain(tally(2, 1, 1))
   await ui.press({ key: 'toggle' })
-  expect((await ui.find({ key: 'exchanges' }))?.text).toContain('Codex· project')
+  expect((await ui.find({ key: 'exchanges' }))?.text).toContain('project')
   expect((await ui.find({ key: 'exchanges' }))?.text).not.toContain('直近24時間')
 })
 
@@ -108,7 +121,7 @@ for (const mode of ['failure', 'timeout', 'json', 'status', 'shape']) {
     expect((await ui.find({ type: 'Text', text: '2秒' }))?.text).toBe('2秒')
     state.mode = 'ok'; state.data = response([request('replied')])
     await clock.advance(58000); await clock.settle()
-    expect((await ui.find({ key: 'counts-codex' }))?.text).toBe('↑1')
+    expect((await ui.find({ key: 'focus-codex' }))?.text).toBe('返信あり')
     expect(await ui.find({ type: 'Text', text: '!' })).toBeUndefined()
   })
 }
@@ -201,13 +214,13 @@ test('reset discards snippets and ignores an old query completing in the new con
   await $.classic.SessionStart({ source: 'clear' })
   const ui = await $.ui.mount(BAND)
   await clock.advance(10000); await clock.settle()
-  expect(await ui.find({ key: 'company-codex' })).toBeUndefined()
+  expect(await ui.find({ key: 'team' })).toBeUndefined()
   state.delay = 0
   await clock.advance(50000); await clock.settle()
   await ui.press({ key: 'toggle' })
   const rows = (await ui.find({ key: 'exchanges' }))?.text ?? ''
   expect(rows).not.toContain('private preview')
-  expect(rows).toContain('Codex· project')
+  expect(rows).toContain('project')
 })
 
 test('failed refresh grays existing peer rows instead of showing stale green', async ($, on) => {
@@ -287,25 +300,23 @@ test('desktop band draws inside the app card with theme colors: purpose bold, ac
   // The Desktop app drops an Svg whose alt is empty (2026-10-05, on screen).
   expect(stateMark?.props.alt).toBe('作業中')
   expect(await ui.find({ key: 'details' })).toBeUndefined()
-  expect((await ui.find({ key: 'counts-codex' }))?.text).toBe('↑1')
-  expect((await ui.find({ key: 'counts-claude' }))?.text).toBe('↑1(1)')
-  for (const provider of ['codex', 'claude']) {
-    const badge = await ui.find({ key: `company-${provider}` })
-    expect(badge?.props).not.toHaveProperty('backgroundColor')
-    const logo = badge?.children[0] as { type: string; props: Record<string, unknown> }
-    expect(logo.type).toBe('Svg')
-    expect(logo.props).toMatchObject({ width: 14, height: 14, alt: provider === 'codex' ? 'Codex' : 'Claude' })
-    // A white mark on the company's color, legible on the light and the dark card (2026-10-05, dark on screen).
-    expect(logo.props.source).toContain(provider === 'codex' ? '#10a37f' : '#d97757')
-    expect(logo.props.source).toContain('#ffffff')
-    expect(logo.props.source).toContain(provider === 'codex' ? 'M12 3.2a4.4' : 'M13.8 4h3.1')
-  }
-  expect((await ui.find({ type: 'Text', text: '↑1' }))?.props.color).toBe('inactive')
-  expect((await ui.find({ type: 'Text', text: '(1)' }))?.props.color).toBe('subtle')
+  // The line names one peer by its conversation, with a grey monogram for the company: no brand colours.
+  expect((await ui.find({ key: 'team' }))?.props.label).toBe('×2')
+  const avatar = (await ui.find({ key: 'chip-avatar' }))?.children[0] as { type: string; props: Record<string, unknown> }
+  expect(avatar.type).toBe('Svg')
+  expect(avatar.props).toMatchObject({ width: 14, height: 14 })
+  expect(['Codex', 'Claude']).toContain(avatar.props.alt)
+  expect(avatar.props.source).toContain('#8d8b85')
+  expect(avatar.props.source).not.toContain('#10a37f')
+  expect(avatar.props.source).not.toContain('#d97757')
+  expect((await ui.find({ key: 'chip-name' }))?.text).toBe('project')
+  const track = (await ui.find({ key: 'chip-track' }))?.children[0] as { props: Record<string, unknown> }
+  expect(track.props.height).toBe(8)
+  expect([...String(track.props.source).matchAll(/<line /g)].length).toBe(3)
   await ui.press({ key: 'toggle' })
   expect((await ui.find({ key: 'goal' }))?.text).toContain('見本に合わせる。細部は後で')
   for (const text of ['目的', 'やりとり']) expect((await ui.find({ type: 'Text', text }))?.props.color).toBe('subtle')
-  expect((await ui.find({ key: 'peer-0' }))?.text).toContain('Codex· project')
+  expect((await ui.find({ key: 'peer-0' }))?.text).toContain('project')
   expect((await ui.find({ key: 'peer-0' }))?.text).toContain('返信')
   expect((await ui.find({ key: 'peer-1' }))?.text).toContain('届いた')
   expect((await ui.find({ key: 'peer-1' }))?.text).toContain('読む')
@@ -407,51 +418,51 @@ const notices = (before: ReturnType<typeof peers>, after: ReturnType<typeof peer
 
 test('changes between two looks become notices: taken up, answered, not delivered, received', () => {
   const sent = peers([staged({ reached: 1000 })])
-  expect(notices(sent, peers([staged({ reached: 1000, processing: 2000 })]), new Set())).toEqual(['Codex が依頼を読み始めました'])
-  expect(notices(peers([staged({ reached: 1000, processing: 2000 })]), peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]), new Set())).toEqual(['Codex が依頼に返信しました'])
+  expect(notices(sent, peers([staged({ reached: 1000, processing: 2000 })]), new Set())).toEqual(['project が依頼を読み始めました'])
+  expect(notices(peers([staged({ reached: 1000, processing: 2000 })]), peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]), new Set())).toEqual(['project が依頼に返信しました'])
   // An answer that also came here as a message is told once, as the message.
   const reply = { ...incoming('verified'), at: new Date(T + 3000).toISOString() }
-  expect(notices(peers([staged({ processing: 2000 })]), peers([staged({ processing: 2000, replied: 3000 })], [reply]), new Set())).toEqual(['Codex から返信が届きました'])
-  expect(notices([], peers([], [incoming('verified')]), new Set())).toEqual(['Codex から依頼が届きました'])
-  expect(notices(sent, peers([{ ...staged({}), delivery: 'rejected', stages: [] }]), new Set())).toEqual(['Codex に依頼が届きませんでした'])
-  expect(notices([], peers([{ ...staged({}), id: 'req2', delivery: 'rejected', stages: [] }]), new Set())).toEqual(['Codex に依頼が届きませんでした'])
+  expect(notices(peers([staged({ processing: 2000 })]), peers([staged({ processing: 2000, replied: 3000 })], [reply]), new Set())).toEqual(['project から返信が届きました'])
+  expect(notices([], peers([], [incoming('verified')]), new Set())).toEqual(['project から依頼が届きました'])
+  expect(notices(sent, peers([{ ...staged({}), delivery: 'rejected', stages: [] }]), new Set())).toEqual(['project に依頼が届きませんでした'])
+  expect(notices([], peers([{ ...staged({}), id: 'req2', delivery: 'rejected', stages: [] }]), new Set())).toEqual(['project に依頼が届きませんでした'])
   expect(notices(sent, sent, new Set())).toEqual([])
   // A request first met by the later look is told by where it stands.
-  expect(notices([], peers([staged({ processing: 2000 })]), new Set())).toEqual(['Codex が依頼を読み始めました'])
+  expect(notices([], peers([staged({ processing: 2000 })]), new Set())).toEqual(['project が依頼を読み始めました'])
   expect(notices([], peers([staged({ reached: 1000 })]), new Set())).toEqual([])
   // A request and a message with the same id are two things.
   const both = peers([staged({ processing: 2000 })], [{ ...incoming('verified'), id: 'req1' }])
-  expect(notices(peers([staged({ processing: 2000 })]), both, new Set())).toEqual(['Codex から依頼が届きました'])
+  expect(notices(peers([staged({ processing: 2000 })]), both, new Set())).toEqual(['project から依頼が届きました'])
   expect(notices(both, both, new Set())).toEqual([])
   // One reply seen first as an answer, then as a message, is told once.
   const told = new Set<string>()
   const answered = peers([staged({ processing: 2000, replied: 3000 })])
-  expect(notices(peers([staged({ processing: 2000 })]), answered, told)).toEqual(['Codex が依頼に返信しました'])
+  expect(notices(peers([staged({ processing: 2000 })]), answered, told)).toEqual(['project が依頼に返信しました'])
   expect(notices(answered, peers([staged({ processing: 2000, replied: 3000 })], [reply]), told)).toEqual([])
 })
 
 test('a stage that drops out of a look and comes back is not told again', () => {
   const told = new Set<string>()
   noticesOf(peers([staged({ reached: 1000 })]), told, false)
-  expect(noticesOf(peers([staged({ reached: 1000, processing: 2000 })]), told, true)).toEqual(['Codex が依頼を読み始めました'])
+  expect(noticesOf(peers([staged({ reached: 1000, processing: 2000 })]), told, true)).toEqual(['project が依頼を読み始めました'])
   // The peer's history could not be read: the stages are gone for a look.
   expect(noticesOf(peers([staged({})]), told, true)).toEqual([])
   expect(noticesOf(peers([staged({ reached: 1000, processing: 2000 })]), told, true)).toEqual([])
   // An answer told, then seen only as the message that carried it, is not told again, nor as a new request.
-  expect(noticesOf(peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]), told, true)).toEqual(['Codex が依頼に返信しました'])
+  expect(noticesOf(peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]), told, true)).toEqual(['project が依頼に返信しました'])
   const reply = { ...incoming('verified'), id: 'msg1', at: new Date(T + 3000).toISOString() }
   expect(noticesOf(peers([staged({})], [reply]), told, true)).toEqual([])
   // Taken up after it was answered says nothing.
   const late = new Set<string>()
   noticesOf(peers([staged({ reached: 1000 })]), late, false)
-  expect(noticesOf(peers([staged({ replied: 3000 })]), late, true)).toEqual(['Codex が依頼に返信しました'])
+  expect(noticesOf(peers([staged({ replied: 3000 })]), late, true)).toEqual(['project が依頼に返信しました'])
   expect(noticesOf(peers([staged({ processing: 2000, replied: 3000 })]), late, true)).toEqual([])
   // A message seen first, its answer stage later, with the message gone or still there: told once.
   for (const keepsMessage of [false, true]) {
     const first = new Set<string>()
     const message = { ...incoming('verified'), id: 'msg2', at: new Date(T + 3000).toISOString() }
     noticesOf(peers([staged({ reached: 1000 })]), first, false)
-    expect(noticesOf(peers([staged({ reached: 1000 })], [message]), first, true)).toEqual(['Codex から依頼が届きました'])
+    expect(noticesOf(peers([staged({ reached: 1000 })], [message]), first, true)).toEqual(['project から依頼が届きました'])
     expect(noticesOf(peers([staged({ reached: 1000, processing: 2000, replied: 3000 })], keepsMessage ? [message] : []), first, true)).toEqual([])
     expect(noticesOf(peers([staged({ reached: 1000, processing: 2000, replied: 3000 })]), first, true)).toEqual([])
   }
@@ -482,9 +493,9 @@ test('a change seen by a later look is told as a toast; the first look tells not
   expect(toasts).toEqual([])
   state.data = response([staged({ reached: 1000, processing: 2000 })])
   await clock.advance(60000); await clock.settle()
-  expect(toasts).toEqual(['Codex が依頼を読み始めました'])
+  expect(toasts).toEqual(['project が依頼を読み始めました'])
   await clock.advance(60000); await clock.settle()
-  expect(toasts).toEqual(['Codex が依頼を読み始めました'])
+  expect(toasts).toEqual(['project が依頼を読み始めました'])
 })
 
 test('the open band puts the exchanges first: each peer, whether it runs, and each request with its steps', async ($, on) => {
@@ -536,5 +547,20 @@ test('more than three changes in one look are told as two and a count of the res
   await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   state.data = response([], ['m1', 'm2', 'm3', 'm4'].map((id, i) => ({ ...incoming('verified'), id, at: new Date(T + i * 1000).toISOString() })))
   await clock.advance(60000); await clock.settle()
-  expect(toasts).toEqual(['Codex から依頼が届きました', 'Codex から依頼が届きました', 'ほか2件のやりとりの変化。帯を開くと見られます'])
+  expect(toasts).toEqual(['project から依頼が届きました', 'project から依頼が届きました', 'ほか2件のやりとりの変化。帯を開くと見られます'])
+})
+
+test('the track colours the line into a step by that step: grey up to one not yet reached, green between seen ones', () => {
+  const bars = (states: Parameters<typeof trackSvg>[0]) => [...trackSvg(states).matchAll(/<line [^>]*stroke="(#[0-9a-f]{6})"/g)].map(m => m[1])
+  expect(bars(['done', 'done', 'now', 'todo'])).toEqual(['#2f8f5b', '#2f8f5b', '#8d8b85'])
+  expect(bars(['done', 'done', 'done', 'done'])).toEqual(['#2f8f5b', '#2f8f5b', '#2f8f5b'])
+  expect(bars(['done', 'bad'])).toEqual(['#2f8f5b'])
+  expect(bars(['done', 'now'])).toEqual(['#2f8f5b'])
+})
+
+test('a peer is named by its conversation: the folder, or the repository and worktree', () => {
+  const peer = (cwd: string) => ({ provider: 'codex' as const, nativeId: '12345678-abc', generation: 'g', cwd, online: null, exchanges: [] })
+  expect(peerName(peer('/Users/t/Code/seamless'))).toBe('seamless')
+  expect(peerName(peer('/Users/t/Code/seamless/.claude/worktrees/hello-6d7bef'))).toBe('seamless · hello-6d7bef')
+  expect(peerName(peer(''))).toBe('作業場所は未確認')
 })

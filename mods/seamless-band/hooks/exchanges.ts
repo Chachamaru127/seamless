@@ -112,6 +112,36 @@ export function peerLabel(peer: Peer): string {
   return `${companyName(peer.provider)} · ${folder}`
 }
 
+/**
+ * The peer as the fourth band names it: its conversation, not its company.
+ * The repository folder, and the worktree when the conversation sits in one
+ * (`seamless · hello-6d7bef`); the company and the short id are its badge.
+ */
+export function peerName(peer: Peer): string {
+  const parts = printable(peer.cwd, 1000).split(/[\\/]/).filter(Boolean)
+  if (parts.length === 0) return '作業場所は未確認'
+  const worktree = parts.indexOf('.claude')
+  if (worktree > 0 && parts[worktree + 1] === 'worktrees' && parts[worktree + 2] !== undefined) return `${parts[worktree - 1]} · ${parts[worktree + 2]}`
+  return parts[parts.length - 1]
+}
+
+/** The company and the conversation's short id, in small print beside the name. */
+export function peerBadge(peer: Peer): string {
+  return `${companyName(peer.provider)} ${peer.nativeId.slice(0, 8)}`
+}
+
+/** The whole session's tally for the team pane: sent, received, and received but not yet read. */
+export function summaryOf(peers: Peer[], readSinceMs: number | null): { sent: number; received: number; unread: number; problems: number } {
+  const all = peers.flatMap(p => p.exchanges)
+  const received = all.filter(e => e.direction === 'inbound')
+  return {
+    sent: all.filter(e => e.direction === 'outbound').length,
+    received: received.length,
+    unread: received.filter(e => e.at === null || readSinceMs === null || e.at > readSinceMs).length,
+    problems: all.filter(e => e.direction === 'outbound' && e.color === palette.red).length,
+  }
+}
+
 /** One company's tally for the band's right side: sent, received, and what is not yet confirmed. */
 export type Tally = {
   provider: Peer['provider']
@@ -202,7 +232,7 @@ export function stepsOf(peer: Peer, exchange: Exchange, readSinceMs: number | nu
 }
 
 /** What the closed band says of the exchanges in a few words, and how strongly. */
-export type Focus = { provider: Peer['provider']; word: string; tone: 'ok' | 'attn' | 'fail'; sinceMs: number | null }
+export type Focus = { provider: Peer['provider']; peer: Peer; exchange: Exchange; word: string; tone: 'ok' | 'attn' | 'fail'; sinceMs: number | null }
 
 const RECENT_REPLY_MS = 30 * 60 * 1000
 
@@ -215,16 +245,17 @@ export function focusOf(peers: Peer[], readSinceMs: number | null, nowMs: number
   const all = peers.flatMap(peer => peer.exchanges.map(exchange => ({ peer, exchange })))
   const newest = <T extends { exchange: Exchange }>(list: T[]) => list.reduce<T | null>((a, b) => a === null || (b.exchange.at ?? 0) > (a.exchange.at ?? 0) ? b : a, null)
   const unread = newest(all.filter(({ exchange }) => exchange.direction === 'inbound' && (exchange.at === null || readSinceMs === null || exchange.at > readSinceMs)))
-  if (unread !== null) return { provider: unread.peer.provider, word: isReply(unread.peer, unread.exchange) ? '返信が届いた' : '依頼が届いた', tone: 'ok', sinceMs: null }
+  if (unread !== null) return { provider: unread.peer.provider, peer: unread.peer, exchange: unread.exchange, word: isReply(unread.peer, unread.exchange) ? '返信が届いた' : '依頼が届いた', tone: 'ok', sinceMs: null }
   const sent = newest(all.filter(({ exchange }) => exchange.direction === 'outbound'))
   if (sent === null) return null
   const { provider } = sent.peer
   const { times, rejected, at } = sent.exchange
-  if (rejected) return { provider, word: '届かなかった', tone: 'fail', sinceMs: null }
-  if (times.replied !== null) return nowMs - times.replied <= RECENT_REPLY_MS ? { provider, word: '返信あり', tone: 'ok', sinceMs: null } : null
-  if (times.processing !== null) return { provider, word: '読んでいる', tone: 'attn', sinceMs: times.processing }
-  if (times.reached !== null) return { provider, word: '届いた・未読', tone: 'attn', sinceMs: times.reached }
-  return { provider, word: '送った', tone: 'attn', sinceMs: at }
+  const who = { provider, peer: sent.peer, exchange: sent.exchange }
+  if (rejected) return { ...who, word: '届かなかった', tone: 'fail', sinceMs: null }
+  if (times.replied !== null) return nowMs - times.replied <= RECENT_REPLY_MS ? { ...who, word: '返信あり', tone: 'ok', sinceMs: null } : null
+  if (times.processing !== null) return { ...who, word: '読んでいる', tone: 'attn', sinceMs: times.processing }
+  if (times.reached !== null) return { ...who, word: '届いた・未読', tone: 'attn', sinceMs: times.reached }
+  return { ...who, word: '送った', tone: 'attn', sinceMs: at }
 }
 
 /**
@@ -246,7 +277,7 @@ export function noticesOf(peers: Peer[], told: Set<string>, isTelling: boolean):
     if (x.direction === 'outbound' && x.times.replied !== null) told.add(`answer-at:${peer.provider}:${peer.nativeId}:${x.times.replied}`)
   }
   return peers.flatMap(peer => peer.exchanges.flatMap(x => {
-    const name = companyName(peer.provider)
+    const name = peerName(peer)
     const event = (what: string) => `${peer.provider}:${peer.nativeId}:${x.direction}:${x.id}:${what}`
     if (x.direction === 'inbound') {
       if (told.has(event('received'))) return []

@@ -1,5 +1,5 @@
-import { brandSvg, dots, marks, theme, tone } from './appearance'
-import { peersOf, talliesOf, peerLabel, companyName, focusOf, noticesOf, settle, stepsOf } from './exchanges'
+import { avatarSvg, dots, marks, theme, tone, trackSvg } from './appearance'
+import { peersOf, talliesOf, peerName, peerBadge, summaryOf, companyName, focusOf, noticesOf, settle, stepsOf } from './exchanges'
 import type { Exchange, Peer, Step } from './exchanges'
 import { atom, read, update } from 'claude-code'
 import type { AgentInfo, EngineInterface, Register, Timer, TurnCompleteReason, TurnStepChunk } from 'claude-code'
@@ -39,6 +39,9 @@ const STREAM_THROTTLE_MS = 250
 const TICK_MS = 1000
 const STANCE_WINDOW = 5
 const MAX_PEER_REQUESTS = 3
+const MAX_PEER_NAME_CHARS = 40
+/** The team pane: the peers as cards, opened from the ×n beside the line. */
+const PANE = 'seamless-team'
 
 const now = atom({ plugin: 'seamless-band', key: 'now' } as const, IDLE)
 
@@ -475,6 +478,65 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  // The team pane: every peer as a card. Who it is (its conversation, the
+  // company and id in small print), where it runs, and its newest requests,
+  // each with its way so far. Colour says the state of an exchange and nothing else.
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text, Svg } = $.ui.resolve(e)
+    const nowMs = await $.clock.now()
+    const purpose = await read($, goal)
+    const steps = await read($, plan)
+    const tally = summaryOf(exchanges.peers, live.readSinceMs)
+    const newestOf = (peer: Peer) => peer.exchanges.reduce<number | null>((a, x) => x.at !== null && (a === null || x.at > a) ? x.at : a, null)
+    const peers = [...exchanges.peers].sort((a, b) => (newestOf(b) ?? 0) - (newestOf(a) ?? 0))
+    const cards = peers.map((peer, i) => {
+      const newest = [...peer.exchanges].sort((a, b) => (b.at ?? 0) - (a.at ?? 0)).slice(0, MAX_PEER_REQUESTS)
+      const latestAt = newestOf(peer)
+      const folder = printable(peer.cwd, 1000).split(/[\\/]/).filter(Boolean).pop() || '作業場所は未確認'
+      const running = peer.online === null || exchanges.unknown ? '' : peer.online ? ' · 動いている' : ' · 止まっている'
+      return <Box key={`card-${i}`} flexDirection="column" marginTop={i > 0 ? 1 : 0}>
+        <Box key={`card-head-${i}`} flexDirection="row" alignItems="center" columnGap={1}>
+          <Svg key={`card-avatar-${i}`} alt={companyName(peer.provider)} width={14} height={14} source={avatarSvg(peer.provider)} />
+          <Box key={`card-name-${i}`} flexShrink={1}><Text color={theme.text} bold wrap="truncate-end">{printable(peerName(peer), MAX_PEER_NAME_CHARS)}</Text></Box>
+          <Box key={`card-badge-${i}`} flexShrink={0}><Text color={theme.subtle}>{peerBadge(peer)}</Text></Box>
+          <Box key={`card-where-${i}`} flexGrow={1} flexShrink={1}><Text color={theme.subtle} wrap="truncate-end">{printable(`${folder}${running}`, 120)}</Text></Box>
+          {latestAt === null ? null : <Text key={`card-latest-${i}`} color={theme.subtle}>{`最新 ${clockOf(latestAt)}`}</Text>}
+        </Box>
+        {newest.map((x, j) => {
+          const snippet = x.direction === 'outbound' ? exchanges.snippets.get(x.id) : undefined
+          const said = x.direction === 'inbound' ? '↓ 受け取った依頼' : snippet === undefined ? '↑ 送った依頼' : `↑「${snippet}…」`
+          return <Box key={`card-req-${i}-${j}`} flexDirection="column" marginLeft={2}>
+            <Text key={`card-req-text-${i}-${j}`} color={theme.meso} wrap="truncate-end">{printable(said, 120)}</Text>
+            {exchanges.unknown
+              ? <Text key={`card-req-unknown-${i}-${j}`} color={theme.subtle}>状態は未確認</Text>
+              : stepRowOf({ Box, Text, Svg }, `card-steps-${i}-${j}`, stepsOf(peer, x, live.readSinceMs))}
+          </Box>
+        })}
+      </Box>
+    })
+    const legend = (['done', 'now', 'todo', 'bad'] as const).flatMap(state => [
+      <Svg key={`legend-dot-${state}`} alt={STEP_DOT_WORDS[state]} width={8} height={8} source={dots[state]} />,
+      <Text key={`legend-word-${state}`} color={theme.subtle}>{LEGEND_WORDS[state]}</Text>,
+    ])
+    return (
+      <Box flexDirection="column">
+        <Box key="pane-head" flexDirection="row" alignItems="center" columnGap={1}>
+          <Box key="pane-title" flexShrink={0}><Text color={theme.text} bold>{`チーム · ${peers.length} 会話`}</Text></Box>
+          <Box key="pane-tally" flexGrow={1} flexShrink={1}><Text color={theme.subtle} wrap="truncate-end">{`直近 24 時間 · 送った ${tally.sent} · 受け取った ${tally.received} · 未読 ${tally.unread}${tally.problems > 0 ? ` · 届かなかった ${tally.problems}` : ''}`}</Text></Box>
+        </Box>
+        {exchanges.error === null ? null : <Text key="pane-error" color={theme.error} wrap="truncate-end">{`やりとりの状態を確かめられなかった（${exchanges.error}）。60秒ごとにやり直す`}</Text>}
+        <Box key="pane-cards" flexDirection="column" marginTop={1}>
+          {peers.length === 0 ? <Text key="pane-empty" color={theme.subtle}>やりとりの記録はありません</Text> : cards}
+        </Box>
+        {purpose === '' && steps.length === 0 ? null : <Box key="pane-goal" flexDirection="column" marginTop={1}>
+          {purpose === '' ? null : <Text key="pane-goal-text" color={theme.meso} wrap="truncate-end">{`目的 · ${clip(printable(purpose, MAX_GOAL_SHOWN), MAX_GOAL_SHOWN)}`}</Text>}
+          {steps.length === 0 ? null : <Text key="pane-plan-text" color={theme.meso} wrap="truncate-end">{`計画 · ${planPosition(steps)}${steps.find(step => step.status === 'in_progress') === undefined ? '' : ` · ${printable(steps.find(step => step.status === 'in_progress')!.label, MAX_LABEL_CHARS)}`}`}</Text>}
+        </Box>}
+        <Box key="pane-legend" flexDirection="row" alignItems="center" columnGap={0.5} marginTop={1}>{legend}</Box>
+      </Box>
+    )
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.surface !== 'desktop') return next(e)
     if (!exchanges.desktop && !exchanges.ended) {
@@ -520,26 +582,25 @@ export const register: Register = (on, options) => {
     // began), and ! when something went wrong. Details are behind the triangle.
     const tallies = talliesOf(exchanges.peers, live.readSinceMs)
     const hasTrouble = exchanges.error !== null || tallies.some(t => t.problems.length > 0)
-    const count = (key: string, arrow: string, total: number, open: number) => total === 0 ? [] : [
-      <Text key={key} color={theme.meso}>{`${arrow}${total}`}</Text>,
-      ...(open > 0 ? [<Text key={`${key}-open`} color={theme.subtle}>{`(${open})`}</Text>] : []),
-    ]
     // The exchange that matters now, in words beside its company: a message
     // to read, a request on its way or being read (with how long), one that
     // did not arrive. The counts stay beside it, small.
     const focal = exchanges.unknown ? null : focusOf(exchanges.peers, live.readSinceMs, nowMs)
     const focusColor = focal === null ? theme.subtle : focal.tone === 'ok' ? theme.success : focal.tone === 'fail' ? theme.error : theme.warning
     const focusWord = focal === null ? '' : `${focal.tone === 'fail' ? '! ' : ''}${focal.word}${focal.sinceMs === null ? '' : ` ${durationOf(nowMs - focal.sinceMs)}`}`
+    // The right side names the peer that matters now, not its company: a grey
+    // monogram, the conversation's name, the request's way as dots, and the
+    // state in words. The counts live in the team pane, behind ×n.
+    const focalSteps = focal === null ? [] : stepsOf(focal.peer, focal.exchange, live.readSinceMs)
     const right = [
-      ...tallies.map(t => <Box key={`company-${t.provider}`} flexDirection="row" alignItems="center" columnGap={0.5}>
-        <Svg key={`badge-logo-${t.provider}`} alt={companyName(t.provider)} width={14} height={14} source={brandSvg(t.provider)} />
-        {focal?.provider === t.provider ? <Box key={`focus-${t.provider}`} flexShrink={0}><Text color={focusColor} bold>{focusWord}</Text></Box> : null}
-        <Box key={`counts-${t.provider}`} flexDirection="row" alignItems="center">
-          {count(`up-${t.provider}`, '↑', t.up, t.upPending)}
-          {count(`down-${t.provider}`, '↓', t.down, t.downUnread)}
-        </Box>
-      </Box>),
+      ...(focal === null ? [] : [<Box key={`peer-chip-${focal.provider}`} flexDirection="row" alignItems="center" columnGap={0.5} flexShrink={1}>
+        <Box key="chip-avatar" flexShrink={0}><Svg alt={companyName(focal.provider)} width={14} height={14} source={avatarSvg(focal.provider)} /></Box>
+        <Box key="chip-name" flexShrink={1}><Text color={theme.text} wrap="truncate-end">{printable(peerName(focal.peer), MAX_PEER_NAME_CHARS)}</Text></Box>
+        <Box key="chip-track" flexShrink={0}><Svg alt={focalSteps.map(step => step.word).join(' › ')} width={11 * (focalSteps.length - 1) + 8} height={8} source={trackSvg(focalSteps.map(step => step.state))} /></Box>
+        <Box key={`focus-${focal.provider}`} flexShrink={0}><Text color={focusColor} bold>{focusWord}</Text></Box>
+      </Box>]),
       ...(hasTrouble && focal?.tone !== 'fail' ? [<Text key="trouble" color={theme.error} bold>!</Text>] : []),
+      ...(exchanges.peers.length === 0 ? [] : [<Button key="team" label={`×${exchanges.peers.length}`} onPress={() => void togglePane($)} />]),
     ]
 
     const section = (key: string, label: string, rows: JSX.Element[]) => rows.length === 0 ? null : (
@@ -594,24 +655,15 @@ export const register: Register = (on, options) => {
 
     // Per peer: who, where, whether it runs; then its newest requests, each
     // with its way so far: sent › arrived › read › answered, with the times.
-    const stepRow = (key: string, list: Step[]) => (
-      <Box key={key} flexDirection="row" alignItems="center" columnGap={0.5}>
-        {list.flatMap((step, j) => [
-          ...(j > 0 ? [<Text key={`${key}-bar-${j}`} color={step.state === 'todo' ? theme.subtle : theme.success}>─</Text>] : []),
-          <Svg key={`${key}-dot-${j}`} alt={STEP_DOT_WORDS[step.state]} width={8} height={8} source={dots[step.state]} />,
-          <Text key={`${key}-word-${j}`} color={step.state === 'now' ? theme.text : step.state === 'bad' ? theme.error : step.state === 'done' ? theme.meso : theme.subtle} bold={step.state === 'now' || step.state === 'bad'}>
-            {`${step.word}${step.at === null ? '' : ` ${clockOf(step.at)}${step.state === 'now' ? '〜' : ''}`}`}
-          </Text>,
-        ])}
-      </Box>
-    )
+    const stepRow = (key: string, list: Step[]) => stepRowOf({ Box, Text, Svg }, key, list)
     const peerRows = exchanges.peers.map((peer, i) => {
       const newest = [...peer.exchanges].sort((a, b) => (b.at ?? 0) - (a.at ?? 0)).slice(0, MAX_PEER_REQUESTS)
-      const where = peerLabel(peer).split(' · ').slice(1).join(' · ')
+      const where = printable(peer.cwd, 1000).split(/[\\/]/).filter(Boolean).pop() || '作業場所は未確認'
       return <Box key={`peer-${i}`} flexDirection="column" marginTop={i > 0 ? 0.5 : 0}>
         <Box key={`peer-head-${i}`} flexDirection="row" alignItems="center" columnGap={1}>
-          <Svg key={`peer-logo-${i}`} alt={companyName(peer.provider)} width={14} height={14} source={brandSvg(peer.provider)} />
-          <Text key={`peer-name-${i}`} color={theme.text} bold>{companyName(peer.provider)}</Text>
+          <Svg key={`peer-logo-${i}`} alt={companyName(peer.provider)} width={14} height={14} source={avatarSvg(peer.provider)} />
+          <Box key={`peer-name-${i}`} flexShrink={1}><Text color={theme.text} bold wrap="truncate-end">{printable(peerName(peer), MAX_PEER_NAME_CHARS)}</Text></Box>
+          <Box key={`peer-badge-${i}`} flexShrink={0}><Text color={theme.subtle}>{peerBadge(peer)}</Text></Box>
           <Box key={`peer-where-${i}`} flexGrow={1} flexShrink={1}><Text color={theme.subtle} wrap="truncate-end">{printable(` · ${where}${peer.online === null || exchanges.unknown ? '' : peer.online ? ' · 動いている' : ' · 止まっている'}`, 120)}</Text></Box>
         </Box>
         {newest.map((x, j) => {
@@ -630,7 +682,7 @@ export const register: Register = (on, options) => {
 
     const problemRows = [
       ...exchanges.peers.flatMap((peer, i) => peer.exchanges.filter(x => x.direction === 'outbound' && tallies.some(t => t.problems.includes(x))).map((x, j) =>
-        <Text key={`problem-${i}-${j}`} color={theme.error} wrap="truncate-end">{`${peerLabel(peer)} への依頼${x.at === null ? '' : `（${clockOf(x.at)}）`}が届かなかった。相手が受け付けなかった`}</Text>)),
+        <Text key={`problem-${i}-${j}`} color={theme.error} wrap="truncate-end">{`${peerName(peer)} への依頼${x.at === null ? '' : `（${clockOf(x.at)}）`}が届かなかった。相手が受け付けなかった`}</Text>)),
       ...(exchanges.error === null ? [] : [<Text key="problem-query" color={theme.error} wrap="truncate-end">{`やりとりの状態を確かめられなかった（${exchanges.error}）。60秒ごとにやり直す`}</Text>]),
     ]
     const position = planPosition(steps)
@@ -657,7 +709,8 @@ export const register: Register = (on, options) => {
               {line.micro === '' ? null : <Text key="micro" color={theme.meso} wrap="truncate-end">{`  ${line.joiner}  ${line.micro}`}</Text>}
             </Box>
             {showsElapsed ? <Text key="elapsed" color={isAsking ? theme.warning : theme.subtle}>{elapsed}</Text> : null}
-            <Box key="companies" flexDirection="row" flexShrink={0} columnGap={1.5} marginLeft={1}>{right}</Box>
+            {/* The right side may shrink: only the peer's name gives way (truncated), the marks and words keep their width. */}
+            <Box key="companies" flexDirection="row" flexShrink={1} columnGap={1.5} marginLeft={1}>{right}</Box>
           </Box>
           {body}
         </Box>
@@ -742,6 +795,31 @@ const MARK_WORDS = new Map<string, string>([
 const STEP_MARKS: Record<ActivityOutcome, string> = { ok: marks.tick, error: marks.cross, denied: marks.denied, interrupted: marks.halt }
 
 const STEP_DOT_WORDS: Record<Step['state'], string> = { done: '済み', now: '今ここ', todo: 'まだ', bad: '失敗' }
+
+const LEGEND_WORDS: Record<Step['state'], string> = { done: '済んだ段', now: '今の段', todo: 'まだの段', bad: '届かなかった' }
+
+/** A request's way as a row: a dot and a word per step, bars between, the times beside the words. */
+function stepRowOf(ui: { Box: any; Text: any; Svg: any }, key: string, list: Step[]): JSX.Element {
+  const { Box, Text, Svg } = ui
+  return (
+    <Box key={key} flexDirection="row" alignItems="center" columnGap={0.5}>
+      {list.flatMap((step, j) => [
+        ...(j > 0 ? [<Text key={`${key}-bar-${j}`} color={step.state === 'todo' ? theme.subtle : theme.success}>─</Text>] : []),
+        <Svg key={`${key}-dot-${j}`} alt={STEP_DOT_WORDS[step.state]} width={8} height={8} source={dots[step.state]} />,
+        <Text key={`${key}-word-${j}`} color={step.state === 'now' ? theme.text : step.state === 'bad' ? theme.error : step.state === 'done' ? theme.meso : theme.subtle} bold={step.state === 'now' || step.state === 'bad'}>
+          {`${step.word}${step.at === null ? '' : ` ${clockOf(step.at)}${step.state === 'now' ? '〜' : ''}`}`}
+        </Text>,
+      ])}
+    </Box>
+  )
+}
+
+/** Opens the team pane, or closes it when it is up. */
+async function togglePane($: EngineInterface): Promise<void> {
+  const isOpen = (await $.ui.panes()).some(pane => pane.id === PANE)
+  if (isOpen) await $.ui.close({ id: PANE })
+  else await $.ui.open({ id: PANE, title: 'チーム' })
+}
 
 /** The purpose as the line leads with it: its first sentence, short. */
 function macroOf(purpose: string): string {

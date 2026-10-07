@@ -62,3 +62,32 @@ export const dots = {
   todo: dot(`<circle cx="4" cy="4" r="3" fill="none" stroke="${tone.idle}" stroke-width="1.2"/>`),
   bad: dot(`<circle cx="4" cy="4" r="3.5" fill="${tone.fail}"/>`),
 } as const
+
+// The fourth band (design-v4, 2026-10-07) names a peer by its conversation,
+// not its company: a grey monogram stands for the company, and colour is
+// kept for the state of an exchange alone.
+
+/**
+ * The company's monogram: two letters in a grey disc, the same tone for both
+ * companies. The disc is the idle grey: 3.4:1 on the light card, 5:1 on the
+ * dark one, and the dark letters read at 4.9:1 on it (checked 2026-10-07).
+ */
+export function avatarSvg(provider: 'codex' | 'claude', size: 14 | 24 = 14): string {
+  const word = provider === 'codex' ? 'Cx' : 'Cl'
+  const font = size === 24 ? 10 : 6.5
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="${tone.idle}"/><text x="50%" y="50%" dy=".36em" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text',Helvetica,Arial,sans-serif" font-size="${font}" font-weight="700" fill="#1d1d1b">${word}</text></svg>`
+}
+
+/** A request's way as four dots joined by bars, in the state colours: one small drawing for the closed band. */
+export function trackSvg(states: readonly ('done' | 'now' | 'todo' | 'bad')[]): string {
+  const step = 11, r = 3.2, w = step * (states.length - 1) + 8
+  const fill = { done: tone.ok, now: tone.attn, bad: tone.fail, todo: 'none' } as const
+  const parts = states.map((state, i) => {
+    const cx = 4 + i * step
+    // The bar into a dot takes that dot's standing: grey up to a step not yet reached, as the open band draws it.
+    const bar = i === 0 ? '' : `<line x1="${cx - step + r}" y1="4" x2="${cx - r}" y2="4" stroke="${state === 'todo' ? tone.idle : tone.ok}" stroke-width="1"/>`
+    const dot = state === 'todo' ? `<circle cx="${cx}" cy="4" r="${r - 0.6}" fill="none" stroke="${tone.idle}" stroke-width="1.2"/>` : `<circle cx="${cx}" cy="4" r="${r}" fill="${fill[state]}"/>`
+    return bar + dot
+  })
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} 8">${parts.join('')}</svg>`
+}

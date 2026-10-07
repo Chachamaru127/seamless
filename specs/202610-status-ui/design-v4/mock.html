@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>帯 第4版 見本</title>
+<style>
+:root{color-scheme:dark;--bg:#141413;--card:#1d1d1b;--card2:#232321;--line:#2e2e2b;--text:#e9e7e2;--meso:#b5b2aa;--subtle:#8d8b85;--live:#8070f0;--ok:#2f8f5b;--attn:#d9752b;--fail:#d64545;--idle:#8d8b85}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.55 -apple-system,BlinkMacSystemFont,"Hiragino Sans","SF Pro Text",sans-serif;padding:28px 32px 60px}
+h1{font-size:15px;font-weight:600;margin:0 0 4px}h2{font-size:12px;font-weight:500;color:var(--subtle);margin:34px 0 10px;letter-spacing:.02em}
+p.note{color:var(--subtle);font-size:12px;margin:0 0 18px;max-width:760px}
+.frame{max-width:860px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+.prompt{margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:9px 12px;color:var(--subtle);background:#1a1a18}
+.band{display:flex;align-items:center;gap:10px;min-height:22px}
+.tri{color:var(--subtle);width:10px}
+.lead{font-weight:600;white-space:nowrap}.meso{color:var(--meso);white-space:nowrap}.sep{color:var(--subtle);margin:0 6px}
+.spacer{flex:1}
+.elapsed{color:var(--subtle);font-variant-numeric:tabular-nums}
+.mark{width:14px;height:14px;flex:none}
+.tile{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.brand{width:14px;height:14px;border-radius:4px;display:inline-grid;place-items:center}
+.brand svg{width:10px;height:10px}
+.counts{color:var(--meso)}.counts .open{color:var(--subtle)}
+.focus{font-weight:600;color:var(--attn)}
+/* 第4版 */
+.peerchip{display:inline-flex;align-items:center;gap:7px;white-space:nowrap;padding:2px 8px 2px 4px;border-radius:999px;background:var(--card2)}
+.avatar{width:16px;height:16px;border-radius:50%;display:grid;place-items:center;font-size:9px;font-weight:700;color:#1d1d1b;background:#c9c6be}
+.avatar.cl{background:#d8d4ca}.avatar.cx{background:#bfc9c3}
+.chipname{color:var(--text)}.chipstate{color:var(--meso)}
+.track{display:inline-flex;align-items:center;gap:0}
+.track i{width:7px;height:7px;border-radius:50%;background:transparent;border:1.2px solid var(--idle);box-sizing:border-box}
+.track i.done{background:var(--ok);border-color:var(--ok)}.track i.now{background:var(--attn);border-color:var(--attn)}.track i.bad{background:var(--fail);border-color:var(--fail)}
+.track b{width:9px;height:1px;background:var(--idle);display:inline-block}.track b.done{background:var(--ok)}
+.crew{color:var(--meso);border:1px solid var(--line);border-radius:6px;padding:0 6px;font-variant-numeric:tabular-nums}
+.badge{color:var(--subtle);font-size:11px}
+/* パネル */
+.pane{max-width:860px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:8px}
+.pane header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+.pane header .t{font-weight:600}.pane header .sum{color:var(--subtle);font-size:12px}
+.card{border-top:1px solid var(--line);padding:11px 0;display:grid;grid-template-columns:28px 1fr auto;gap:6px 10px;align-items:start}
+.card .av{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;color:#1d1d1b;background:#d8d4ca}
+.card .av.cx{background:#bfc9c3}
+.card .name{font-weight:600}.card .where{color:var(--subtle);font-size:12px}
+.card .right{color:var(--subtle);font-size:12px;white-space:nowrap;text-align:right}
+.req{grid-column:2/4;margin-top:2px}
+.req .said{color:var(--meso)}
+.steps{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12px;color:var(--subtle)}
+.steps .s{display:inline-flex;align-items:center;gap:5px}.steps .s.done{color:var(--meso)}.steps .s.now{color:var(--text)}
+.steps .s i{width:8px;height:8px;border-radius:50%;border:1.2px solid var(--idle);box-sizing:border-box}
+.steps .s.done i{background:var(--ok);border-color:var(--ok)}.steps .s.now i{background:var(--attn);border-color:var(--attn)}
+.steps .bar{width:14px;height:1px;background:var(--idle)}.steps .bar.done{background:var(--ok)}
+.sect{display:grid;grid-template-columns:64px 1fr;gap:4px 12px;margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+.sect .k{color:var(--subtle)}
+.legend{display:flex;gap:18px;color:var(--subtle);font-size:12px;margin-top:14px;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.diff{max-width:860px;margin-top:22px;border-collapse:collapse;font-size:12px}
+.diff th,.diff td{text-align:left;vertical-align:top;padding:7px 10px;border-top:1px solid var(--line)}
+.diff th{color:var(--subtle);font-weight:500}
+</style></head><body>
+<h1>seamless の帯 第4版の見本</h1>
+<p class="note">Claude Desktop の Code タブの入力欄の上に出る帯と、▸ または ×n で開くパネルです。上が今の第3版、下が第4版の案。データは今日の実際のやりとり（Codex 01a114be との往復）です。</p>
+
+<h2>今（第3版）: 右側は会社のロゴと回数</h2>
+<div class="frame">
+ <div class="band">
+  <span class="tri">▸</span>
+  <svg class="mark" viewBox="0 0 14 14"><circle cx="7" cy="7" r="4" fill="#8070f0"/><circle cx="7" cy="7" r="6" fill="none" stroke="#8070f0" stroke-opacity=".35"/></svg>
+  <span class="lead">sessions を 2.8 秒にする</span><span class="meso"><span class="sep">›</span>確かめている</span>
+  <span class="spacer"></span><span class="elapsed">1分12秒</span>
+  <span class="tile"><span class="brand" style="background:#10a37f"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 3a4 4 0 0 1 4 3 4 4 0 0 1 4 6 4 4 0 0 1-3 7 4 4 0 0 1-7 1 4 4 0 0 1-6-5 4 4 0 0 1 1-8 4 4 0 0 1 7-4z"/></svg></span><span class="focus">読んでいる 42秒</span><span class="counts">↑3 <span class="open">(1)</span> ↓2</span></span>
+  <span class="tile"><span class="brand" style="background:#d97757"><svg viewBox="0 0 24 24" fill="#fff"><path d="M13.8 4h3.1l6 16h-3.1zM7.1 4h3.3l6 16h-3.2l-1.3-3.5H5.6L4.3 20H1.1zm-.5 9.7h4.3L8.7 7.9z"/></svg></span><span class="counts">↑1 ↓1</span></span>
+ </div>
+ <div class="prompt">メッセージを入力…</div>
+</div>
+
+<h2>案（第4版）: 右側は「相手」と今の段。会社は小さな印だけ</h2>
+<div class="frame">
+ <div class="band">
+  <span class="tri">▸</span>
+  <svg class="mark" viewBox="0 0 14 14"><circle cx="7" cy="7" r="4" fill="#8070f0"/><circle cx="7" cy="7" r="6" fill="none" stroke="#8070f0" stroke-opacity=".35"/></svg>
+  <span class="lead">sessions を 2.8 秒にする</span><span class="meso"><span class="sep">›</span>確かめている</span>
+  <span class="spacer"></span><span class="elapsed">1分12秒</span>
+  <span class="peerchip"><span class="avatar cx">Cx</span><span class="chipname">seamless · main</span><span class="track"><i class="done"></i><b class="done"></b><i class="done"></i><b class="done"></b><i class="now"></i><b></b><i></i></span><span class="chipstate">読んでいる 42秒</span></span>
+  <span class="crew">×2</span>
+ </div>
+ <div class="prompt">メッセージを入力…</div>
+</div>
+
+<h2>案（第4版）: ×2 で開くパネル「チーム」。相手ごとのカード、色は状態にだけ使う</h2>
+<div class="pane">
+ <header><span class="t">チーム · 2 会話</span><span class="sum">直近 24 時間 · 送った 4 · 受け取った 3 · 未読 0</span></header>
+ <div class="card">
+  <span class="av cx">Cx</span>
+  <div><div class="name">seamless · main <span class="badge">Codex 01a114be</span></div><div class="where">~/LocalWork/Code/seamless · 動いている</div></div>
+  <div class="right">最新 19:22</div>
+  <div class="req"><div class="said">疎通の確認です。作業は不要です。呼び手の特定の lsof を減らした後のコードで送っています…</div>
+   <div class="steps"><span class="s done"><i></i>送った 19:22:29</span><span class="bar done"></span><span class="s done"><i></i>届いた 19:22:29</span><span class="bar done"></span><span class="s now"><i></i>読んでいる 42秒</span><span class="bar"></span><span class="s"><i></i>返信</span></div></div>
+  <div class="req"><div class="said">疎通の確認です。作業は不要です。sessions を 2.8 秒にした後のコードで送っています…</div>
+   <div class="steps"><span class="s done"><i></i>送った 18:58</span><span class="bar done"></span><span class="s done"><i></i>届いた 18:58</span><span class="bar done"></span><span class="s done"><i></i>読んだ 18:58</span><span class="bar done"></span><span class="s done"><i></i>返信 18:59 「受け取りました」</span></div></div>
+ </div>
+ <div class="card">
+  <span class="av cl">Cl</span>
+  <div><div class="name">routecli ：挙動確認 <span class="badge">Claude add8dc93</span></div><div class="where">~/LocalWork/Code/routecli · 止まっている</div></div>
+  <div class="right">最新 13:25</div>
+  <div class="req"><div class="said">【引継ぎ】seamless の MCP の配送で見つかった食い違いです…（受け取った依頼）</div>
+   <div class="steps"><span class="s done"><i></i>届いた 13:25</span><span class="bar done"></span><span class="s done"><i></i>読んだ 13:26</span><span class="bar done"></span><span class="s done"><i></i>返した 13:41</span></div></div>
+ </div>
+ <div class="sect"><span class="k">目的</span><span>sessions の残り 4 秒を縮める調査と修正</span><span class="k">段</span><span>3/4 · 確かめている</span></div>
+ <div class="legend"><span><i style="background:#2f8f5b"></i>済んだ段</span><span><i style="background:#d9752b"></i>今の段（経過時間つき）</span><span><i style="border:1.2px solid #8d8b85"></i>まだの段</span><span><i style="background:#d64545"></i>届かなかった</span></div>
+</div>
+
+<table class="diff">
+ <tr><th>点</th><th>第3版</th><th>第4版の案</th><th>理由</th></tr>
+ <tr><td>相手の表し方</td><td>会社（Codex、Claude）のロゴと色のタイル</td><td>会話（作業場所 · ブランチ）が主。会社は灰色の小さな印（Cx、Cl）だけ</td><td>垣根を感じさせない。相手は「どの仕事をしている会話か」で見分ける</td></tr>
+ <tr><td>色</td><td>会社の色（緑と橙）が常に出る</td><td>色は状態（済んだ、今、まだ、失敗）にだけ使う</td><td>色が意味を 1 つしか持たないので読み間違えない</td></tr>
+ <tr><td>1 行の右</td><td>会社ごとに言葉と ↑↓ の数</td><td>一番大事な相手 1 つのチップ（名前、段の軌跡、今の段と経過）と ×n</td><td>数より「どこで止まっているか」が先。全体は ×n でパネルへ</td></tr>
+ <tr><td>開いた状態</td><td>▸ で帯の下に展開</td><td>▸ は従来どおり。×n で右のパネル「チーム」。カードは savvy-progress の担当パネルと同じ型</td><td>やりとりが多いときに帯を伸ばさない。参考 mod と同じ操作感</td></tr>
+ <tr><td>受け取った依頼</td><td>本文は出さない</td><td>同じ（決まりを変えない）</td><td>照会は本文を持たない</td></tr>
+</table>
+</body></html>

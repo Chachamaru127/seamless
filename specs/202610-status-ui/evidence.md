@@ -72,3 +72,9 @@
 - Desktop（立花さんの確認、10:0x）: 保留されたメッセージの承認の画面は出なかった。ターミナル版では出る。Desktop では保留が見えないまま止まり、送り手には `submitted` しか返らない（案 D は Desktop では使えない）。
 - 再試（10:04、この会話は立ち上げ直し後 78848、バイパス。Codex は代わりに承認）: Claude → Codex は1秒で読み始め。Codex は 10:05:27 に reply-band-v3-check-5 を新しい宛先（78848@…）へ submitted。この会話の待ち行列には入らず、保留。前回と同じ結果。
 - モードを変えれば保留が流れるかの確認（10:1x、立花さんの依頼）: この会話は auto に戻っていたが、保留された reply-band-v3-check-5 は届かなかった（待ち行列に記録なし）。Desktop のような画面のない受け手では、保留はモードを変える前に期限切れになる、または流れないと見られる。保留の回収は当てにできない。4回目の保留は、会話の立ち上げ直しで消えている。
+
+## 2026-10-07 Codex の考え方の採用（crossSessionInbound=accept）の検証
+
+- 立花さんの判断「Codexの考え方を採用する」（受け手に関門を置かず、届いた後の安全は受け手自身のモードが受け持つ）。設定 `crossSessionInbound` を `accept` にした。私からの配送（wire.sh v7）は auto モードの判定が Security Weaken として止めたので、立花さんが `/config` の「Messages from your other sessions」で入れた。読み取りで `~/.claude/settings.json` の値が accept であることを確かめた。
+- auto × 代わりに承認（02:56）: Claude → Codex は1秒で読み始め（この組み合わせは初の実測）。Codex → Claude の reply-inbound-accept-1 が届いた。
+- バイパス × 代わりに承認（03:01）: Claude → Codex は1秒で読み始め。Codex → Claude の reply-inbound-accept-2 が届いた（設定前は保留されて消えていた組み合わせ）。

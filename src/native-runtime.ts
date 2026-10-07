@@ -18,16 +18,27 @@ export type RuntimeOptions=CompatibilityOptions&{home?:string;codexOwner?:(nativ
 export async function command(file:string,args:string[]){return (await exec(file,args,{encoding:'utf8',timeout:5000,maxBuffer:1048576,env:{...process.env,TZ:'UTC',LC_ALL:'C',PATH:'/bin:/usr/sbin:/usr/bin'}})).stdout;}
 export async function ownedSocket(path:string,strict=true){const [s,p]=await Promise.all([lstat(path),lstat(dirname(path))]);const uid=process.getuid?.();return s.isSocket()&&s.uid===uid&&(!strict||(s.mode&0o777)===0o600)&&p.isDirectory()&&p.uid===uid&&(p.mode&0o022)===0;}
 export type ClaudeInspection=CompatibilityOptions&{command?:typeof command;socket?:typeof ownedSocket};
-export async function findClaudeIdentityByPid(pid:number,home=homedir(),options:ClaudeInspection={},allowUnsupportedVersion=false):Promise<NativeIdentity|null>{
+// The session record Claude Code writes for its own process, checked for shape only.
+export async function claudeSessionRecord(pid:number,home=homedir()):Promise<any|null>{
  try{
   if(!Number.isSafeInteger(pid)||pid<=0)return null;
   const path=join(home,'.claude','sessions',`${pid}.json`),s=await lstat(path);
   if(!s.isFile()||s.uid!==process.getuid?.()||(s.mode&0o022)!==0||s.size>65536)return null;
   const m=JSON.parse(await readFile(path,'utf8'));
-  if(m.pid!==pid||typeof m.sessionId!=='string'||!m.sessionId||(m.version!=null&&typeof m.version!=='string'||!allowUnsupportedVersion&&!isClaudeVersionAllowed(m.version,options))||m.peerProtocol!==1||typeof m.procStart!=='string'||typeof m.startedAt!=='number'&&typeof m.startedAt!=='string'||typeof m.cwd!=='string'||typeof m.messagingSocketPath!=='string')return null;
-  const run=options.command??command,ps=(await run('ps',['-p',String(pid),'-o','uid=,lstart='])).trim();
-  const [uid,...start]=ps.split(/\s+/);
-  if(Number(uid)!==process.getuid?.()||start.join(' ')!==m.procStart.replace(/\s+/g,' ').trim())return null;
+  if(m.pid!==pid||typeof m.sessionId!=='string'||!m.sessionId||m.version!=null&&typeof m.version!=='string'||m.peerProtocol!==1||typeof m.procStart!=='string'||typeof m.startedAt!=='number'&&typeof m.startedAt!=='string'||typeof m.cwd!=='string'||typeof m.messagingSocketPath!=='string')return null;
+  return m;
+ }catch{return null;}
+}
+// The process named by a record is running under this user and started when the record says.
+export async function claudeProcessMatches(pid:number,procStart:string,run:typeof command=command):Promise<boolean>{
+ try{const [uid,...start]=(await run('ps',['-p',String(pid),'-o','uid=,lstart='])).trim().split(/\s+/);return Number(uid)===process.getuid?.()&&start.join(' ')===procStart.replace(/\s+/g,' ').trim();}catch{return false;}
+}
+export async function findClaudeIdentityByPid(pid:number,home=homedir(),options:ClaudeInspection={},allowUnsupportedVersion=false):Promise<NativeIdentity|null>{
+ try{
+  const m=await claudeSessionRecord(pid,home);
+  if(!m||!allowUnsupportedVersion&&!isClaudeVersionAllowed(m.version,options))return null;
+  const run=options.command??command;
+  if(!await claudeProcessMatches(pid,m.procStart,run))return null;
   const cwd=(await run('lsof',['-a','-p',String(pid),'-d','cwd','-Fn'])).split('\n').find(x=>x.startsWith('n'))?.slice(1);
   if(!cwd||await realpath(cwd)!==await realpath(m.cwd)||!await (options.socket??ownedSocket)(m.messagingSocketPath))return null;
   const sockets=await run('lsof',['-a','-p',String(pid),'-U','-Fn']);

@@ -22,6 +22,37 @@ test('Claude caller binds ancestor PID start and cwd, ignoring content and envir
  const result=await identifyCaller({kind:'mcp',meta:{'x-codex-turn-metadata':{session_id:'attacker'}}},f.options);
  assert.equal(result.status,'ok');if(result.status==='ok'){assert.equal(result.caller.nativeId,'claude-a');assert.equal(result.caller.source,'claude-ancestor');}
 });
+test('a previously identified Claude caller is confirmed without the ancestor walk, and any change falls back to full identification',async t=>{
+ const f=await fixture(t);await f.save();
+ let walks=0,ps=0;const base=f.options.process!,cmd=f.options.claude!.command!;
+ const options:CallerOptions={...f.options,process:async pid=>{walks++;return base(pid);},claude:{...f.options.claude,command:async(file,args)=>{if(file==='ps')ps++;return cmd(file,args);}}};
+ const first=await identifyCaller({kind:'cli'},options);assert.equal(first.status,'ok');if(first.status!=='ok')return;
+ assert.equal(first.caller.pid,41);walks=0;ps=0;
+ const again=await identifyCaller({kind:'cli'},{...options,previous:first.caller});
+ assert.deepEqual(again,first);assert.equal(walks,0);assert.equal(ps,1);
+ // The record now names another conversation: the cheap check fails and the full walk identifies the new one.
+ await f.save({...f.record,sessionId:'claude-b'});walks=0;
+ const changed=await identifyCaller({kind:'cli'},{...options,previous:first.caller});
+ assert.equal(changed.status,'ok');if(changed.status==='ok')assert.equal(changed.caller.nativeId,'claude-b');assert.ok(walks>0);
+ // The process restarted under the same pid: neither the cheap check nor the full walk accepts it.
+ await f.save({...f.record,procStart:'old start'});
+ assert.equal((await identifyCaller({kind:'cli'},{...options,previous:first.caller})).status,'caller_unobserved');
+ // A different socket, generation or workspace in the record is not the same caller either.
+ for(const record of [{...f.record,messagingSocketPath:join(f.home,'other')},{...f.record,startedAt:101},{...f.record,cwd:join(f.home,'codex')}]){
+  await f.save(record);walks=0;await identifyCaller({kind:'cli'},{...options,previous:first.caller});assert.ok(walks>0);
+ }
+});
+test('a previously identified Codex caller is confirmed by its owner and workspace alone, and a new owner falls back to full identification',async t=>{
+ const f=await fixture(t);let walks=0;const base=f.options.process!;
+ const options:CallerOptions={...f.options,process:async pid=>{walks++;return base(pid);}};
+ const meta={'x-codex-turn-metadata':{session_id:'codex-a'}};
+ const first=await identifyCaller({kind:'mcp',meta},options);assert.equal(first.status,'ok');if(first.status!=='ok')return;
+ assert.equal(first.caller.source,'codex-turn-metadata');assert.equal(first.caller.generation,'owner');walks=0;
+ const again=await identifyCaller({kind:'mcp',meta},{...options,previous:first.caller});
+ assert.deepEqual(again,first);assert.equal(walks,0);
+ const moved=await identifyCaller({kind:'mcp',meta},{...options,owner:async()=>'other',previous:first.caller});
+ assert.equal(moved.status,'ok');if(moved.status==='ok')assert.equal(moved.caller.generation,'other');assert.ok(walks>0);
+});
 test('reused Claude PID with different process start is rejected',async t=>{
  const f=await fixture(t);await f.save({...f.record,procStart:'old start'});
  assert.equal(await findClaudeIdentityByPid(41,f.home,f.options.claude),null);

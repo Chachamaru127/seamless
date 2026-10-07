@@ -5,12 +5,12 @@ import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {realpath,readdir,stat} from 'node:fs/promises';
 import {readPrivateJson,writePrivateJson} from './limits.ts';
-import {command,findClaudeIdentityByPid} from './native-runtime.ts';
+import {command,findClaudeIdentityByPid,claudeSessionRecord,claudeProcessMatches} from './native-runtime.ts';
 import {codexIdentity,type SessionIdentity,type ScanOptions} from './sessions-scan.ts';
 export type Caller=SessionIdentity&{source:'claude-ancestor'|'codex-turn-metadata'};
 export type CallerResult={status:'ok';caller:Caller}|{status:'caller_unobserved';reason:string}|{status:'unsupported_version';reason:string;version:string};
 export type Ancestor={pid:number;ppid:number;executable:string;command?:string};
-export type CallerOptions=ScanOptions&{signature?:SignatureVerifier;codexLocations?:()=>Promise<string[]>;pid?:number;env?:NodeJS.ProcessEnv;cwd?:string;processCwd?:(pid:number)=>Promise<string|null>;process?:(pid:number)=>Promise<Ancestor|null>};
+export type CallerOptions=ScanOptions&{signature?:SignatureVerifier;codexLocations?:()=>Promise<string[]>;pid?:number;env?:NodeJS.ProcessEnv;cwd?:string;processCwd?:(pid:number)=>Promise<string|null>;process?:(pid:number)=>Promise<Ancestor|null>;previous?:Caller};
 export async function codexLocations(home=homedir()):Promise<string[]>{
  const releases=join(home,'.codex','packages','standalone','releases');
  const names=await readdir(releases).catch(()=>[]);
@@ -63,8 +63,25 @@ export async function processInfo(pid:number):Promise<Ancestor|null>{
 export async function processCwd(pid:number):Promise<string|null>{
  try{return (await command('lsof',['-a','-p',String(pid),'-d','cwd','-Fn'])).split('\n').find(line=>line.startsWith('n'))?.slice(1)??null;}catch{return null;}
 }
+// A caller identified earlier in the same call is confirmed again cheaply: the same process must still be running
+// from the same start, and its record must still name the same conversation, generation, workspace and socket.
+// Anything else falls back to the full identification. The ancestor walk and signature are not repeated: the
+// process they established cannot be replaced while its pid and start time stay the same.
+async function stillCaller(previous:Caller,options:CallerOptions):Promise<boolean>{
+ try{
+  const home=options.home??homedir();
+  if(previous.source==='claude-ancestor'){
+   if(previous.pid===undefined)return false;
+   const m=await claudeSessionRecord(previous.pid,home);
+   return !!m&&m.sessionId===previous.nativeId&&`${previous.pid}@${m.startedAt}`===previous.generation&&m.messagingSocketPath===previous.socket&&await realpath(m.cwd)===previous.cwd&&await claudeProcessMatches(previous.pid,m.procStart,options.claude?.command??command);
+  }
+  const n=await codexIdentity(previous.nativeId,options);
+  return !!n&&n.generation===previous.generation&&n.cwd===previous.cwd;
+ }catch{return false;}
+}
 export async function identifyCaller(context:{kind:'cli'|'mcp';meta?:unknown},options:CallerOptions={}):Promise<CallerResult>{
  const fail=(reason:string):CallerResult=>({status:'caller_unobserved',reason});
+ if(options.previous&&await stillCaller(options.previous,options))return {status:'ok',caller:options.previous};
  try{
   const home=options.home??homedir(),inspect=options.process??processInfo;
   let current=await inspect(options.pid??process.pid);let codex=false;const seen=new Set<number>();

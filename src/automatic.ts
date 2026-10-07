@@ -57,7 +57,9 @@ export function createAutomatic(options:AutomaticOptions={}){
   const ownerCache=new Map<string,Promise<string|null>>();
   const bandOwner=method==='band'?(id:string)=>{let value=ownerCache.get(id);if(!value){value=(scanOptions.owner??ownerLookup!.owner)(id);ownerCache.set(id,value);}return value;}:undefined;
   try{
-  const caller=(ctx:CallContext)=>options.caller?options.caller(ctx):identifyCaller(ctx,{...scanOptions,...options.callerOptions,home,strictVersions,claude:{...scanOptions.claude,...options.callerOptions?.claude,strictVersions}});
+  // Within one call the caller is identified in full once; later checks confirm the same process cheaply (see stillCaller).
+  let identified:Caller|undefined;
+  const caller=async(ctx:CallContext)=>{if(options.caller)return options.caller(ctx);const r=await identifyCaller(ctx,{...scanOptions,...options.callerOptions,home,strictVersions,claude:{...scanOptions.claude,...options.callerOptions?.claude,strictVersions},previous:identified});identified=r.status==='ok'?r.caller:undefined;return r;};
   const scan=options.scan??((cwd:string,s:AutoScope)=>scanSessions(cwd,s,scanOptions));
   const inspect=options.inspect??(async(n:SessionIdentity)=>n.provider==='codex'?codexIdentity(n.nativeId,bandOwner?{...scanOptions,owner:bandOwner}:scanOptions):findClaudeIdentity(n.nativeId,home,{...scanOptions,...scanOptions.claude}));
   const wake=options.wake??((id:string)=>wakeCodexThread(id,scanOptions));

@@ -87,3 +87,12 @@
 - 再起動の後に起こして送る（2026-10-07 16:05、f63b67f）: 立花さんが Codex アプリを再起動し、seamless の会話を開かずにおいた。再起動の直後は 01a114be、01a10630、01a10594 の3つとも持ち主がなく、送り先の一覧から消えた（offlineHidden 100）。`sessions` に target `codex:01a114be-…` を付けると、seamless が `open -g codex://threads/…` で会話を開き、online（世代は再起動後の新しい番号 4923ad22）と券が返った。この券で wake-after-restart-20261007-1 を送ると、1秒で読み始め、返信「受け取りました」が届いた。立花さんは会話を手で開いていない。
 - open -g でも Codex アプリは前面に出た（前面のアプリが Claude から ChatGPT に変わった）。持ち主ができるまで、開かれていない Rappiness の会話では4秒、再起動の後の 01a114be でも数秒。
 - 既知の別件: CLI からの sessions は、名指しの有無にかかわらず毎回25〜26秒かかる（今回の変更の前からの遅さ）。進み具合の追跡（status）は、返信が届いた後も replied を拾わず wait_limit で終わる（変更の前の 05:04 の確認でも同じ）。
+
+## 2026-10-07 status が返信を拾わなかった原因と修正（Claude が送り手のとき）
+
+- 原因: 送り手の Claude が tool 呼び出し（status の待ちや Bash）の中にいる間、届いた返信は記録（transcript の jsonl）に `queue-operation` の `enqueue` 行としてだけ書かれる。封筒つきの `attachment`（`queued_command`、`origin.from`=seamless）は tool 呼び出しが終わった後に、enqueue と同じ時刻を付けて書かれる。前の会話の記録では、05:05:39 の enqueue（510 行目）の次が 05:08:40 の wait_limit の結果（511 行目）で、その次に 05:05:39 の attachment（512 行目）が並ぶ。07:06:24 の返信も同じ並び（1004、1005、1006 行目）。status の replied は attachment の封筒だけを見ていたので、待っている間は立たず wait_limit で終わっていた。
+- 修正: `projectClaudeStructure` が enqueue 行の content を封筒として読めたとき、その送り手と replyTo を付ける。`stages` は enqueue 由来の封筒を replied の判定にだけ使う。reached と processing には使わない（enqueue 行には origin が無いので、宛先側の reached は従来どおり payload の hash の完全一致だけ）。replied の根拠は、replyTo が自分の依頼の id であることと、封筒の送り手が依頼の宛先（provider と nativeId）と一致すること。
+- 試験: status.test.ts に 1 件追加（enqueue 行だけで replied が立つ、replyTo や送り手が違えば立たない、remove や別の会話の行は無視、attachment が後から来ても根拠は enqueue 行、宛先側の改変した封筒では reached が立たない）。既存の「enqueue は hash の完全一致でだけ reached」の試験は、構造の期待値に封筒の送り手を足した以外そのまま。verify.sh exit 0（typecheck 0、388 件 PASS）。
+- 本番（17:08、この会話 13b9af9a、作業ツリーは worktree、Codex 01a114be は名指しの sessions で起こして online）: `send` の 3 秒後に `status --wait 240` を Bash から実行。返信 replied-while-busy-20261007-1-reply は 08:08:58Z に届き、status は `replied observed`（根拠 `queue:2026-10-07T08:08:58.895Z`）で `ok` を返した。待ち上限まで待たずに 17:09:24 に戻った。
+- 範囲: Codex が送り手のときの replied 検知は今回見ていない。CLI の sessions が毎回 25〜26 秒かかる件は未着手。
+- 効き始め: seamless の MCP は起動時に読んだコードで動く。すでに開いている Claude と Codex の会話の MCP（`send` の `track`、帯の表示）は会話を立ち上げ直すまで前のままで、返信が届いても wait_limit のまま。今回の本番は作業ツリーの `node src/cli.ts` で確かめた。

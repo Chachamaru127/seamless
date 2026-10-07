@@ -202,7 +202,7 @@ test('Claude enqueue hash observes exact arrival only and never supplies inbound
  const r={...record,recipient:party('b','claude'),payloadSha256:createHash('sha256').update(payload).digest('hex')};
  const enqueue=(content:unknown,extra:object={})=>JSON.stringify({type:'queue-operation',operation:'enqueue',sessionId:'b',timestamp:at,content,...extra});
  const exact=enqueue(payload),data=projectClaudeStructure([exact],'b');
- assert.deepEqual(data,[{id:'queue:'+at,type:'enqueue',at,payloadSha256:r.payloadSha256}]);
+ assert.deepEqual(data,[{id:'queue:'+at,type:'enqueue',at,payloadSha256:r.payloadSha256,peer:{id:'request',sender:{provider:'claude',nativeId:'a'}}}]);
  const result=stages(r,data,[],2000);
  assert.deepEqual(observed(result),['accepted','reached']);
  assert.deepEqual(result.find(s=>s.stage==='reached'),{stage:'reached',status:'observed',evidence:['queued:queue:'+at],at});
@@ -218,6 +218,24 @@ test('Claude enqueue hash observes exact arrival only and never supplies inbound
  assert.deepEqual(stages(r,both,[],2000).find(s=>s.stage==='reached')?.evidence,['peer']);
  assert.deepEqual(observed(stages({...r,payloadSha256:undefined},both,[],2000)),['accepted','reached']);
  assert.deepEqual(projectClaudeStructure([exact,...Array(200).fill('{}')],'b'),[]);
+});
+
+test('Claude enqueue line of a reply proves replied while the sender is still busy; it never proves reached or processing',()=>{
+ const at='2026-10-07T07:06:24.497Z',sender=party('a','claude');
+ const reply=JSON.stringify({schemaVersion:1,id:'request-reply',sender:record.recipient,recipient:sender,text:'PRIVATE REPLY',replyTo:'request'});
+ const enqueue=(content:string,extra:object={})=>JSON.stringify({type:'queue-operation',operation:'enqueue',sessionId:'a',timestamp:at,content,...extra});
+ const src=projectClaudeStructure([enqueue(reply)],'a');
+ assert.ok(!JSON.stringify(src).includes('PRIVATE REPLY'));
+ const result=stages(record,[],src,2000);
+ assert.deepEqual(observed(result),['accepted','replied']);
+ assert.deepEqual(result.find(s=>s.stage==='replied'),{stage:'replied',status:'observed',evidence:['queue:'+at],at});
+ for(const line of [enqueue(reply.replace('"replyTo":"request"','"replyTo":"other"')),enqueue(JSON.stringify({schemaVersion:1,id:'request-reply',sender:party('c','codex'),recipient:sender,text:'x',replyTo:'request'})),enqueue(reply,{operation:'remove'}),enqueue(reply,{sessionId:'other'}),enqueue('ordinary user text')]){
+  assert.deepEqual(observed(stages(record,[],projectClaudeStructure([line],'a'),2000)),['accepted']);
+ }
+ const attachment=JSON.stringify({type:'attachment',sessionId:'a',uuid:'reply',timestamp:at,attachment:{type:'queued_command',prompt:reply,source_uuid:'request-reply',origin:{kind:'peer',from:'seamless'},timestamp:at}});
+ assert.deepEqual(stages(record,[],projectClaudeStructure([enqueue(reply),attachment],'a'),2000).find(s=>s.stage==='replied')?.evidence,['queue:'+at]);
+ const dest=projectClaudeStructure([enqueue(JSON.stringify({schemaVersion:1,id:'request',sender:record.sender,recipient:party('b','claude'),text:'tampered'}))],'b');
+ assert.deepEqual(observed(stages({...record,recipient:party('b','claude')},dest,[],2000)),['accepted']);
 });
 
 test('delivery persists payload hash and restarted track reads it without plaintext',async t=>{

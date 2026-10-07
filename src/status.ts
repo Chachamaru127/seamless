@@ -12,7 +12,7 @@ export function stages(record:RequestRecord,destination:StructureItem[],source:S
  const mark=(stage:Stage['stage'],evidence:string[],at:string|null=observedAt)=>{Object.assign(result.find(s=>s.stage===stage)!,{status:'observed',evidence,at:at??observedAt});};
  if(record.status==='submitted')mark('accepted',['reservation:submitted'],new Date(record.at).toISOString());
  if(['unknown','pending'].includes(record.status))mark('unknown',['reservation:'+record.status]);
- const dest=destination.slice(-200),src=source.slice(-200),peers=dest.filter(n=>n.peer?.id===record.id&&n.peer.sender?.provider===record.sender.provider&&n.peer.sender.nativeId===record.sender.nativeId);
+ const dest=destination.slice(-200),src=source.slice(-200),peers=dest.filter(n=>n.type!=='enqueue'&&n.peer?.id===record.id&&n.peer.sender?.provider===record.sender.provider&&n.peer.sender.nativeId===record.sender.nativeId);
  if(peers.length){mark('reached',peers.map(n=>n.id),peers[0].at);
   for(const peer of peers){
    let proof:StructureItem|undefined;
@@ -28,6 +28,7 @@ export function stages(record:RequestRecord,destination:StructureItem[],source:S
   const queued=dest.find(n=>n.type==='enqueue'&&n.payloadSha256===record.payloadSha256);
   if(queued)mark('reached',['queued:'+queued.id],queued.at);
  }
+ // Claude enqueue lines count here: the reply is correlated by replyTo and by the recipient's identity, not by origin.
  const reply=src.find(n=>n.peer?.replyTo===record.id&&n.peer.sender?.provider===record.recipient.provider&&n.peer.sender.nativeId===record.recipient.nativeId);if(reply)mark('replied',[reply.id],reply.at);
  return result;
 }

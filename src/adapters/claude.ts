@@ -117,7 +117,11 @@ export function projectClaudeStructure(lines:string[],nativeId:string):Structure
   if(r?.sessionId!==nativeId||r.isSidechain)continue;
   if(r.type==='queue-operation'&&r.operation==='enqueue'&&typeof r.content==='string'){
    const at=typeof r.timestamp==='string'?r.timestamp:null;
-   result.push({id:'queue:'+at,type:'enqueue',at,payloadSha256:createHash('sha256').update(r.content).digest('hex')});continue;
+   // A reply that arrives while this session is busy is only an enqueue line until the current tool call returns
+   // (observed 2026-10-07, Claude Code 2.1.288): the queued_command attachment is written afterwards with the enqueue timestamp.
+   // The enqueue line carries no origin, so its envelope may prove a reply to our own request and nothing else.
+   const queued=parseEnvelope(r.content);
+   result.push({id:'queue:'+at,type:'enqueue',at,payloadSha256:createHash('sha256').update(r.content).digest('hex'),...(queued?{peer:{id:queued.id,sender:{provider:queued.sender.id.split(':')[0],nativeId:queued.sender.nativeId},...(queued.replyTo?{replyTo:queued.replyTo}:{})}}:{})});continue;
   }
   if(typeof r.uuid!=='string')continue;
   const peer=projectClaude([line],nativeId).find(n=>n.role==='peer'&&['seamless','claudex'].includes(n.peer?.declaredSender??''))?.peer?.envelope;

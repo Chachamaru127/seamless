@@ -78,3 +78,6 @@
 - 立花さんの判断「Codexの考え方を採用する」（受け手に関門を置かず、届いた後の安全は受け手自身のモードが受け持つ）。設定 `crossSessionInbound` を `accept` にした。私からの配送（wire.sh v7）は auto モードの判定が Security Weaken として止めたので、立花さんが `/config` の「Messages from your other sessions」で入れた。読み取りで `~/.claude/settings.json` の値が accept であることを確かめた。
 - auto × 代わりに承認（02:56）: Claude → Codex は1秒で読み始め（この組み合わせは初の実測）。Codex → Claude の reply-inbound-accept-1 が届いた。
 - バイパス × 代わりに承認（03:01）: Claude → Codex は1秒で読み始め。Codex → Claude の reply-inbound-accept-2 が届いた（設定前は保留されて消えていた組み合わせ）。
+- バイパス × フルアクセス（03:15〜、Codex アプリは 26.1002.51308 に更新済みで、開かれていた会話 01a10594 を使った）: Claude → Codex は1秒で読み始め。Codex は repo の決まり（相手の会話への送信は了承を得てから）で立花さんの許可を待ち、許可の後に reply-inbound-accept-3 を送り、届いた。
+- auto × フルアクセス（03:29）: Claude → Codex は1秒で読み始め。Codex は立花さんの許可待ち。
+- Codex アプリの更新で再起動すると、以前の会話 01a10630 は持ち主がいなくなった（thread-owner-discovery が no-client-found）。アプリの中身では、窓の窓口の操作は thread-follower-* だけで、開かれていない会話を読み込ませる操作はない。スケジュールはアプリの本体が app-server に thread/resume と turn/start を直接頼んでいる。外から会話を開く正規の入口は codex://threads/<id>。

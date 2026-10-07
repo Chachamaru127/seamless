@@ -6,13 +6,13 @@ import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {desktopVersion} from './adapters/codex.ts';
-import {findClaudeIdentityByPid,findCodexOwner,type NativeIdentity,type ClaudeInspection} from './native-runtime.ts';
+import {findClaudeIdentityByPid,findCodexOwner,codexReachable,type NativeIdentity,type ClaudeInspection} from './native-runtime.ts';
 import {observeGit,type GitContext} from './git-context.ts';
 import type {AutoScope} from './limits.ts';
 export type SessionIdentity=NativeIdentity&{provider:'claude'|'codex';status?:'online'|'offline'|'unknown';reason?:'process_exited'|'generation_changed'|'unsupported_version'|'unreachable'};
 export type ThreadRow={id:string;cwd:string;archived:number;updated_at_ms:number};
 export const THREADS_SQL='SELECT id, cwd, archived, updated_at_ms FROM threads WHERE archived=0';
-export type ScanOptions=CompatibilityOptions&{includeUnavailable?:boolean;processStart?:(pid:number)=>Promise<number|null>;expectedPairCaller?:string;include?:(n:{provider:'claude'|'codex';nativeId:string;generation:string;cwd:string})=>Promise<boolean>;home?:string;claude?:ClaudeInspection;version?:()=>Promise<string|null>;rows?:()=>Promise<ThreadRow[]|null>;owner?:(id:string)=>Promise<string|null>;git?:(cwd:string)=>Promise<GitContext>;worktreeList?:(cwd:string)=>Promise<string>};
+export type ScanOptions=CompatibilityOptions&{includeUnavailable?:boolean;processStart?:(pid:number)=>Promise<number|null>;expectedPairCaller?:string;include?:(n:{provider:'claude'|'codex';nativeId:string;generation:string;cwd:string})=>Promise<boolean>;home?:string;claude?:ClaudeInspection;version?:()=>Promise<string|null>;rows?:()=>Promise<ThreadRow[]|null>;openUrl?:(url:string)=>Promise<void>;reachable?:()=>Promise<boolean>;wakeAttempts?:number;wakeIntervalMs?:number;owner?:(id:string)=>Promise<string|null>;git?:(cwd:string)=>Promise<GitContext>;worktreeList?:(cwd:string)=>Promise<string>};
 export async function readThreadRows(home=homedir()):Promise<ThreadRow[]|null>{
  let db:DatabaseSync|undefined;
  try{db=new DatabaseSync(join(home,'.codex','state_5.sqlite'),{readOnly:true});return db.prepare(THREADS_SQL).all().filter((r):r is ThreadRow=>typeof r.id==='string'&&typeof r.cwd==='string'&&r.archived===0&&typeof r.updated_at_ms==='number').map(r=>({...r})) as ThreadRow[];}
@@ -35,6 +35,18 @@ export async function codexIdentity(id:string,options:ScanOptions={}):Promise<Se
  try{return {version:version||null,provider:'codex',nativeId:id,generation:owner,owner,cwd:await realpath(row.cwd),socket:join(home,'.codex','ipc','ipc.sock')};}catch{return null;}
 }
 const run=promisify(execFile);
+// Opening codex://threads/<id> makes Desktop load the thread, the same as clicking it (Desktop comes to the front, 2026-10-07).
+// Only for one thread a caller named or is sending to; never from a listing.
+export async function wakeCodexThread(id:string,options:ScanOptions={}):Promise<string|null>{
+ if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id))return null;
+ const home=options.home??homedir();
+ if(!(await (options.rows??(()=>readThreadRows(home)))())?.some(r=>r.id===id&&r.archived===0))return null;
+ if(!await (options.reachable??(()=>codexReachable(home,options.version,options)))())return null;
+ await (options.openUrl??(async url=>{await run('open',['-g',url]);}))(`codex://threads/${id}`);
+ const owner=options.owner??((id:string)=>findCodexOwner(id,home,1500,options.version,options));
+ for(let i=0;i<(options.wakeAttempts??5);i++){const found=await owner(id);if(found)return found;await new Promise(r=>setTimeout(r,options.wakeIntervalMs??1000));}
+ return null;
+}
 // Worktree roots the scope can match: the caller's own worktree, or every worktree of its repository. null = no path filter.
 export async function scopeRoots(callerCwd:string,scope:AutoScope,options:ScanOptions={}):Promise<string[]|null>{
  if(scope==='any')return null;

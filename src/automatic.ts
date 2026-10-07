@@ -8,14 +8,14 @@ import {realpath} from 'node:fs/promises';
 import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {identifyCaller,type CallerOptions,type CallerResult,type Caller} from './caller.ts';
-import {scanSessions,codexIdentity,inScope,type SessionIdentity, type ScanOptions} from './sessions-scan.ts';
+import {scanSessions,codexIdentity,wakeCodexThread,inScope,type SessionIdentity, type ScanOptions} from './sessions-scan.ts';
 import {createNativeRuntime,createCodexOwnerLookup,findClaudeIdentity,type NativeIdentity} from './native-runtime.ts';
 import {readLimits,writeLimits,clearLimits,unrestricted,validLimits,type Limits,type AutoScope} from './limits.ts';
 import {ContractError,object,type Registration,type Operation} from './protocol.ts';
 import {Registry,loadRegistry} from './registry.ts';
 import {Delivery,type NativeAdapter} from './delivery.ts';
 export type CallContext={kind:'cli'|'mcp';meta?:unknown};
-export type AutomaticOptions={clock?:StatusClock;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;adapter?:NativeAdapter;limitsPath?:string;reservationDir?:string};
+export type AutomaticOptions={clock?:StatusClock;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;wake?:(nativeId:string)=>Promise<string|null>;adapter?:NativeAdapter;limitsPath?:string;reservationDir?:string};
 export type Ticket={provider:'codex'|'claude';nativeId:string;generation:string;cwd:string;branch?:string|null};
 const idOf=(n:Pick<Ticket,'provider'|'nativeId'>)=>`${n.provider}:${n.nativeId}`;
 export function issueTicket(n:Ticket):string{return Buffer.from(JSON.stringify({provider:n.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,branch:n.branch??null})).toString('base64url');}
@@ -51,6 +51,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   const caller=(ctx:CallContext)=>options.caller?options.caller(ctx):identifyCaller(ctx,{...scanOptions,...options.callerOptions,home,strictVersions,claude:{...scanOptions.claude,...options.callerOptions?.claude,strictVersions}});
   const scan=options.scan??((cwd:string,s:AutoScope)=>scanSessions(cwd,s,scanOptions));
   const inspect=options.inspect??(async(n:SessionIdentity)=>n.provider==='codex'?codexIdentity(n.nativeId,bandOwner?{...scanOptions,owner:bandOwner}:scanOptions):findClaudeIdentity(n.nativeId,home,{...scanOptions,...scanOptions.claude}));
+  const wake=options.wake??((id:string)=>wakeCodexThread(id,scanOptions));
   // Unusable limits are rejected by the delivery's own re-check, which keeps the reservation retryable.
   const runtime=createNativeRuntime({...scanOptions,codexOwner:bandOwner,markUnapproved:async()=>{const current=await readLimits(limitsPath);return current.status==='ok'&&current.value.markUnapproved===true;},desktopVersion:scanOptions.version,home,codexIdentity:id=>codexIdentity(id,scanOptions)});
   const baseAdapter=options.adapter??runtime.adapter;
@@ -117,7 +118,7 @@ export function createAutomatic(options:AutomaticOptions={}){
     const unsupportedCaller=rejectedVersion(now.caller,currentLimits);if(unsupportedCaller){unsupportedVersion=unsupportedCaller.version;return unsupportedCaller.status;}
     if(!options.adapter&&target.provider==='claude'&&await (await import('./adapters/claude.ts')).findClaudeSession(target.nativeId,{home})===null)return 'not_found';
     const unsupported=await targetCompatibility(target,currentLimits);if(unsupported){unsupportedVersion=unsupported.version;return unsupported.status;}
-    const n=await inspect(target);if(!n)return 'target_offline';
+    let n=await inspect(target);if(!n&&target.provider==='codex'&&await wake(target.nativeId))n=await inspect(target);if(!n)return 'target_offline';
     if(n.nativeId!==ticket.nativeId||n.generation!==ticket.generation)return 'generation_mismatch';
     if(n.cwd!==ticket.cwd||await branch(n.cwd)!==ticket.branch)return 'workspace_changed';return null;
    };
@@ -155,6 +156,8 @@ export function createAutomatic(options:AutomaticOptions={}){
   const found=method==='band'?await related():options.compatTest&&!options.scan?await scanSessions(c.cwd,effective,{...scanOptions,expectedPairCaller:idOf(c),include:async n=>!await excluded(n,l)&&(!options.compatTarget||idOf(n)===options.compatTarget||idOf(n)===idOf(c))}):await scan(c.cwd,effective),visible:SessionIdentity[]=[];
   if(options.compatTest){if(found.codexWorkspace!=='observed'||found.codexTruncated)return {status:'compat_check_pair_required'};const pair=[];for(const n of found.sessions)if(!await policy(n,c,l,'read',s))pair.push(n);if(pair.length!==2||!pair.some(n=>idOf(n)===idOf(c)))return {status:'compat_check_pair_required'};}
   for(const foundSession of found.sessions){const n:SessionIdentity=rejectedVersion(foundSession,l)?{...foundSession,status:'unknown',reason:'unsupported_version'}:foundSession;if(idOf(n)!==idOf(c)&&!await policy(n,c,l,op,s)&&(!p.target||idOf(n)===p.target))visible.push(n);}
+  // A Codex conversation the caller names but Desktop has not loaded is opened, then observed again.
+  if(p.target&&method!=='band'&&visible.length===1&&visible[0].provider==='codex'&&visible[0].reason==='unreachable'&&await wake(visible[0].nativeId)){const current=await inspect(visible[0]);if(current)visible[0]={...current,provider:'codex'};}
   if(method==='sessions'||method==='band'){
    const seen=options.compatTest||p.peek===true||method==='band'?{disappeared:[],changes:new Map()}:await observeSeen(join(home,'.seamless','seen.json'),found.sessions,options.clock?.now()??Date.now());
    const expired:string[]=[];

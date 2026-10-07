@@ -108,6 +108,13 @@ export function createCodexOwnerLookup(home=homedir(),versionOf?:()=>Promise<str
  };
 }
 // Owner discovery never subscribes to a conversation snapshot.
+// Desktop answers initialize only while it runs; a link opened without it would launch the app.
+export async function codexReachable(home=homedir(),versionOf?:()=>Promise<string|null>,options:CompatibilityOptions={}):Promise<boolean>{
+ try{const version=await (versionOf??(await import('./adapters/codex.ts')).desktopVersion)();if(!isVersionAllowed('codex',version,options))return false;
+  const path=join(home,'.codex','ipc','ipc.sock');if(!await ownedSocket(path,false))return false;
+  const ipc=new IPC(path);try{const initial=await ipc.request('initialize',{clientType:'seamless-native-runtime'},'initializing-client',0,undefined,1500);return initial.resultType==='success';}finally{ipc.close();}
+ }catch{return false;}
+}
 export async function findCodexOwner(nativeId:string,home=homedir(),timeoutMs=8000,versionOf?:()=>Promise<string|null>,options:CompatibilityOptions={}):Promise<string|null>{
  let c:Awaited<ReturnType<typeof codexConnection>>|undefined;
  try{c=await codexConnection(nativeId,home,timeoutMs,versionOf,options);return c.owner;}catch{return null;}finally{c?.ipc.close();}

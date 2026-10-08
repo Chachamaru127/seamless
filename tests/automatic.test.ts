@@ -526,7 +526,9 @@ async function grokAutomatic(t:{after:(fn:()=>Promise<void>)=>void}){
 // Minimal TOML reading for the fixtures: tables and key = value lines, sorted by name. keep() picks the (table, key) pairs compared.
 function tomlPick(text:string,keep:(table:string,key:string)=>boolean):string{
  const tables:Record<string,Record<string,string>>={};let table='';
- for(const raw of text.split('\n')){const line=raw.trim();if(!line||line.startsWith('#'))continue;const head=/^\[+([^\]]+)\]+$/.exec(line);if(head){table=head[1].trim();continue;}const kv=/^([^=]+)=(.*)$/.exec(line);if(kv&&keep(table,kv[1].trim()))(tables[table]??={})[kv[1].trim()]=kv[2].trim();}
+ // A value that opens an array and does not close it on its line takes the following lines until the brackets balance.
+ const lines=text.split('\n');
+ for(let i=0;i<lines.length;i++){const line=lines[i].trim();if(!line||line.startsWith('#'))continue;const head=/^\[+([^\]]+)\]+$/.exec(line);if(head){table=head[1].trim();continue;}const kv=/^([^=]+)=(.*)$/.exec(line);if(!kv)continue;let value=kv[2].trim();const depth=(v:string)=>(v.match(/\[/g)?.length??0)-(v.match(/\]/g)?.length??0);while(depth(value)>0&&i+1<lines.length)value+=' '+lines[++i].trim();if(keep(table,kv[1].trim()))(tables[table]??={})[kv[1].trim()]=value;}
  return JSON.stringify(Object.keys(tables).sort().map(k=>[k,Object.keys(tables[k]).sort().map(x=>[x,tables[k][x]])]));
 }
 const isHooks=(table:string)=>table==='hooks'||table.startsWith('hooks.');
@@ -540,7 +542,8 @@ async function settingsHash(home:string){
 test('Grok targets: unreadable ledger workspace, unusable limits and out-of-scope names refuse list, read and send (9 cases)',async t=>{
  const g=await grokAutomatic(t),{issueTicket}=await import('../src/automatic.ts');
  const live='grok:'+g.ids.live,outside='grok:'+g.ids.outside,gone=join(g.f.work,'gone');
- const listed=async(target:string)=>(await g.automatic('sessions',{target,includeOffline:true})).candidates?.length??0;
+ // An empty list from a successful look, not an error status that also has no candidates.
+ const listed=async(target:string)=>{const r=await g.automatic('sessions',{target,includeOffline:true});assert.equal(r.status,'ok');return r.candidates.length;};
  // 1. The ledger row names a workspace that no longer exists.
  await g.f.ledger(g.f.rows.map(r=>r.session_id===g.ids.live?{...r,cwd:gone}:r));
  assert.equal(await listed(live),0);
@@ -598,7 +601,10 @@ test('a Grok message delivered through the real Claude socket path changes no ap
  const payload=JSON.parse(JSON.parse(frames[0]).message.content);
  assert.equal(payload.sender.id,'grok:'+ids.live);assert.ok(!('humanApproval' in payload)||payload.humanApproval===false);
  assert.equal(await settingsHash(f.home),before);
- // The comparison does notice a change inside a guarded Codex table.
+ // The comparison does notice a change inside a guarded Codex table, including inside a multi-line array.
+ await writeFile(join(f.home,'.codex','config.toml'),'approval_policy = "on-request"\n[sandbox_workspace_write]\nnetwork_access = false\nwritable_roots = [\n  "/a",\n]\n');const withArray=await settingsHash(f.home);
+ await writeFile(join(f.home,'.codex','config.toml'),'approval_policy = "on-request"\n[sandbox_workspace_write]\nnetwork_access = false\nwritable_roots = [\n  "/a",\n  "/b",\n]\n');
+ assert.notEqual(await settingsHash(f.home),withArray);
  await writeFile(join(f.home,'.codex','config.toml'),'approval_policy = "on-request"\n[sandbox_workspace_write]\nnetwork_access = true\n');
  assert.notEqual(await settingsHash(f.home),before);
 });

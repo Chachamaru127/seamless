@@ -45,6 +45,8 @@
 - `codesign -dv`: `Identifier=xai-grok-pager`、`Authority=Developer ID Application: X.AI Corporation (5Y6N3AJ54S)`、`TeamIdentifier=5Y6N3AJ54S`。
 - `~/.grok/bin/grok` は `~/.grok/downloads/grok-1.0.46-macos-aarch64` への symlink。
 - 結果: Yes。T0-3b と H8 は不要。T1-7 は TeamIdentifier `5Y6N3AJ54S` の確認で進める。
+- コードが使う照合の書式でも通ることを確かめた（2026-10-08 16:41 JST）: `codesign --verify --strict '-R=anchor apple generic and certificate leaf[subject.OU] = "5Y6N3AJ54S"' ~/.grok/downloads/grok-1.0.46-macos-aarch64` が exit 0。
+- 動いている Grok の画面の `ps -o comm=` は `grok`（2026-10-08 17:05 JST、擬似端末で起動して確認）。
 
 ### T0-4a と T0-6 茶々丸への質問（16:33 JST）
 
@@ -91,3 +93,5 @@
 - T1-2、T1-3、T1-7、T1-8（コミット 4020408）: `bash scripts/verify.sh` exit 0（node の試験 406 件、帯 87 件）。
 - 図面検査（実装）1 回目（Haiku 5.5、読み取り専用）: FAIL。指摘は (1) 試験の場面の不足（pid の使い回し、下請けの会話、二重の起動、版、帯の「動いている」）、(2) 台帳の行で `session_kind` を見ていない、(3) 計画に無い判定の幅（世代、生存の許容、二重の起動、版、50 件の上限）、(4) T1-8 の読めない作業場所、Codex の表の中の鍵、実際の配送の部品を通らない受信の比較、(5) 旧方式の名簿の経路、(6) updates.jsonl の実物の形が証拠に無い。すべて反映（下のコミット）。旧方式の名簿は `parseBootstrap` が grok を拒むので届かないことを試験にした。
 - updates.jsonl の実物の形（2026-10-08、`01a11a2d-…` の会話の 1 行から項目名だけ）: `{"timestamp": 秒, "method": "session/update", "params": {"sessionId", "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text"}}, "_meta": {"totalTokens", "eventId", "agentTimestampMs", "promptId", "streamStartMs", "turnStartMs", "updateType", "chunkId"}}}`。`tool_call` は `toolCallId`、`title`、`rawInput`、`_meta`。`turn_completed` は `prompt_id`、`stop_reason`、`usage`。読み取りは `params._meta` の `eventId`、`agentTimestampMs`、`promptId` だけを使う。
+- 図面検査（実装）2 回目（Haiku 5.5）: FAIL。重い 1 件: 画面なしの `grok -p` の中から seamless が呼ばれると、Grok の祖先が実行ファイルを確かめられずに飛ばされ、その上の Claude か Codex の会話が送り手と取り違えられる経路があった（試験も無かった）。→ ps の名前が `grok` の祖先は必ず実行ファイルを確かめる形に直し、試験を足した（判定を外すとその試験が落ちることを確認）。ほか: 名乗りの試験を「正しい Grok の祖先がいて、別の会話を名乗る」場面に、同じ会話の別 pid の行の場面、生存の窓の境界（120 秒前と 1 秒後）、一覧の拒否と空の一覧の区別、Codex の設定の複数行の配列、T0-3a の照合の書式、最終の検証の記録、を足した。
+- 上の反映の後（この節の次のコミット）: `bash scripts/verify.sh` exit 0（node の試験 417 件、帯 88 件）。

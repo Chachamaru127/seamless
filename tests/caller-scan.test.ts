@@ -273,3 +273,19 @@ test('naming a Grok conversation in the environment or the request does not make
  const env={GROK_SESSION_ID:g.ids.live,SEAMLESS_CALLER:'grok:'+g.ids.live};
  assert.deepEqual(await identifyCaller({kind:'mcp',meta:{'x-grok-session-id':g.ids.live}},{...g.options(),env}),{status:'caller_unobserved',reason:'native_ancestor_missing'});
 });
+test('a headless grok -p between seamless and a Codex ancestor stops the walk: the Codex conversation is not taken as the caller',async t=>{
+ const g=await grokCallerFixture(t),codex=join(g.f.home,'codex');await writeFile(codex,'fixture');
+ const options:CallerOptions={...g.options(),codexLocations:async()=>[codex],signature:async(_p,want)=>want,
+  process:async pid=>pid===99?{pid,ppid:600,executable:'node'}:pid===600?{pid,ppid:41,executable:null,command:'grok'}:pid===41?{pid,ppid:1,executable:codex}:null,
+  claude:{command:async(file,args)=>{if(file==='lsof'&&args.includes('600'))return `fcwd\ntDIR\nn${g.f.work}\nftxt\ntREG\nn${g.bin}`;throw new Error('none');}}};
+ assert.deepEqual(await identifyCaller({kind:'mcp',meta:{'x-codex-turn-metadata':{session_id:'codex-a'}}},options),{status:'caller_unobserved',reason:'grok_ledger_unobserved'});
+});
+test('a Grok caller is the conversation of its ledger row even when the environment or the request names another one',async t=>{
+ const g=await grokCallerFixture(t);
+ const result=await identifyCaller({kind:'mcp',meta:{'x-grok-session-id':g.ids.outside}},{...g.options(),env:{GROK_SESSION_ID:g.ids.outside}});
+ assert.equal(result.status,'ok');if(result.status==='ok')assert.equal(result.caller.nativeId,g.ids.live);
+});
+test('a ledger row for the same conversation under another pid does not make the Grok ancestor its caller',async t=>{
+ const g=await grokCallerFixture(t);await g.f.ledger([{...g.f.rows[0],pid:777}]);
+ assert.deepEqual(await identifyCaller({kind:'mcp'},g.options()),{status:'caller_unobserved',reason:'grok_ledger_unobserved'});
+});

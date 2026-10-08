@@ -69,3 +69,9 @@ test('a Grok version marked fix_required lists running conversations as unknown 
  const live=result.candidates.find((c:any)=>c.nativeId===ids.live);
  assert.ok(live);assert.equal(live.status,'unknown');assert.equal(live.reason,'unsupported_version');assert.equal(live.ticket,null);
 });
+test('a ledger row is live only while the process started between 120 seconds before and 1 second after the row',async()=>{
+ const {grokRowAlive}=await import('../src/adapters/grok.ts'),opened=Date.parse(OPENED),row={session_id:ids.live,pid:9,cwd:'/w',opened_at:OPENED};
+ const at=(ms:number)=>grokRowAlive(row,{processStart:async()=>opened+ms});
+ assert.deepEqual(await Promise.all([at(-120_000),at(-120_001),at(1000),at(1001),at(0)]),[true,false,true,false,true]);
+ assert.equal(await grokRowAlive(row,{processStart:async()=>null}),false);
+});

@@ -2,7 +2,7 @@ import {isClaudeVersionAllowed,isVersionAllowed} from './compat.ts';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {homedir} from 'node:os';
-import {join} from 'node:path';
+import {join,basename} from 'node:path';
 import {realpath,readdir,stat} from 'node:fs/promises';
 import {readPrivateJson,writePrivateJson} from './limits.ts';
 import {command,findClaudeIdentityByPid,claudeSessionRecord,claudeProcessMatches,processFiles,type ProcessFiles} from './native-runtime.ts';
@@ -122,7 +122,10 @@ export async function identifyCaller(context:{kind:'cli'|'mcp';meta?:unknown},op
     if(seen.has(current.ppid))break;seen.add(current.ppid);
     current=await inspect(current.ppid);if(!current)break;
     let files:ProcessFiles|undefined;
-    const candidate=every||await claudeSessionRecord(current.pid,home)!==null||typeof current.command==='string'&&await knownCodex(current.command,locations)||!!(await grokRows())?.some(r=>r.pid===current!.pid);
+    const candidate=every||await claudeSessionRecord(current.pid,home)!==null||typeof current.command==='string'&&await knownCodex(current.command,locations)||!!(await grokRows())?.some(r=>r.pid===current!.pid)||
+     // A Grok process names itself grok (measured 2026-10-08). Its executable is always checked, so a headless grok -p,
+     // which is not in the ledger, stops the walk instead of letting a Claude or Codex ancestor above it be taken as the caller.
+     typeof current.command==='string'&&/^grok(-\d+\.\d+\.\d+-macos-.*)?$/.test(basename(current.command));
     if(current.executable===null&&candidate){files=await processFiles(current.pid,run);current={...current,executable:files.executable};}
     if(current.executable===null){skipped=true;continue;}
     const n=await findClaudeIdentityByPid(current.pid,home,{...options,...options.claude},true,files);

@@ -10,7 +10,7 @@ Updated: 2026-10-08 JST
 | # | 作業 | 前提 | Done when |
 |---|---|---|---|
 | T0-1 | Grok の TUI を 1 つ起動し、`~/.grok/active_sessions.json` に行が増え、終了で消えることを見る。項目名と時刻の形を evidence.md に写す | なし | evidence.md に登録時と削除時の 2 回分の中身があり、項目ごとの値の形（会話 ID は UUID か、pid は整数か、作業場所は絶対パスか、開始時刻の書式）が書いてある |
-| T0-2 | 試験用の作業場所の `.grok/hooks/` に command 型の Stop hook を置き、合言葉（例: `SEAMLESS-T02-OK`）を含む `additionalContext` を返す。hook が受け取る標準入力の JSON（会話 ID、作業場所、理由）と、hook から見た TUI の pid の取り方も evidence.md に写す。Grok に「文脈にある合言葉を答えて」と頼む | H0 が可（evidence.md に記録） | updates.jsonl に hook_execution の行があり、その後の発話に合言葉がそのまま含まれ、evidence.md に hook の入力の項目名、pid の取り方、hook_execution の行に依頼 ID が入るか否かの確認結果（入る／入らない）、がある |
+| T0-2 | 試験用の作業場所の `.grok/hooks/` に command 型の Stop hook を置き、合言葉（例: `SEAMLESS-T02-OK`）を含む `additionalContext` を返す。hook が受け取る標準入力の JSON（会話 ID、作業場所、理由）と、hook から見た TUI の pid の取り方も evidence.md に写す。Grok に「文脈にある合言葉を答えて」と頼む | H0 が可（evidence.md に記録） | updates.jsonl に hook_execution の行があり、その後の発話に合言葉がそのまま含まれ、evidence.md に hook の入力の項目名（会話 ID、作業場所、Stop の理由が入っているか否か）、pid の取り方、hook_execution の行に依頼 ID が入るか否かの確認結果（入る／入らない）、がある |
 | T0-3a | `~/.grok/bin/grok` の署名を `codesign --verify` で確かめ、開発元の識別子を evidence.md に写す | なし | evidence.md に識別子の値がある（Yes）。確かめられなければ「確認不能」と書く（No） |
 | T0-3b | T0-3a が No のときだけ: 代わりの確かめ方（実行ファイルの実体の道とハッシュ）を spec の Q2 に戻し、T1-7 を着手禁止にする | T0-3a が No | spec の Q2 に代わりの確かめ方と「T1-7 は保留」の 1 行がある |
 | T0-4a | Grok Bot の webhook の事実（1 回の POST の上限、応答の形、順序、再送）を `.local/grok-consult/questions.md` に 4 問で書き、立花さんに「Grok に聞いて」と頼む | なし | questions.md に 4 問がある |
@@ -38,7 +38,7 @@ Updated: 2026-10-08 JST
 | T1-10d | 実会話: Grok CLI の会話から Codex の会話へ依頼を送り、Codex が返信する | T1-9 が可 | T1-10c と同じ条件（相手は Codex） |
 | T1-10e | Grok CLI の本文の読み取りを 1 回（AC9） | T1-9 が可 | 記録に読み取った発話の件数と時刻があり、思考の行が含まれていない |
 | T1-10f | Grok CLI との返信の受信後 10 分の実観測（依頼の件数が増えない。AC6） | T1-10a | 記録の 10 分の前後で依頼の件数が同じ |
-| T1-11 | 判定役（Codex Astra、読み取り専用）に P1 を判定させる | T1-10a〜f、TC-1、TC-3a | evidence.md に判定の結果（PASS か FAIL と指摘）がある |
+| T1-11 | 作った側と逆の家系の判定役（リーダーが作れば Codex Astra。読み取り専用）に P1 を判定させる | T1-10a〜f、TC-1、TC-3a | evidence.md に判定の結果（PASS か FAIL と指摘）がある |
 | T1-12 | T1-11 の指摘を直し、再判定を頼む（PASS まで繰り返す。1 回を 1 ターン） | T1-11 | evidence.md に PASS がある |
 
 ## P2 Grok Bot
@@ -47,7 +47,7 @@ Updated: 2026-10-08 JST
 |---|---|---|---|
 | T2-1 | 名簿（`~/.seamless/peers.json`。環境変数の名前だけ、送信鍵と受信鍵は別、鍵の版、失効、操作、範囲）の読み取りと検証（mode 0600、所有者、形、失効、操作のたびに読み直し）と試験 `tests/peers.test.ts`。一覧で read 不可と出る | なし | その試験で、壊れた名簿、所有者違い、失効した登録が拒否され、一覧に read 不可が出る |
 | T2-2 | 送る経路（webhook へ POST、送信鍵の署名ヘッダ、受理を HTTP の応答で記録、他の段は未確認、既存の予約で再送禁止、Q3 が未公開なら保守的な既定）と試験 `tests/webhook-send.test.ts` | T2-1、T0-4b | その試験で: 2xx → 受理; 2xx 以外 → 不受理; 切断 → status unknown で POST は 1 回; 同じ ID → duplicate; 同じ内容の別 ID → duplicate; 署名ヘッダが送信鍵で検証できる; 応答が順不同でも再送が無くても結果が同じ（順序と再送に依存しない）。7 場面が全部この結果 |
-| T2-3 | 受ける経路（`send --as <登録名>`、標準入力の署名済み封筒、HMAC の正規化した対象、時刻 ±5 分、nonce の原子的な記録、応答の切断後の再実行は duplicate）と AC5 の 5 種の拒否の試験 `tests/signed-inbound.test.ts` | T2-1、T0-6 が「既存の経路」 | その試験で: 鍵なし、別の登録の鍵、失効、再提示、宛先の差し替え、未登録の登録名、未来時刻（+6 分）、同時の 2 件のうち 2 件目、がそれぞれ拒否され、正しい封筒は受理され、受理後の応答の切断から同じ封筒を再実行すると duplicate で実行回数 1、同じ内容の別 ID の封筒も duplicate |
+| T2-3 | 受ける経路（`send --as <登録名>`、標準入力の署名済み封筒、HMAC の正規化した対象、時刻 ±5 分、nonce の原子的な記録、応答の切断後の再実行は duplicate）と AC5 の 5 種の拒否の試験 `tests/signed-inbound.test.ts` | T2-1、T0-6 が「既存の経路」 | その試験で: 鍵なし、別の登録の鍵、失効、再提示、宛先の差し替え、未登録の登録名、送信鍵で署名した封筒（鍵の取り違え）、未来時刻（+6 分）、同時の 2 件のうち 2 件目、がそれぞれ拒否され、正しい封筒は受理され、受理後の応答の切断から同じ封筒を再実行すると duplicate で実行回数 1、同じ内容の別 ID の封筒も duplicate |
 | T2-4 | 認可の範囲（`--as` の経路で、名簿の範囲と既存の制限の交差。未設定、壊れた設定、範囲外の名指しの拒否。既定の「制限なしなら許す」に合流しない）と、受信後に承認設定と sandbox が変わらない比較の試験（automatic.test.ts に追加） | T2-3 | その試験で、3 条件それぞれで一覧、読む、送るの 3 操作が拒否され（9 場面）、制限の設定が無い状態でも外の登録が許されず、受信の前後で `~/.claude/settings.json` の permissions と crossSessionInbound、`~/.codex/config.toml` の approval と sandbox の節、の hash が一致する |
 | T2-5 | 返信の対応と循環の試験（inbound.test.ts に追加） | T2-3 | その試験で: 未知の replyTo → invalid_reply; 同じ ID の再送 → duplicate; replyTo なし → 新しい依頼として受理され、その後に seamless が自動で送った返信は 0 件。3 場面が全部この結果 |
 | T2-6 | 鍵の値が記録、名簿、リポジトリに無いことの確認を verify.sh に足す（名簿に書いた環境変数の名前ごとに、値を環境から読んで、空なら失敗にし、空でなければ `printf '%s' "$値" | grep -rqF -f - ~/.seamless リポジトリ` のように標準入力で渡して、見つかれば失敗にする。値を引数、出力、ファイルのどこにも出さない） | T2-3 | verify.sh にその確認が入り、exit 0 |
@@ -58,7 +58,7 @@ Updated: 2026-10-08 JST
 | T2-8d | 実送信: 茶々丸 → Codex を 1 回 | 同上 | T2-8c と同じ条件（相手は Codex） |
 | T2-8e | 返信の受信後 10 分の実観測（依頼の件数が増えない） | T2-8c | 記録の 10 分の前後で依頼の件数が同じ |
 | T2-8f | T2-8a と T2-8b の依頼に茶々丸が返信した後、それぞれの依頼の返答完了だけが埋まり、配信確認と処理開始は「未確認」のまま、を記録（AC4） | T2-8a、T2-8b、T2-8c、T2-8d | 2 件の記録それぞれに、返答完了の時刻があり、配信確認と処理開始は「未確認」と記録されている |
-| T2-9 | 判定役（Codex Astra、読み取り専用）に P2 を判定させる | T2-8a〜f、TC-1、TC-3b | evidence.md に判定の結果がある |
+| T2-9 | 作った側と逆の家系の判定役（リーダーが作れば Codex Astra。読み取り専用）に P2 を判定させる | T2-8a〜f、TC-1、TC-3b | evidence.md に判定の結果がある |
 | T2-10 | T2-9 の指摘を直し、再判定を頼む（PASS まで。1 回を 1 ターン） | T2-9 | evidence.md に PASS がある |
 
 ## P3 Dot
@@ -76,6 +76,6 @@ Updated: 2026-10-08 JST
 |---|---|---|---|
 | TC-1 | 各工程の判定の前に、`bash scripts/verify.sh` を走らせ、既存の Claude⇄Codex の実往復を 1 回行い、壊れていないことを記録（AC10） | 各工程の実装の後 | evidence.md に、その工程の verify.sh の exit 0 と、往復の 4 段の時刻がある |
 | TC-4 | Claude⇄Codex の相手でも、返信の受信後 10 分で依頼が増えないことを 1 回実測（AC6 の「相手ごと」） | TC-1 | 記録の 10 分の前後で依頼の件数が同じ |
-| TC-2 | リポジトリのルートにある GOD_Plans.md（製品全体の台帳）と Plans.md（ルート）の状態の行を、その工程の判定 PASS のコミットの短い SHA に直す | 各工程の PASS | 2 つのファイルの状態の行に、その工程の判定 PASS のコミットの SHA がある |
+| TC-2 | リポジトリのルートにある GOD_Plans.md（製品全体の台帳）と Plans.md（ルート）の状態の行を、その工程の判定 PASS を受けた版のコミット（判定の直前のコミット）の短い SHA に直し、直した分を記録のコミットとして足す | 各工程の PASS | 2 つのファイルの状態の行に、判定 PASS を受けた版のコミットの SHA があり、evidence.md のその工程の判定の記録と同じ SHA である |
 | TC-3a | 封筒の印の試験（Grok の受信箱へ置く封筒）を既存の試験に足す | T1-5 | その試験で、markUnapproved が無い設定では humanApproval が無く、markUnapproved:true では humanApproval:false が付き、どちらでも humanApproval:true が無い |
 | TC-3b | 封筒の印の試験（webhook へ送る封筒と、署名済みの受信の封筒）を既存の試験に足す | T2-2、T2-3 | その試験で、2 経路とも、markUnapproved が無い設定では humanApproval が無く、markUnapproved:true では humanApproval:false が付き、どちらでも humanApproval:true が無い |

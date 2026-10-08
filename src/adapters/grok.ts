@@ -70,7 +70,7 @@ export function projectGrok(lines:string[],nativeId:string):ReadItem[]{
  for(const line of lines){
   if(!line.trim())continue;let j;try{j=JSON.parse(line);}catch{continue;}
   const p=j?.params,u=p?.update;if(!u||p.sessionId!==nativeId)continue;
-  const kind=u.sessionUpdate,meta=p._meta??j._meta??{},at=Number.isFinite(meta.agentTimestampMs)?new Date(meta.agentTimestampMs).toISOString():Number.isFinite(j.timestamp)?new Date(j.timestamp*1000).toISOString():null;
+  const kind=u.sessionUpdate,meta=p._meta??{},at=Number.isFinite(meta.agentTimestampMs)?new Date(meta.agentTimestampMs).toISOString():Number.isFinite(j.timestamp)?new Date(j.timestamp*1000).toISOString():null;
   const id=typeof meta.eventId==='string'?meta.eventId:`${nativeId}:${items.length}`;
   if(kind==='user_message_chunk'||kind==='agent_message_chunk'){
    const text=u.content?.type==='text'&&typeof u.content.text==='string'?u.content.text:null;if(text===null)continue;

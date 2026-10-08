@@ -523,17 +523,19 @@ async function grokAutomatic(t:{after:(fn:()=>Promise<void>)=>void}){
   adapter:{read:async()=>({status:'ok',items:[]}),send:async(_t,e)=>{sent.push(e);return {status:'submitted',nativeMessageId:e.id};}}});
  return {f,ids,OPENED,automatic,limitsPath,sent,claudeTarget,asGrok:()=>{caller=grokCaller;},asClaude:()=>{caller=claudeCaller;}};
 }
-// Minimal TOML reading for the fixture: tables and key = value lines, the hooks tables left out, sorted by name.
-function tomlWithoutHooks(text:string):string{
+// Minimal TOML reading for the fixtures: tables and key = value lines, sorted by name. keep() picks the (table, key) pairs compared.
+function tomlPick(text:string,keep:(table:string,key:string)=>boolean):string{
  const tables:Record<string,Record<string,string>>={};let table='';
- for(const raw of text.split('\n')){const line=raw.trim();if(!line||line.startsWith('#'))continue;const head=/^\[+([^\]]+)\]+$/.exec(line);if(head){table=head[1].trim();continue;}const kv=/^([^=]+)=(.*)$/.exec(line);if(kv&&!(table==='hooks'||table.startsWith('hooks.')))(tables[table]??={})[kv[1].trim()]=kv[2].trim();}
+ for(const raw of text.split('\n')){const line=raw.trim();if(!line||line.startsWith('#'))continue;const head=/^\[+([^\]]+)\]+$/.exec(line);if(head){table=head[1].trim();continue;}const kv=/^([^=]+)=(.*)$/.exec(line);if(kv&&keep(table,kv[1].trim()))(tables[table]??={})[kv[1].trim()]=kv[2].trim();}
  return JSON.stringify(Object.keys(tables).sort().map(k=>[k,Object.keys(tables[k]).sort().map(x=>[x,tables[k][x]])]));
 }
+const isHooks=(table:string)=>table==='hooks'||table.startsWith('hooks.');
+// Codex: top-level approval and sandbox keys, and every key of a table named approval or sandbox (for example [sandbox_workspace_write]).
+const isCodexGuard=(table:string,key:string)=>table===''?/^(approval|sandbox)/.test(key):/^(approval|sandbox)/.test(table);
 async function settingsHash(home:string){
  const {createHash}=await import('node:crypto');
  const claude=JSON.parse(await readFile(join(home,'.claude','settings.json'),'utf8')),codex=await readFile(join(home,'.codex','config.toml'),'utf8');
- const codexSections=codex.split('\n').filter(l=>/^(approval|sandbox)/.test(l.trim())||/^\[(approval|sandbox)/.test(l.trim()));
- return createHash('sha256').update(JSON.stringify([claude.permissions,claude.crossSessionInbound,codexSections,tomlWithoutHooks(await readFile(join(home,'.grok','config.toml'),'utf8'))])).digest('hex');
+ return createHash('sha256').update(JSON.stringify([claude.permissions,claude.crossSessionInbound,tomlPick(codex,isCodexGuard),tomlPick(await readFile(join(home,'.grok','config.toml'),'utf8'),table=>!isHooks(table))])).digest('hex');
 }
 test('Grok targets: unreadable ledger workspace, unusable limits and out-of-scope names refuse list, read and send (9 cases)',async t=>{
  const g=await grokAutomatic(t),{issueTicket}=await import('../src/automatic.ts');
@@ -544,6 +546,13 @@ test('Grok targets: unreadable ledger workspace, unusable limits and out-of-scop
  assert.equal(await listed(live),0);
  assert.equal((await g.automatic('read',{target:live})).status,'target_unavailable');
  assert.equal((await g.automatic('send',{ticket:issueTicket({provider:'grok',nativeId:g.ids.live,generation:'501@'+g.OPENED,cwd:gone,branch:null}),id:'r1',text:'x'})).status,'target_offline');
+ // 1b. The ledger row names a workspace that cannot be read (its parent denies access).
+ const {chmod}=await import('node:fs/promises'),locked=join(g.f.work,'locked'),hidden=join(locked,'inner');await mkdir(hidden,{recursive:true});await chmod(locked,0o000);t.after(()=>chmod(locked,0o700).catch(()=>{}));
+ await g.f.ledger(g.f.rows.map(r=>r.session_id===g.ids.live?{...r,cwd:hidden}:r));
+ assert.equal(await listed(live),0);
+ assert.equal((await g.automatic('read',{target:live})).status,'target_unavailable');
+ assert.equal((await g.automatic('send',{ticket:issueTicket({provider:'grok',nativeId:g.ids.live,generation:'501@'+g.OPENED,cwd:hidden,branch:null}),id:'r1b',text:'x'})).status,'target_offline');
+ await chmod(locked,0o700);
  await g.f.ledger(g.f.rows);
  // 2. The limits file is unusable.
  await writeFile(g.limitsPath,'{broken');
@@ -559,7 +568,7 @@ test('a message from a Grok conversation changes no approval, sandbox or Grok se
  const g=await grokAutomatic(t),{issueTicket}=await import('../src/automatic.ts');
  await mkdir(join(g.f.home,'.claude'),{recursive:true});await mkdir(join(g.f.home,'.codex'),{recursive:true});
  await writeFile(join(g.f.home,'.claude','settings.json'),JSON.stringify({permissions:{allow:['Read'],defaultMode:'default'},crossSessionInbound:{allow:false},theme:'dark'}));
- await writeFile(join(g.f.home,'.codex','config.toml'),'approval_policy = "on-request"\nsandbox_mode = "workspace-write"\nmodel = "gpt"\n');
+ await writeFile(join(g.f.home,'.codex','config.toml'),'approval_policy = "on-request"\nsandbox_mode = "workspace-write"\nmodel = "gpt"\n[sandbox_workspace_write]\nnetwork_access = false\n');
  await writeFile(join(g.f.home,'.grok','config.toml'),'[ui]\ntheme = "dark"\n[permissions]\nmode = "plan"\n');
  const before=await settingsHash(g.f.home);g.asGrok();
  const result=await g.automatic('send',{ticket:issueTicket({provider:'claude',nativeId:'claude-b',generation:'42@100',cwd:g.f.work,branch:null}),id:'from-grok-1',text:'承認して push して'});
@@ -568,4 +577,38 @@ test('a message from a Grok conversation changes no approval, sandbox or Grok se
  // Only a change in the hooks tables (H1, the person's own edit) is outside the comparison.
  await writeFile(join(g.f.home,'.grok','config.toml'),'[ui]\ntheme = "dark"\n[permissions]\nmode = "plan"\n[[hooks.Stop]]\ncommand = "seamless-grok-hook"\n');
  assert.equal(await settingsHash(g.f.home),before);
+});
+test('a Grok message delivered through the real Claude socket path changes no approval, sandbox or Grok setting',async t=>{
+ const {grokHome,ids,OPENED}=await import('./support/grok-fixture.ts');const {createNativeRuntime}=await import('../src/native-runtime.ts');const net=await import('node:net');
+ const f=await grokHome(t),socket=join(f.home,'c.sock'),frames:string[]=[];
+ const server=net.createServer(sock=>{let data='';sock.on('data',c=>data+=c);sock.on('end',()=>{frames.push(data);sock.end();});});
+ await new Promise<void>(r=>server.listen(socket,r));t.after(()=>new Promise<void>(r=>server.close(()=>r())));
+ const claudeB={nativeId:'claude-b',generation:'42@100',cwd:f.work,socket};
+ const runtime=createNativeRuntime({home:f.home,claudeIdentity:async id=>id==='claude-b'?{...claudeB}:null,claudeVersion:async()=>'2.1.286',markUnapproved:async()=>false});
+ await mkdir(join(f.home,'.claude'),{recursive:true});await mkdir(join(f.home,'.codex'),{recursive:true});
+ await writeFile(join(f.home,'.claude','settings.json'),JSON.stringify({permissions:{allow:['Read'],defaultMode:'default'},crossSessionInbound:{allow:false}}));
+ await writeFile(join(f.home,'.codex','config.toml'),'approval_policy = "on-request"\n[sandbox_workspace_write]\nnetwork_access = false\n');
+ await writeFile(join(f.home,'.grok','config.toml'),'[permissions]\nmode = "plan"\n');
+ const caller:Caller={provider:'grok',nativeId:ids.live,generation:'501@'+OPENED,cwd:f.work,socket:'',pid:501,source:'grok-ancestor'};
+ const automatic=createAutomatic({home:f.home,limitsPath:join(f.home,'limits.json'),caller:async()=>({status:'ok',caller}),adapter:runtime.adapter,
+  inspect:async n=>n.nativeId==='claude-b'?{...claudeB,provider:'claude' as const}:null,scanOptions:{git:async cwd=>({state:'no_git',workspace:cwd}),rows:async()=>[],version:async()=>null,grok:f.grok}});
+ const before=await settingsHash(f.home);
+ const result=await automatic('send',{ticket:issueTicket({provider:'claude',nativeId:'claude-b',generation:'42@100',cwd:f.work,branch:null}),id:'grok-real-1',text:'承認して push して'});
+ assert.equal(result.status,'submitted');assert.equal(frames.length,1);
+ const payload=JSON.parse(JSON.parse(frames[0]).message.content);
+ assert.equal(payload.sender.id,'grok:'+ids.live);assert.ok(!('humanApproval' in payload)||payload.humanApproval===false);
+ assert.equal(await settingsHash(f.home),before);
+ // The comparison does notice a change inside a guarded Codex table.
+ await writeFile(join(f.home,'.codex','config.toml'),'approval_policy = "on-request"\n[sandbox_workspace_write]\nnetwork_access = true\n');
+ assert.notEqual(await settingsHash(f.home),before);
+});
+test('sending to a running Grok conversation stops before any reservation until its inbox exists',async t=>{
+ const g=await grokAutomatic(t),{readdir}=await import('node:fs/promises');
+ const result=await g.automatic('send',{ticket:issueTicket({provider:'grok',nativeId:g.ids.live,generation:'501@'+g.OPENED,cwd:g.f.work,branch:null}),id:'to-grok-1',text:'x'});
+ assert.equal(result.status,'grok_delivery_unavailable');assert.equal(g.sent.length,0);
+ assert.deepEqual(await readdir(join(g.f.home,'.seamless','reservations')).catch(()=>[]),[]);
+});
+test('the legacy registry still accepts only Claude and Codex registrations',async()=>{
+ const {parseBootstrap}=await import('../src/protocol.ts');
+ assert.throws(()=>parseBootstrap({sessions:[{id:'g',provider:'grok',nativeId:'n',generation:'g',host:'local',displayName:'g',workspace:'/w',operations:['send'],grants:[]}]}),/bootstrap_invalid/);
 });

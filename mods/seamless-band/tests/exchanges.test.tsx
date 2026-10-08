@@ -485,6 +485,20 @@ test('a failed look leaves the peer without a running state', async ($, on) => {
   expect((await ui.find({ key: 'peer-0' }))?.text).toContain('状態は未確認')
 })
 
+test('a running Grok CLI peer is named Grok and said to be running in the open band', async ($, on) => {
+  const grok = { ...candidate([staged({ reached: 1000 })], 'grok', '01a11a77-0e68-7ce1-a4c6-9e88420abdb5'), status: 'online' }
+  const parsed = peersOf(JSON.stringify({ status: 'ok', candidates: [grok], inbound: [] }))
+  expect(parsed[0]!.provider).toBe('grok')
+  expect(parsed[0]!.online).toBe(true)
+  const { clock } = seat(on, { status: 'ok', candidates: [grok], inbound: [] })
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'toggle' })
+  const peer = (await ui.find({ key: 'peer-0' }))?.text ?? ''
+  expect(peer).toContain('動いている')
+  expect(peer).toContain('Grok 01a11a77')
+})
+
 test('a change seen by a later look is told as a toast; the first look tells nothing', async ($, on) => {
   const { clock, state } = seat(on, response([staged({ reached: 1000 })]))
   const toasts: string[] = []

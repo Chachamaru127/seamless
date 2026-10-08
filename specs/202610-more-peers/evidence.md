@@ -84,3 +84,10 @@
 - 重い 7 件: (1) Q5 が決まる前でも購読を作れ、他人の登録に自分の callback を結び付けられる → 購読の作成、更新、解除、配送先の確定を認証済みの接続に限り、Q5 まで入口は購読を受けない。(2) https と challenge だけでは内部への通信（SSRF）を防げない → 名前を引いた IP が公開の住所であることを確認と配送の両方で確かめ、その IP にだけ接続し、引き直さない。(3) 環境変数の固定の鍵では遠隔の呼び手を証明できない → Q5 の成立条件を「接続と登録が一対一で、別のアカウントや接続から借りられない」と定めた。(4) 登録と鍵の版だけでは同じ Dot の会話への配送を証明できない → 会話を識別できなければ「Dot の登録への配送」と表示し、既存の会話への配送と扱わない（別途の承認の対象）。(5) secret の保存と失効が購読の寿命と切り離されている → 登録、購読 ID、callback、secret の版、確認の状態、期限を 1 組で保ち、失効で止め、secret 更新で確かめ直す。(6) 送った直後の再起動で二重送信を防ぐ条件が無い → POST の前に開始を記録し、結果の無い送信は再起動後も再送しない。(7) replyTo だけで返答完了を立てられる → 依頼の宛先の登録と返信元の登録の一致を条件にした。
 - 中 5 件: (8) 非 2xx を一律に不受理とする根拠が無い → 4xx は不受理、5xx と時間切れと切断は受理未確認。(9) 購読の更新と解除の同一性 → 購読 ID と、同じ鍵の再購読は延長だけ。(10) 放棄と順序逆転 → 配送先なしの理由を依頼 ID ごとに残し、順序は保証しない。(11) 草稿の版と能力の宣言 → 参照した版を固定し、既存の入口が 2025-06-18 で Events を宣言しない試験、対応しない版を拒否する試験、実機での発見と購読の試験。(12) 検証の数え方 → redirect 先を含む宛先ごとの POST の回数、4 段それぞれの期待値、公開の検証用の値での署名の照合、承認が要る操作は承認待ちのまま。
 - 指摘の全文: scratchpad の astra-dot.out（この会話の間だけ残る）。
+
+## P1 の実装の記録（2026-10-08 JST）
+
+- T1-1（コミット 3667eb3）: `bash scripts/verify.sh` exit 0（node の試験 391 件、帯 87 件）。
+- T1-2、T1-3、T1-7、T1-8（コミット 4020408）: `bash scripts/verify.sh` exit 0（node の試験 406 件、帯 87 件）。
+- 図面検査（実装）1 回目（Haiku 5.5、読み取り専用）: FAIL。指摘は (1) 試験の場面の不足（pid の使い回し、下請けの会話、二重の起動、版、帯の「動いている」）、(2) 台帳の行で `session_kind` を見ていない、(3) 計画に無い判定の幅（世代、生存の許容、二重の起動、版、50 件の上限）、(4) T1-8 の読めない作業場所、Codex の表の中の鍵、実際の配送の部品を通らない受信の比較、(5) 旧方式の名簿の経路、(6) updates.jsonl の実物の形が証拠に無い。すべて反映（下のコミット）。旧方式の名簿は `parseBootstrap` が grok を拒むので届かないことを試験にした。
+- updates.jsonl の実物の形（2026-10-08、`01a11a2d-…` の会話の 1 行から項目名だけ）: `{"timestamp": 秒, "method": "session/update", "params": {"sessionId", "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text"}}, "_meta": {"totalTokens", "eventId", "agentTimestampMs", "promptId", "streamStartMs", "turnStartMs", "updateType", "chunkId"}}}`。`tool_call` は `toolCallId`、`title`、`rawInput`、`_meta`。`turn_completed` は `prompt_id`、`stop_reason`、`usage`。読み取りは `params._meta` の `eventId`、`agentTimestampMs`、`promptId` だけを使う。

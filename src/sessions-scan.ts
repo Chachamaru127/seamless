@@ -2,7 +2,7 @@ import {isVersionAllowed,type CompatibilityOptions} from './compat.ts';
 import {readdir,realpath} from 'node:fs/promises';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {join} from 'node:path';
+import {join,dirname} from 'node:path';
 import {homedir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {desktopVersion} from './adapters/codex.ts';
@@ -78,6 +78,8 @@ async function scanGrok(home:string,scope:AutoScope,within:(cwd:string)=>Promise
   const alive=[];for(const r of group)if(await g.grokRowAlive(r,gopts))alive.push(r);
   const r=alive[0]??group.at(-1)!;let cwd:string;try{cwd=await realpath(r.cwd);}catch{continue;}
   if(!await within(cwd))continue;
+  // Only TUI conversations: the summary must exist and carry no session_kind (headless and subagent runs do).
+  const dir=await g.findGrokSessionDir(id,home,cwd),summary=dir?await g.grokSummary(dirname(dir),id):null;if(!summary||summary.kind!==null)continue;
   const n:SessionIdentity={version:version||null,provider:'grok',nativeId:id,generation:g.grokGeneration(r),cwd,socket:'',pid:r.pid};
   if(alive.length===1&&!supported){n.status='unknown';n.reason='unsupported_version';}
   // Two live processes on one conversation: neither is the conversation the caller saw, so none is a destination.

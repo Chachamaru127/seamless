@@ -641,13 +641,13 @@ test('the open band shows a Grok request whose handing over is unknown as needin
 })
 test('a Grok request whose recipient conversation has ended says it will not arrive, in the steps and in the open band', async ($, on) => {
   const step = reachWord(staged({}, { inbox: 'orphaned', peerActiveAt: new Date(T - 600_000).toISOString() }), T)
-  expect(step.word).toBe('宛先の会話は終わった。この依頼は届かない')
+  expect(step.word).toBe('宛先の会話は台帳から消えている。このままでは届かない')
   expect(step.state).toBe('bad')
   const { clock } = seat(on, { status: 'ok', candidates: [{ ...candidate([staged({}, { inbox: 'orphaned' })], 'grok', '01a11a77-0e68-7ce1-a4c6-9e88420abdb5'), status: 'offline' }], inbound: [] })
   await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   const ui = await $.ui.mount(BAND)
   await ui.press({ key: 'toggle' })
   const text = (await ui.find({ key: 'peer-0' }))?.text ?? ''
-  expect(text).toContain('宛先の会話は終わった。この依頼は届かない')
+  expect(text).toContain('宛先の会話は台帳から消えている。このままでは届かない')
   expect(text).not.toContain('次の 1 手の後に届く')
 })

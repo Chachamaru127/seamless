@@ -27,7 +27,7 @@ export const UNKNOWN: { color: string; label: string } = { color: palette.muted,
 export const GROK_WAITING = '受理・未配信'
 export const GROK_IDLE = '相手は 5 分以上動いていない。次の 1 手の後に届く'
 export const GROK_UNKNOWN = '成否不明。立花さんの確認が要る'
-export const GROK_ORPHANED = '宛先の会話は終わった。この依頼は届かない'
+export const GROK_ORPHANED = '宛先の会話は台帳から消えている。このままでは届かない'
 export const companyName = (provider: Peer['provider']) => provider === 'claude' ? 'Claude' : provider === 'grok' ? 'Grok' : 'Codex'
 const object = (v: unknown): Record<string, unknown> => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('Invalid object')

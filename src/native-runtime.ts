@@ -178,7 +178,7 @@ export function createNativeRuntime(options:RuntimeOptions={}):{observer:Observe
   const state=(await (await import('./grok-inbox.ts')).stateOf(home,target.nativeId,sender,id))?.state??null;
   // An envelope still waiting for a generation whose process is gone will never be handed over: say so, not "after the next turn".
   // An unreadable ledger proves nothing, so the state stays as it is.
-  if(state==='pending'||state==='delivering'){const g=await grok(),rows=await g.readGrokLedger(home);if(rows!==null){let alive=false;for(const r of rows)if(r.session_id===target.nativeId&&g.grokGeneration(r)===target.generation&&await g.grokRowAlive(r,{...options,home}))alive=true;if(!alive)return 'orphaned';}}
+  if(state==='pending'){const g=await grok(),rows=await g.readGrokLedger(home);if(rows!==null){let alive=false;for(const r of rows)if(r.session_id===target.nativeId&&g.grokGeneration(r)===target.generation&&await g.grokRowAlive(r,{...options,home}))alive=true;if(!alive)return 'orphaned';}}
   return state;}catch{return null;}};adapter.received=async target=>{
  if(await checkCompatibility(target))return [];
  if(target.provider==='grok')return (await grok()).grokReceived(target,{...options,home});

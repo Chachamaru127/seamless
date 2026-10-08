@@ -4,15 +4,15 @@ import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 // The inbox for one Grok CLI conversation (specs/202610-more-peers Plans.md, "配送"). seamless puts an envelope in pending/;
-// the Stop hook of that conversation's own TUI moves one envelope per Stop through delivering/ and handed/ to delivered/.
+// the Stop hook of that conversation's own TUI moves one envelope per Stop through handed/ to delivered/.
 // Every move is a rename inside one directory tree, so an envelope is in exactly one state at a time.
 //   pending    accepted by seamless, not yet taken by a hook
-//   delivering taken by a hook (file name carries the hook's pid); back to pending if that hook died before handing it over
-//   handed     the hook is returning it to Grok; if the hook dies here the outcome is unknown, and it is never put back
+//   handed     taken by a hook (file name carries the hook's pid) and being returned to Grok; if that hook dies here the
+//              outcome is unknown, and it is never put back
 //   delivered  the hook wrote its receipt (request id, conversation, generation, hook time, Stop reason, hook name)
-//   failed     the envelope could not be read; the next one is delivered instead
+//   failed     the envelope could not be read, or is not this conversation's; the next one is delivered instead
 //   unknown    a handed envelope whose hook died; shown as "成否不明" and never delivered again
-export const STATES=['pending','delivering','handed','delivered','failed','unknown'] as const;
+export const STATES=['pending','handed','delivered','failed','unknown'] as const;
 export type InboxState=typeof STATES[number];
 export const MAX_GROK_TEXT=8000;
 export type GrokEnvelope={schemaVersion:1;id:string;sender:{id:string;nativeId:string;generation:string};recipient:{id:string;nativeId:string;generation:string};text:string;replyTo?:string;humanApproval?:false;acceptedAt:number};
@@ -46,7 +46,7 @@ export async function publishFile(path:string,contents:string):Promise<boolean>{
  catch(e){if((e as NodeJS.ErrnoException).code==='EEXIST')return false;throw e;}
  finally{await f?.close();await unlink(tmp).catch(()=>{});}
 }
-// The state that holds a request, or null. delivering/ and handed/ names carry the hook pid after the key.
+// The state that holds a request, or null. handed/ names carry the hook pid after the key.
 export async function stateOf(home:string,sessionId:string,sender:InboxSender,id:string):Promise<{state:InboxState;name:string}|null>{
  const dir=conversationDir(home,sessionId),key=keyOf(sender,id);
  for(const state of STATES){
@@ -84,14 +84,4 @@ export async function receipts(home:string,sessionId:string):Promise<GrokReceipt
  const out:GrokReceipt[]=[];
  for(const n of names){const r=await readJson(join(dir,n),validReceipt);if(r&&r.sessionId===sessionId)out.push(r);}
  return out.sort((a,b)=>a.hookAt-b.hookAt);
-}
-// Envelopes still waiting (pending, or taken but not handed over yet), and those whose outcome is unknown.
-export async function waiting(home:string,sessionId:string):Promise<{state:InboxState;envelope:GrokEnvelope|null;name:string}[]>{
- let dir:string;try{dir=conversationDir(home,sessionId);}catch{return [];}
- const out=[];
- for(const state of ['pending','delivering','handed','unknown'] as const){
-  let names:string[]=[];try{names=(await readdir(join(dir,state))).filter(n=>n.endsWith('.json')&&!n.endsWith('.tmp'));}catch{continue;}
-  for(const name of names)out.push({state,name,envelope:await readJson(join(dir,state,name),validEnvelope)});
- }
- return out;
 }

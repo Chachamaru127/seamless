@@ -69,3 +69,17 @@ test('an envelope waiting for a generation whose process is gone is orphaned; an
  await s.f.ledger([]);assert.equal(await state(),'orphaned');
  await s.f.ledger('{unreadable');assert.equal(await state(),'pending');
 });
+test('the adapter asks for authorization again right before the write: a refusal then puts nothing',async t=>{
+ const f=await grokHome(t);
+ const runtime=createNativeRuntime({home:f.home,processStart:f.processStart,grokVersion:async()=>'1.0.46'});
+ const target={id:'grok:'+ids.live,provider:'grok' as const,nativeId:ids.live,generation:GEN,host:'local' as const,displayName:'g',workspace:f.work,operations:['send' as const],grants:[]};
+ const envelope=(id:string)=>({id,sender:{id:'claude:claude-a',nativeId:'claude-a',generation:'41@100'},recipient:{id:'grok:'+ids.live,nativeId:ids.live,generation:GEN},text:'x'});
+ const pending=async()=>(await readdir(join(f.home,'.seamless','grok-inbox',ids.live,'pending')).catch(()=>[])).filter(n=>n.endsWith('.json'));
+ assert.equal((await runtime.adapter.send(target as any,envelope('a1'),async()=>false)).status,'rejected');assert.deepEqual(await pending(),[]);
+ assert.equal((await runtime.adapter.send(target as any,envelope('a2'),async()=>true)).status,'submitted');assert.equal((await pending()).length,1);
+});
+test('a request already in the inbox without a reservation is not put again and is reported unknown',async t=>{
+ const s=await setup(t);const {putEnvelope}=await import('../src/grok-inbox.ts');
+ await putEnvelope(s.f.home,{schemaVersion:1,id:'s9',sender:{id:'claude:claude-a',nativeId:'claude-a',generation:'41@100'},recipient:{id:'grok:'+ids.live,nativeId:ids.live,generation:GEN},text:'earlier',acceptedAt:1});
+ assert.equal((await s.send('s9')).status,'unknown');assert.equal((await s.pending()).length,1);
+});

@@ -46,17 +46,38 @@ test('two hooks running at once deliver the one envelope once',async t=>{
  const both=await Promise.all([runGrokHook(stop(),s.opts(7001,{alive:()=>true})),runGrokHook(stop(),s.opts(7002,{alive:()=>true}))]);
  assert.equal(both.filter(r=>r.delivered==='r5').length,1);assert.deepEqual(await s.ls('delivered'),[k('r5')+'.json']);assert.deepEqual(await s.ls('pending'),[]);
 });
-test('an envelope taken by a hook that died before handing it over goes back to pending',async t=>{
+test('an envelope taken by a hook that died before handing it over becomes unknown and never returns to pending',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r6'));
- await assert.rejects(runGrokHook(stop(),s.opts(7001,{dieAfter:'delivering'})));
- assert.deepEqual(await s.ls('delivering'),[`${k('r6')}.7001.json`]);
- // A hook of another process that opened the same conversation (pid 503, another generation) only recovers it: back in pending.
- await s.f.ledger([{session_id:ids.live,pid:503,cwd:s.f.work,opened_at:OPENED}]);
- const other=await runGrokHook(stop(),s.opts(7002,{alive:pid=>pid!==7001,ppid:503}));
- assert.equal(other.output,null);assert.deepEqual(await s.ls('delivering'),[]);assert.deepEqual(await s.ls('pending'),[k('r6')+'.json']);assert.deepEqual(await s.ls('unknown'),[]);
- // The conversation's own process then delivers it: it was never handed over, so this is the first delivery, not a resend.
- await s.f.ledger(s.f.rows);
- assert.equal((await runGrokHook(stop(),s.opts(7003,{alive:pid=>pid!==7001}))).delivered,'r6');
+ await assert.rejects(runGrokHook(stop(),s.opts(7001,{dieAfter:'taken'})));
+ assert.deepEqual(await s.ls('handed'),[`${k('r6')}.7001.json`]);assert.deepEqual(await s.ls('pending'),[]);
+ // It may or may not have reached Grok's context: the next hook says so, and nothing is handed over again.
+ const next=await runGrokHook(stop(),s.opts(7002,{alive:pid=>pid!==7001}));
+ assert.equal(next.output,null);assert.deepEqual(await s.ls('unknown'),[k('r6')+'.json']);assert.deepEqual(await s.ls('pending'),[]);assert.deepEqual(await s.ls('handed'),[]);
+});
+test('an envelope held by a hook that is still running is left where it is',async t=>{
+ const s=await setup(t);await putEnvelope(s.f.home,envelope('r6b'));
+ await assert.rejects(runGrokHook(stop(),s.opts(7001,{dieAfter:'taken'})));
+ const other=await runGrokHook(stop(),s.opts(7002,{alive:()=>true}));
+ assert.equal(other.output,null);assert.deepEqual(await s.ls('handed'),[`${k('r6b')}.7001.json`]);assert.deepEqual(await s.ls('unknown'),[]);assert.deepEqual(await s.ls('pending'),[]);
+});
+test('an envelope for another conversation, or whose name does not match its sender and id, goes to failed; the good one behind it is delivered',async t=>{
+ const s=await setup(t);
+ // Valid JSON, but addressed to another conversation while lying in this one's inbox.
+ const stray={...envelope('r10',GEN,1),recipient:{id:'grok:'+ids.stale,nativeId:ids.stale,generation:GEN}};
+ await writeFile(join(s.dir,'pending',k('r10')+'.json'),JSON.stringify(stray),{mode:0o600});
+ // Valid JSON for this conversation, under the name of another request.
+ await writeFile(join(s.dir,'pending',k('r11-name')+'.json'),JSON.stringify(envelope('r11',GEN,2)),{mode:0o600});
+ await putEnvelope(s.f.home,envelope('r12',GEN,3));
+ const r=await runGrokHook(stop(),s.opts(7001));
+ assert.equal(r.delivered,'r12');assert.deepEqual((await s.ls('failed')).sort(),[k('r10')+'.json',k('r11-name')+'.json'].sort());assert.deepEqual(await s.ls('pending'),[]);
+});
+test('a ledger row whose process started after the row (a reused pid) delivers nothing',async t=>{
+ const s=await setup(t);
+ // pid 502 now belongs to a process started an hour after the row was written: it is not the TUI that opened this conversation.
+ await s.f.ledger([{session_id:ids.live,pid:502,cwd:s.f.work,opened_at:OPENED}]);
+ await putEnvelope(s.f.home,envelope('r13','502@'+OPENED));
+ const r=await runGrokHook(stop(),s.opts(7001,{ppid:502}));
+ assert.equal(r.output,null);assert.equal(r.reason,'not_in_ledger');assert.deepEqual(await s.ls('pending'),[k('r13')+'.json']);
 });
 test('an envelope handed over by a hook that died before its receipt becomes unknown and never returns to pending',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r7'));

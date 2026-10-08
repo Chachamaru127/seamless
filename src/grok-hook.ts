@@ -12,7 +12,7 @@ export type HookOptions=GrokOptions&{
  pid?:number;ppid?:number;now?:()=>number;emit?:(text:string)=>void;
  alive?:(pid:number)=>boolean;hookName?:string|null;
  // Test faults: the hook dies right after taking the envelope, or right after handing it over.
- dieAfter?:'delivering'|'handed';
+ dieAfter?:'taken'|'handed';
 };
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function processAlive(pid:number){try{process.kill(pid,0);return true;}catch(e){return (e as NodeJS.ErrnoException).code==='EPERM';}}
@@ -26,14 +26,12 @@ export function renderEnvelope(e:GrokEnvelope):string{
   '--- 本文 ---',e.text,SEAMLESS_ENVELOPE_MARK,JSON.stringify(meta)].join('\n');
 }
 async function names(dir:string){try{return (await readdir(dir)).filter(n=>n.endsWith('.json')&&!n.endsWith('.tmp'));}catch{return [];}}
-// An envelope a dead hook took but never handed over goes back to pending; one it handed over is unknown and stays out.
+// An envelope a dead hook took may already be in Grok's context: its outcome is unknown, and it is never put back.
 async function recover(dir:string,self:number,alive:(pid:number)=>boolean){
- for(const [from,to] of [['delivering','pending'],['handed','unknown']] as const){
-  for(const name of await names(join(dir,from))){
-   const m=/^([0-9a-f]{64})\.(\d+)\.json$/.exec(name);if(!m)continue;
-   const pid=Number(m[2]);if(pid===self||alive(pid))continue;
-   await rename(join(dir,from,name),join(dir,to,m[1]+'.json')).catch(()=>{});
-  }
+ for(const name of await names(join(dir,'handed'))){
+  const m=/^([0-9a-f]{64})\.(\d+)\.json$/.exec(name);if(!m)continue;
+  const pid=Number(m[2]);if(pid===self||alive(pid))continue;
+  await rename(join(dir,'handed',name),join(dir,'unknown',m[1]+'.json')).catch(()=>{});
  }
 }
 export async function runGrokHook(input:any,o:HookOptions={}):Promise<{output:string|null;delivered?:string;reason:string}>{
@@ -49,7 +47,7 @@ export async function runGrokHook(input:any,o:HookOptions={}):Promise<{output:st
  if(!row||!await grokRowAlive(row,o))return {output:null,reason:'not_in_ledger'};
  const generation=grokGeneration(row);
  let dir:string;try{dir=conversationDir(home,sessionId);}catch{return {output:null,reason:'no_session'};}
- const pending=await names(join(dir,'pending'));if(!pending.length&&!(await names(join(dir,'delivering'))).length&&!(await names(join(dir,'handed'))).length)return {output:null,reason:'empty'};
+ if(!(await names(join(dir,'pending'))).length&&!(await names(join(dir,'handed'))).length)return {output:null,reason:'empty'};
  await recover(dir,self,alive);
  const queue:{name:string;envelope:GrokEnvelope|null}[]=[];
  for(const name of await names(join(dir,'pending')))queue.push({name,envelope:await readJson(join(dir,'pending',name),validEnvelope)});
@@ -60,11 +58,10 @@ export async function runGrokHook(input:any,o:HookOptions={}):Promise<{output:st
   if(!key||!envelope||envelope.recipient.nativeId!==sessionId||keyOf(envelope.sender,envelope.id)!==key){await rename(join(dir,'pending',name),join(dir,'failed',name)).catch(()=>{});continue;}
   // Addressed to another generation of this conversation (another process opened it): not ours to deliver.
   if(envelope.recipient.generation!==generation)continue;
-  const taken=join(dir,'delivering',`${key}.${self}.json`);
-  try{await rename(join(dir,'pending',name),taken);}catch{continue;}
-  if(o.dieAfter==='delivering')throw new Error('fault_after_delivering');
+  // Taking it is one rename: of hooks running at once, exactly one wins, and the name says which process holds it.
   const handed=join(dir,'handed',`${key}.${self}.json`);
-  await rename(taken,handed);
+  try{await rename(join(dir,'pending',name),handed);}catch{continue;}
+  if(o.dieAfter==='taken')throw new Error('fault_after_taken');
   const output=JSON.stringify({hookSpecificOutput:{hookEventName:'Stop',additionalContext:renderEnvelope(envelope)}});
   (o.emit??(text=>process.stdout.write(text)))(output);
   if(o.dieAfter==='handed')throw new Error('fault_after_handed');

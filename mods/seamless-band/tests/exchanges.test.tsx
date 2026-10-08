@@ -601,8 +601,9 @@ test('a Grok request without delivery confirmation says accepted, not delivered;
   expect(reachWord(waiting(6 * 60_000), T).word).toBe('受理・未配信（相手は 5 分以上動いていない。次の 1 手の後に届く）')
   expect(reachWord(waiting(6 * 60_000), T).state).toBe('now')
   expect(grokPeer(waiting(6 * 60_000), T).exchanges[0]!.label).toContain('受理・未配信')
-  // Being taken by the hook (delivering) is still waiting; without a clock no idle note is guessed.
-  expect(reachWord(staged({}, { inbox: 'delivering', peerActiveAt: new Date(T - 600_000).toISOString() })).word).toBe('受理・未配信')
+  // Without a clock, or without any record of the peer moving, no idle note is guessed.
+  expect(reachWord(staged({}, { inbox: 'pending', peerActiveAt: new Date(T - 600_000).toISOString() })).word).toBe('受理・未配信')
+  expect(reachWord(staged({}, { inbox: 'pending', peerActiveAt: null }), T).word).toBe('受理・未配信')
 })
 test('a Grok request whose handing over is unknown asks for the person to check, and a delivered one says delivered', () => {
   for (const inbox of ['handed', 'unknown']) {
@@ -632,6 +633,15 @@ for (const [minutes, idle] of [[6, true], [4, false]] as const) test(`the open b
   expect(text).toContain('受理・未配信')
   if (idle) expect(text).toContain('相手は 5 分以上動いていない。次の 1 手の後に届く')
   else expect(text).not.toContain('5 分以上')
+})
+test('the open band does not add the idle note when Grok\'s record has no time for the peer moving', async ($, on) => {
+  const { clock } = seat(on, { status: 'ok', candidates: [{ ...candidate([staged({}, { inbox: 'pending', peerActiveAt: null })], 'grok', '01a11a77-0e68-7ce1-a4c6-9e88420abdb5'), status: 'online' }], inbound: [] })
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'toggle' })
+  const text = (await ui.find({ key: 'peer-0' }))?.text ?? ''
+  expect(text).toContain('受理・未配信')
+  expect(text).not.toContain('5 分以上')
 })
 test('the open band shows a Grok request whose handing over is unknown as needing the person\'s check', async ($, on) => {
   const { clock } = seat(on, { status: 'ok', candidates: [{ ...candidate([staged({}, { inbox: 'unknown' })], 'grok', '01a11a77-0e68-7ce1-a4c6-9e88420abdb5'), status: 'online' }], inbound: [] })

@@ -62,7 +62,7 @@ function outbound(value: unknown, now?: number): Exchange {
   else if (observed.has('reached')) state = { color: palette.orange, label: '届いた · 未読' }
   else if (r.delivery === 'rejected') state = { color: palette.red, label: '届かなかった' }
   // A Grok CLI envelope is handed over only at the end of the peer's next turn: until then it waits, and is not said to be on its way.
-  const inbox = r.inbox === 'pending' || r.inbox === 'delivering' ? 'pending' as const : r.inbox === 'handed' || r.inbox === 'unknown' ? 'unknown' as const : r.inbox === 'orphaned' ? 'orphaned' as const : undefined
+  const inbox = r.inbox === 'pending' ? 'pending' as const : r.inbox === 'handed' || r.inbox === 'unknown' ? 'unknown' as const : r.inbox === 'orphaned' ? 'orphaned' as const : undefined
   const activeAt = timestamp(r.peerActiveAt)
   const idle = inbox === 'pending' && now !== undefined && activeAt !== null && now - activeAt >= 5 * 60_000
   if (!observed.has('reached') && !observed.has('processing') && !observed.has('replied') && r.delivery !== 'rejected') {

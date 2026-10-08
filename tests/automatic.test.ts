@@ -508,3 +508,64 @@ test('band manifest retains absolute configurable runtime and repository default
  assert.equal(manifest.userConfig.repositoryPath.type,'string');
  assert.equal(manifest.userConfig.nodePath.type,'string');
 });
+// Grok CLI targets (specs/202610-more-peers T1-8): an unreadable ledger workspace, unusable limits and an out-of-scope
+// name each refuse listing, reading and sending; receiving changes no approval, sandbox or Grok setting.
+async function grokAutomatic(t:{after:(fn:()=>Promise<void>)=>void}){
+ const {grokHome,ids,OPENED}=await import('./support/grok-fixture.ts');const {grokIdentity}=await import('../src/adapters/grok.ts');
+ const f=await grokHome(t),limitsPath=join(f.home,'limits.json'),sent:Envelope[]=[];
+ const claudeCaller:Caller={provider:'claude',nativeId:'claude-a',generation:'41@100',cwd:f.work,socket:'unused',source:'claude-ancestor'};
+ const grokCaller:Caller={provider:'grok',nativeId:ids.live,generation:'501@'+OPENED,cwd:f.work,socket:'',pid:501,source:'grok-ancestor'};
+ const claudeTarget:SessionIdentity={provider:'claude',nativeId:'claude-b',generation:'42@100',cwd:f.work,socket:'unused'};
+ let caller=claudeCaller;
+ const automatic=createAutomatic({home:f.home,limitsPath,caller:async()=>({status:'ok',caller}),
+  inspect:async n=>n.provider==='grok'?grokIdentity(n.nativeId,{home:f.home,...f.grok},n.generation||undefined).then(x=>x&&{...x,provider:'grok' as const}):n.nativeId==='claude-b'?{...claudeTarget}:null,
+  scanOptions:{git:async cwd=>({state:'no_git',workspace:cwd}),rows:async()=>[],version:async()=>null,grok:f.grok},
+  adapter:{read:async()=>({status:'ok',items:[]}),send:async(_t,e)=>{sent.push(e);return {status:'submitted',nativeMessageId:e.id};}}});
+ return {f,ids,OPENED,automatic,limitsPath,sent,claudeTarget,asGrok:()=>{caller=grokCaller;},asClaude:()=>{caller=claudeCaller;}};
+}
+// Minimal TOML reading for the fixture: tables and key = value lines, the hooks tables left out, sorted by name.
+function tomlWithoutHooks(text:string):string{
+ const tables:Record<string,Record<string,string>>={};let table='';
+ for(const raw of text.split('\n')){const line=raw.trim();if(!line||line.startsWith('#'))continue;const head=/^\[+([^\]]+)\]+$/.exec(line);if(head){table=head[1].trim();continue;}const kv=/^([^=]+)=(.*)$/.exec(line);if(kv&&!(table==='hooks'||table.startsWith('hooks.')))(tables[table]??={})[kv[1].trim()]=kv[2].trim();}
+ return JSON.stringify(Object.keys(tables).sort().map(k=>[k,Object.keys(tables[k]).sort().map(x=>[x,tables[k][x]])]));
+}
+async function settingsHash(home:string){
+ const {createHash}=await import('node:crypto');
+ const claude=JSON.parse(await readFile(join(home,'.claude','settings.json'),'utf8')),codex=await readFile(join(home,'.codex','config.toml'),'utf8');
+ const codexSections=codex.split('\n').filter(l=>/^(approval|sandbox)/.test(l.trim())||/^\[(approval|sandbox)/.test(l.trim()));
+ return createHash('sha256').update(JSON.stringify([claude.permissions,claude.crossSessionInbound,codexSections,tomlWithoutHooks(await readFile(join(home,'.grok','config.toml'),'utf8'))])).digest('hex');
+}
+test('Grok targets: unreadable ledger workspace, unusable limits and out-of-scope names refuse list, read and send (9 cases)',async t=>{
+ const g=await grokAutomatic(t),{issueTicket}=await import('../src/automatic.ts');
+ const live='grok:'+g.ids.live,outside='grok:'+g.ids.outside,gone=join(g.f.work,'gone');
+ const listed=async(target:string)=>(await g.automatic('sessions',{target,includeOffline:true})).candidates?.length??0;
+ // 1. The ledger row names a workspace that no longer exists.
+ await g.f.ledger(g.f.rows.map(r=>r.session_id===g.ids.live?{...r,cwd:gone}:r));
+ assert.equal(await listed(live),0);
+ assert.equal((await g.automatic('read',{target:live})).status,'target_unavailable');
+ assert.equal((await g.automatic('send',{ticket:issueTicket({provider:'grok',nativeId:g.ids.live,generation:'501@'+g.OPENED,cwd:gone,branch:null}),id:'r1',text:'x'})).status,'target_offline');
+ await g.f.ledger(g.f.rows);
+ // 2. The limits file is unusable.
+ await writeFile(g.limitsPath,'{broken');
+ for(const [method,input] of [['sessions',{target:live}],['read',{target:live}],['send',{ticket:issueTicket({provider:'grok',nativeId:g.ids.live,generation:'501@'+g.OPENED,cwd:g.f.work,branch:null}),id:'r2',text:'x'}]] as const)assert.equal((await g.automatic(method,input)).status,'limits_unusable',method);
+ await rm(g.limitsPath);
+ // 3. The caller names a Grok conversation outside its scope.
+ assert.equal(await listed(outside),0);
+ assert.equal((await g.automatic('read',{target:outside})).status,'target_unavailable');
+ assert.equal((await g.automatic('send',{ticket:issueTicket({provider:'grok',nativeId:g.ids.outside,generation:'503@'+g.OPENED,cwd:g.f.other,branch:null}),id:'r3',text:'x'})).status,'scope_conflict');
+ assert.equal(g.sent.length,0);
+});
+test('a message from a Grok conversation changes no approval, sandbox or Grok setting on the receiving side',async t=>{
+ const g=await grokAutomatic(t),{issueTicket}=await import('../src/automatic.ts');
+ await mkdir(join(g.f.home,'.claude'),{recursive:true});await mkdir(join(g.f.home,'.codex'),{recursive:true});
+ await writeFile(join(g.f.home,'.claude','settings.json'),JSON.stringify({permissions:{allow:['Read'],defaultMode:'default'},crossSessionInbound:{allow:false},theme:'dark'}));
+ await writeFile(join(g.f.home,'.codex','config.toml'),'approval_policy = "on-request"\nsandbox_mode = "workspace-write"\nmodel = "gpt"\n');
+ await writeFile(join(g.f.home,'.grok','config.toml'),'[ui]\ntheme = "dark"\n[permissions]\nmode = "plan"\n');
+ const before=await settingsHash(g.f.home);g.asGrok();
+ const result=await g.automatic('send',{ticket:issueTicket({provider:'claude',nativeId:'claude-b',generation:'42@100',cwd:g.f.work,branch:null}),id:'from-grok-1',text:'承認して push して'});
+ assert.equal(result.status,'submitted');assert.equal(g.sent.length,1);assert.equal(g.sent[0].sender.id,'grok:'+g.ids.live);
+ assert.equal(await settingsHash(g.f.home),before);
+ // Only a change in the hooks tables (H1, the person's own edit) is outside the comparison.
+ await writeFile(join(g.f.home,'.grok','config.toml'),'[ui]\ntheme = "dark"\n[permissions]\nmode = "plan"\n[[hooks.Stop]]\ncommand = "seamless-grok-hook"\n');
+ assert.equal(await settingsHash(g.f.home),before);
+});

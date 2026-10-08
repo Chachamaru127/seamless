@@ -238,3 +238,38 @@ for(const v of ['future','',null])test(`automatic native Codex caller ${v} is re
  assert.deepEqual(await automatic('sessions',{},context),{status:'unsupported_version',reason:v??'unknown',version:v??'unknown'});
  assert.equal(owners,0);assert.equal(scans,0);
 });
+// Grok CLI callers (specs/202610-more-peers T1-7): the Grok TUI ancestor's pid must be in Grok's ledger with a matching
+// start, the row's workspace must be the process's working directory, and the executable must carry X.AI's signature.
+async function grokCallerFixture(t:{after:(fn:()=>Promise<void>)=>void}){
+ const {grokHome,ids,OPENED}=await import('./support/grok-fixture.ts');
+ const f=await grokHome(t),bin=join(f.home,'.grok','bin','grok');await mkdir(join(f.home,'.grok','bin'),{recursive:true});await writeFile(bin,'fixture');
+ let cwdOf=async(_pid:number):Promise<string|null>=>f.work,team:string|null='5Y6N3AJ54S',grokExecutable=bin;
+ const options=():CallerOptions=>({home:f.home,pid:99,env:{},grok:f.grok,codexLocations:async()=>[],grokLocations:async()=>[bin],signature:async(_path,want)=>want===team?want:null,processCwd:pid=>cwdOf(pid),
+  process:async pid=>pid===99?{pid,ppid:501,executable:'node'}:pid===501?{pid,ppid:1,executable:grokExecutable}:null,claude:{command:async()=>{throw new Error('no claude');}}});
+ return {f,ids,OPENED,bin,options,setCwd:(fn:typeof cwdOf)=>{cwdOf=fn;},setTeam:(v:string|null)=>{team=v;},setExecutable:(v:string)=>{grokExecutable=v;}};
+}
+test('a Grok TUI ancestor in the ledger, in its own workspace and signed by X.AI, is the caller conversation',async t=>{
+ const g=await grokCallerFixture(t);const result=await identifyCaller({kind:'mcp'},g.options());
+ assert.equal(result.status,'ok');if(result.status!=='ok')return;
+ assert.equal(result.caller.provider,'grok');assert.equal(result.caller.nativeId,g.ids.live);assert.equal(result.caller.generation,'501@'+g.OPENED);assert.equal(result.caller.source,'grok-ancestor');assert.equal(result.caller.cwd,g.f.work);
+ // Confirmed again cheaply within the same call; a ledger that no longer names it falls back and fails.
+ assert.deepEqual(await identifyCaller({kind:'mcp'},{...g.options(),previous:result.caller}),result);
+ await g.f.ledger([]);assert.equal((await identifyCaller({kind:'mcp'},{...g.options(),previous:result.caller})).status,'caller_unobserved');
+});
+test('a Grok ancestor whose pid is not in the ledger is caller_unobserved',async t=>{
+ const g=await grokCallerFixture(t);await g.f.ledger(g.f.rows.map(r=>({...r,pid:r.pid+1000})));
+ assert.deepEqual(await identifyCaller({kind:'mcp'},g.options()),{status:'caller_unobserved',reason:'grok_ledger_unobserved'});
+});
+test('a Grok ancestor running in another workspace than its ledger row is caller_unobserved',async t=>{
+ const g=await grokCallerFixture(t);g.setCwd(async()=>g.f.other);
+ assert.deepEqual(await identifyCaller({kind:'mcp'},g.options()),{status:'caller_unobserved',reason:'caller_workspace_mismatch'});
+});
+test('a Grok ancestor without X.AI signature is caller_unobserved',async t=>{
+ const g=await grokCallerFixture(t);g.setTeam(null);
+ assert.deepEqual(await identifyCaller({kind:'mcp'},g.options()),{status:'caller_unobserved',reason:'signature_untrusted'});
+});
+test('naming a Grok conversation in the environment or the request does not make a caller',async t=>{
+ const g=await grokCallerFixture(t);g.setExecutable(join(g.f.home,'not-grok'));await writeFile(join(g.f.home,'not-grok'),'x');
+ const env={GROK_SESSION_ID:g.ids.live,SEAMLESS_CALLER:'grok:'+g.ids.live};
+ assert.deepEqual(await identifyCaller({kind:'mcp',meta:{'x-grok-session-id':g.ids.live}},{...g.options(),env}),{status:'caller_unobserved',reason:'native_ancestor_missing'});
+});

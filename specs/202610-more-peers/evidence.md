@@ -102,3 +102,11 @@
 - 最終: `bash scripts/verify.sh` exit 0（node の試験 424 件、帯 89 件）。P1 のうち T1-1、T1-2、T1-3、T1-7、T1-8 は Done。T1-4 以降は H0 待ち。P1 の完成の判定（T1-11）は実会話の後に別途行う。
 - 一覧の所要時間（2026-10-08 17:18 JST、このリーダーの会話から `node src/cli.ts sessions` を 2 回）: 1.05 秒、0.99 秒。止まっている Grok の会話の走査を足した後も、2026-10-07 の 1.5 秒より遅くなっていない。
 - 件数の訂正: P0〜P3 の 51 件のうち済みは 11 件（T0-1、T0-3a、T0-4a、T0-5、T1-1、T1-2、T1-3、T1-7、T1-8、T3-1、T3-2）。T0-3b は T0-3a が Yes なので不要。T0-6 は茶々丸の答え待ちで未達。
+
+## H0 と T3-3（2026-10-08 17:24 JST）
+
+- H0: 立花さん「A、やった」。ターミナルで `.local/grok-t02` の Grok を開き `/hooks-trust` を実行した。Grok の表示は「Trusted: /Users/tachibanashuuta/LocalWork/Code/seamless」。
+- 計画との違い: Grok は git のリポジトリの根元をまとめて信頼する。判断材料に書いた「その場所だけ」ではなく、seamless のリポジトリ全体（`.claude/worktrees` の下の作業場所を含む）が信頼された（`~/.grok/trusted_folders.toml` の行 `[folders."/Users/tachibanashuuta/LocalWork/Code/seamless"]`、decided_at 1791447863）。試験用の場所をリポジトリの中に置いた私の設計の誤り。
+- 影響の確認（17:26 JST）: リポジトリの中で Grok が読む hook の置き場所（`.grok/hooks/*.json`、`.claude/settings.json` と `settings.local.json` の hooks、`.cursor/hooks.json`）のうち、中身があるのは試験用の `.local/grok-t02/.grok/hooks/seamless-t02.json` だけ。`.claude/settings.local.json` は permissions だけで hooks は無い。`.mcp.json`、AGENTS.md、`.claude/skills` はリポジトリの根元に無い。worktree の `.claude/settings*.json` にも hooks は無い。
+- 推奨（立花さんの判断）: T0-2 の後は、リポジトリの信頼を外す。H1 は信頼の要らない `~/.grok/hooks/*.json`（Grok の文書で常に信頼）か `~/.grok/config.toml` で入れるので、seamless のリポジトリの信頼は要らない。
+- T3-3: 立花さん「B、承認する」。Dot の受け入れ条件 AC11a〜c を承認。実装は Q5（Tunnel 越しの呼び手の鍵）が決まるまで始めない。

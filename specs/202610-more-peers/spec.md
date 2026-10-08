@@ -1,6 +1,6 @@
 # seamless を Grok CLI、Grok Bot、ChatGPT Dot へ広げる
 
-Status: 承認 1 回目済み（2026-10-08 立花さん「承認。B は推奨で」）。Plans.md と tasks.md は承認 2 回目済み（2026-10-08）。実装中
+Status: 承認 1 回目済み（2026-10-08 立花さん「承認。B は推奨で」）。Plans.md と tasks.md は承認 2 回目済み（2026-10-08）。実装中。Dot の受け入れ条件 AC11a〜c は別途の承認済み（2026-10-08 立花さん「B、承認する」。実装は Q5 が決まるまで始めない）
 Updated: 2026-10-08 JST
 依頼: 立花さん（2026-10-08）「シームレスを Grok CLI、Grok Bot、ChatGPT Dot とも連携できるようにしたい。Grok CLI はあえて止めているだけ。Grok Bot はハンドオフを確認して検証。Dot は確認中なので最後」。Grok Bot 側のハンドオフは `.local/grok-consult/handoff-2026-10-08.md`（茶々丸、2026-10-08 10:27 と 10:35）。
 

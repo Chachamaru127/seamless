@@ -1276,7 +1276,7 @@ async function refresh($: EngineInterface, state: ExchangeLive): Promise<void> {
     const result = await $.process.run([state.node, `${root}/src/cli.ts`, 'band'], { timeoutMs: 20_000 })
     if (generation !== state.generation) return
     if (result.exitCode !== 0) throw new Error(`終了コード ${result.exitCode}${result.stderr.trim() === '' ? '' : `: ${result.stderr.trim().split('\n')[0]}`}`)
-    const peers = settle(peersOf(result.stdout), state.furthest)
+    const peers = settle(peersOf(result.stdout, await $.clock.now()), state.furthest)
     // Each change after the first look is told once, as a toast: a request taken up, answered, refused, or a message received.
     const notices = noticesOf(peers, state.told, state.seeded)
     state.peers = peers

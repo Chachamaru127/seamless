@@ -10,6 +10,9 @@ export type Exchange = {
   /** When the request was seen to reach the peer, to be taken up, and answered; null while not seen. */
   times: { reached: number | null; processing: number | null; replied: number | null }
   rejected: boolean
+  /** Grok CLI only: the envelope waits in the inbox (pending) or its handing over is unknown; idle when the peer has not moved for 5 minutes. */
+  inbox?: 'pending' | 'unknown'
+  idle?: boolean
 }
 export type Peer = {
   provider: 'claude' | 'codex' | 'grok'
@@ -21,6 +24,9 @@ export type Peer = {
   exchanges: Exchange[]
 }
 export const UNKNOWN = { color: palette.muted, label: '未確認' }
+export const GROK_WAITING = '受理・未配信'
+export const GROK_IDLE = '相手は 5 分以上動いていない。次の 1 手の後に届く'
+export const GROK_UNKNOWN = '成否不明。立花さんの確認が要る'
 export const companyName = (provider: Peer['provider']) => provider === 'claude' ? 'Claude' : provider === 'grok' ? 'Grok' : 'Codex'
 const object = (v: unknown): Record<string, unknown> => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('Invalid object')
@@ -40,7 +46,7 @@ const timestamp = (v: unknown): number | null => {
   return Number.isFinite(ms) ? ms : null
 }
 
-function outbound(value: unknown): Exchange {
+function outbound(value: unknown, now?: number): Exchange {
   const r = object(value)
   const seenAt = new Map<string, number | null>()
   for (const value of array(r.stages ?? [])) {
@@ -54,8 +60,17 @@ function outbound(value: unknown): Exchange {
   if (observed.has('processing') || observed.has('replied')) state = { color: palette.green, label: observed.has('replied') ? '既読 · 返信あり' : '既読' }
   else if (observed.has('reached')) state = { color: palette.orange, label: '届いた · 未読' }
   else if (r.delivery === 'rejected') state = { color: palette.red, label: '届かなかった' }
+  // A Grok CLI envelope is handed over only at the end of the peer's next turn: until then it waits, and is not said to be on its way.
+  const inbox = r.inbox === 'pending' || r.inbox === 'delivering' ? 'pending' as const : r.inbox === 'handed' || r.inbox === 'unknown' ? 'unknown' as const : undefined
+  const activeAt = timestamp(r.peerActiveAt)
+  const idle = inbox === 'pending' && now !== undefined && activeAt !== null && now - activeAt >= 5 * 60_000
+  if (!observed.has('reached') && !observed.has('processing') && !observed.has('replied') && r.delivery !== 'rejected') {
+    if (inbox === 'unknown') state = { color: palette.orange, label: GROK_UNKNOWN }
+    else if (inbox === 'pending') state = { color: palette.muted, label: idle ? `${GROK_WAITING} · ${GROK_IDLE}` : GROK_WAITING }
+  }
   return { id: string(r.id), direction: 'outbound', at: timestamp(r.at), ...state,
-    times: { reached: when('reached'), processing: when('processing'), replied: when('replied') }, rejected: state.color === palette.red }
+    times: { reached: when('reached'), processing: when('processing'), replied: when('replied') }, rejected: state.color === palette.red,
+    ...(inbox ? { inbox } : {}), ...(idle ? { idle } : {}) }
 }
 
 /** Whether a peer runs: online, or a status that says it does not; unknown and missing say nothing. */
@@ -63,7 +78,7 @@ const onlineOf = (status: unknown): boolean | null =>
   status === 'online' ? true : typeof status === 'string' && status !== 'unknown' ? false : null
 
 /** Parse only status metadata; do not retain the response's tickets or other fields. */
-export function peersOf(json: string): Peer[] {
+export function peersOf(json: string, now?: number): Peer[] {
   const data = object(JSON.parse(json))
   if (data.status !== 'ok') throw new Error('Query failed')
   const peers: Peer[] = []
@@ -71,7 +86,7 @@ export function peersOf(json: string): Peer[] {
   for (const c of candidates) {
     if (c.provider !== 'claude' && c.provider !== 'codex' && c.provider !== 'grok') continue
     peers.push({ provider: c.provider, nativeId: string(c.nativeId), generation: string(c.generation), cwd: string(c.cwd),
-      online: onlineOf(c.status), exchanges: array(c.requests).map(outbound) })
+      online: onlineOf(c.status), exchanges: array(c.requests).map(r => outbound(r, now)) })
   }
   for (const value of array(data.inbound)) {
     const r = object(value), from = object(r.from)
@@ -225,6 +240,8 @@ export function stepsOf(peer: Peer, exchange: Exchange, readSinceMs: number | nu
   return [
     step('送った', exchange.at, true, false),
     reached !== null || isRead ? step('届いた', reached, true, false)
+      : exchange.inbox === 'unknown' ? { word: GROK_UNKNOWN, at: null, state: 'bad' }
+      : exchange.inbox === 'pending' ? { word: exchange.idle ? `${GROK_WAITING}（${GROK_IDLE}）` : GROK_WAITING, at: null, state: 'now' }
       : { word: exchange.color === UNKNOWN.color ? '届いたかは未確認' : '届く', at: null, state: 'now' },
     replied !== null ? step('読んだ', processing, true, false) : processing !== null ? { word: '読んでいる', at: processing, state: 'now' } : step('読む', null, false, reached !== null && !isRead),
     step('返信', replied, replied !== null, false),

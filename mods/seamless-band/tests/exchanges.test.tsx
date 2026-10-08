@@ -589,3 +589,34 @@ test('a peer is named by its conversation: the folder, or the repository and wor
   expect(peerName(peer('/Users/t/Code/seamless/.claude/worktrees/hello-6d7bef'))).toBe('seamless · hello-6d7bef')
   expect(peerName(peer(''))).toBe('作業場所は未確認')
 })
+
+// Grok CLI (specs/202610-more-peers T1-6b): an envelope waiting in the inbox is said to be accepted and not delivered,
+// with a note when the peer has not moved for 5 minutes; one whose handing over is unknown asks for the person's check.
+const grokPeer = (request: unknown, now?: number) => peersOf(JSON.stringify({ status: 'ok', candidates: [{ ...candidate([request], 'grok', '01a11a77-0e68-7ce1-a4c6-9e88420abdb5'), status: 'online' }], inbound: [] }), now)[0]!
+const reachWord = (request: unknown, now?: number) => { const p = grokPeer(request, now); return stepsOf(p, p.exchanges[0]!, null)[1]! }
+test('a Grok request without delivery confirmation says accepted, not delivered; the idle note comes only after 5 minutes', () => {
+  const waiting = (activeAgoMs: number) => staged({}, { inbox: 'pending', peerActiveAt: new Date(T - activeAgoMs).toISOString() })
+  expect(reachWord(waiting(4 * 60_000), T).word).toBe('受理・未配信')
+  expect(reachWord(waiting(6 * 60_000), T).word).toBe('受理・未配信（相手は 5 分以上動いていない。次の 1 手の後に届く）')
+  expect(reachWord(waiting(6 * 60_000), T).state).toBe('now')
+  expect(grokPeer(waiting(6 * 60_000), T).exchanges[0]!.label).toContain('受理・未配信')
+  // Being taken by the hook (delivering) is still waiting; without a clock no idle note is guessed.
+  expect(reachWord(staged({}, { inbox: 'delivering', peerActiveAt: new Date(T - 600_000).toISOString() })).word).toBe('受理・未配信')
+})
+test('a Grok request whose handing over is unknown asks for the person to check, and a delivered one says delivered', () => {
+  for (const inbox of ['handed', 'unknown']) {
+    const step = reachWord(staged({}, { inbox }))
+    expect(step.word).toBe('成否不明。立花さんの確認が要る')
+    expect(step.state).toBe('bad')
+  }
+  expect(reachWord(staged({ reached: 1000 }, { inbox: 'delivered' })).word).toBe('届いた')
+  // A Claude or Codex request has no inbox and keeps its words.
+  expect(stepsOf(peers([staged({})])[0]!, peers([staged({})])[0]!.exchanges[0]!, null)[1]!.word).not.toContain('受理・未配信')
+})
+test('the open band shows a waiting Grok request as accepted and not delivered', async ($, on) => {
+  const { clock } = seat(on, { status: 'ok', candidates: [{ ...candidate([staged({}, { inbox: 'pending' })], 'grok', '01a11a77-0e68-7ce1-a4c6-9e88420abdb5'), status: 'online' }], inbound: [] })
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'toggle' })
+  expect((await ui.find({ key: 'peer-0' }))?.text ?? '').toContain('受理・未配信')
+})

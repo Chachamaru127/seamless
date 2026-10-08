@@ -121,3 +121,11 @@
 - updates.jsonl の hook_execution の行: `event_name: "stop"`、`runs[]` に hook ごとの `name`（例 `project/seamless-t02:stop[0].hooks[0]`）と `status.status`（`success` か `failed`）と `elapsed_ms`、`_meta` に `eventId` と `agentTimestampMs`（promptId は無い）。依頼 ID は入らない。hook の識別だけ入る（T1-6 の 7 場面目を足す）。続きの回でも同じ hook の行がもう 1 件できる。
 - 時刻の順: hook が書いた記録 08:29:01.653Z、その hook_execution の行の agentTimestampMs 08:29:01.748Z（hook の記録の後に行ができる）。
 - 計画への反映: 配信確認は「受領記録の時刻以降で、同じ会話の次の利用者の発話より前にある、seamless の hook の名前を含み status が success の hook_execution の行のうち最初の 1 件」で結ぶ（続きの回の行を数えない）。Plans.md の「(Stop、completed)」は実物の `stop` と `success` に直した。
+
+### T1-4、T1-5、T1-6、T1-6b、TC-3a（2026-10-08 JST）
+
+- 受信箱 `src/grok-inbox.ts`（`~/.seamless/grok-inbox/<会話 ID>/{pending,delivering,handed,delivered,failed,unknown}/`、ディレクトリは 0700、ファイルは 0600、名前は依頼 ID の SHA-256）。hook `src/grok-hook.ts`（Grok が `node <道>/src/grok-hook.ts` で起動する入口と、試験から呼ぶ関数）。送る経路は配送の部品（native-runtime の adapter.send）から受信箱へ置く。段の観測は status.ts の Grok の分岐と adapters/grok.ts の readGrokStructure。帯は exchanges.ts の「受理・未配信」「相手は 5 分以上動いていない。次の 1 手の後に届く」「成否不明。立花さんの確認が要る」。
+- 試験: tests/grok-hook.test.ts（7 場面と、相手の会話でない hook、実際に `node src/grok-hook.ts` を起動する場面。9 件）、tests/grok-send.test.ts（5 場面と封筒の印 2 件。6 件）、tests/grok-status.test.ts（6 場面、hook の名前が違う 7 場面目、続きの回の Stop を数えない場面、ファイルから読む場面、返信の後 10 分。9 件）、帯の試験 3 件。
+- `bash scripts/verify.sh` exit 0（node の試験 448 件、帯 92 件）。
+- 文言の訂正: T1-5 の「同じ ID → duplicate」は、実際には前の結果を返して置き直さない（Claude と Codex と同じ）。同じ内容の別 ID が duplicate になるのは前の依頼が成否不明か処理中の間だけ（予約の claim の既存の仕組み）。tasks.md と Plans.md を実際の動きに合わせた。
+- まだ確かめていないこと: Grok が seamless の MCP で send したときの道具の呼び出しの記録の名前（readGrokSentIds の照合）。実会話 T1-10c で確かめる。それまで Grok からの依頼は「送り主は未確認」と出ることがある。

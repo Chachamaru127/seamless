@@ -608,11 +608,12 @@ test('a Grok message delivered through the real Claude socket path changes no ap
  await writeFile(join(f.home,'.codex','config.toml'),'approval_policy = "on-request"\n[sandbox_workspace_write]\nnetwork_access = true\n');
  assert.notEqual(await settingsHash(f.home),before);
 });
-test('sending to a running Grok conversation stops before any reservation until its inbox exists',async t=>{
+test('a send to a running Grok conversation goes through the delivery with one reservation (T1-5); a text over 8,000 characters reserves nothing',async t=>{
  const g=await grokAutomatic(t),{readdir}=await import('node:fs/promises');
- const result=await g.automatic('send',{ticket:issueTicket({provider:'grok',nativeId:g.ids.live,generation:'501@'+g.OPENED,cwd:g.f.work,branch:null}),id:'to-grok-1',text:'x'});
- assert.equal(result.status,'grok_delivery_unavailable');assert.equal(g.sent.length,0);
- assert.deepEqual(await readdir(join(g.f.home,'.seamless','reservations')).catch(()=>[]),[]);
+ const ticket=issueTicket({provider:'grok',nativeId:g.ids.live,generation:'501@'+g.OPENED,cwd:g.f.work,branch:null});
+ const reserved=async()=>(await readdir(join(g.f.home,'.seamless','reservations')).catch(()=>[])).filter(n=>/^[0-9a-f]{64}\.json$/.test(n)).length;
+ assert.equal((await g.automatic('send',{ticket,id:'to-grok-long',text:'あ'.repeat(8001)})).status,'text_too_long');assert.equal(await reserved(),0);assert.equal(g.sent.length,0);
+ assert.equal((await g.automatic('send',{ticket,id:'to-grok-1',text:'x'})).status,'submitted');assert.equal(g.sent.length,1);assert.equal(g.sent[0].recipient.generation,'501@'+g.OPENED);assert.equal(await reserved(),1);
 });
 test('the legacy registry still accepts only Claude and Codex registrations',async()=>{
  const {parseBootstrap}=await import('../src/protocol.ts');

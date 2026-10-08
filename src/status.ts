@@ -1,7 +1,7 @@
 import {ContractError,type Registration} from './protocol.ts';
 import {requests,DAY,type RequestRecord,type RequestParty} from './request-store.ts';
 import type {NativeAdapter} from './delivery.ts';
-export type StructureItem={id:string;type:string;at:string|null;payloadSha256?:string;turnId?:string;position?:number;parentUuid?:string|null;peer?:{id:string;replyTo?:string;sender?:{provider:string;nativeId:string}}};
+export type StructureItem={id:string;type:string;at:string|null;payloadSha256?:string;turnId?:string;position?:number;parentUuid?:string|null;generation?:string;hookName?:string|null;hooks?:string[];peer?:{id:string;replyTo?:string;sender?:{provider:string;nativeId:string}}};
 export type Stage={stage:'accepted'|'reached'|'processing'|'replied'|'unknown';status:'observed'|'unobserved';evidence:string[];at:string|null};
 export type StatusClock={now:()=>number;sleep:(ms:number)=>Promise<void>};
 const clock:StatusClock={now:Date.now,sleep:ms=>new Promise(resolve=>setTimeout(resolve,ms))};
@@ -12,7 +12,23 @@ export function stages(record:RequestRecord,destination:StructureItem[],source:S
  const mark=(stage:Stage['stage'],evidence:string[],at:string|null=observedAt)=>{Object.assign(result.find(s=>s.stage===stage)!,{status:'observed',evidence,at:at??observedAt});};
  if(record.status==='submitted')mark('accepted',['reservation:submitted'],new Date(record.at).toISOString());
  if(['unknown','pending'].includes(record.status))mark('unknown',['reservation:'+record.status]);
- const dest=destination.slice(-200),src=source.slice(-200),peers=dest.filter(n=>n.type!=='enqueue'&&n.peer?.id===record.id&&n.peer.sender?.provider===record.sender.provider&&n.peer.sender.nativeId===record.sender.nativeId);
+ const dest=destination.slice(-200),src=source.slice(-200);
+ // Grok CLI (specs/202610-more-peers Plans.md, "配信確認"): reached needs both the hook's receipt for this request and
+ // generation, and Grok's own record of that hook succeeding at the Stop right after it (before the next user turn).
+ // The first such Stop is the hook's own run: handing over text makes Grok continue the turn, and the continuation's
+ // Stop is a later row. Processing is the agent's first message or tool call after that Stop.
+ if(record.recipient.provider==='grok'){
+  const receipt=dest.find(n=>n.type==='grok-receipt'&&n.peer?.id===record.id&&n.peer.sender?.provider===record.sender.provider&&n.peer.sender.nativeId===record.sender.nativeId&&n.generation===record.recipient.generation);
+  if(receipt?.at&&receipt.hookName){
+   const t=Date.parse(receipt.at),after=dest.filter(n=>n.at!==null&&Date.parse(n.at)>=t&&n!==receipt);
+   let hook:StructureItem|undefined;
+   for(const n of after){if(n.type==='user')break;if(n.type==='hook_stop'){if(n.hooks?.includes(receipt.hookName))hook=n;break;}}
+   if(hook){mark('reached',[receipt.id,hook.id],hook.at);
+    const proof=after.find(n=>(n.type==='assistant'||n.type==='tool')&&Date.parse(n.at!)>Date.parse(hook!.at!));
+    if(proof)mark('processing',[hook.id,proof.id],proof.at);}
+  }
+ }
+ const peers=record.recipient.provider==='grok'?[]:dest.filter(n=>n.type!=='enqueue'&&n.peer?.id===record.id&&n.peer.sender?.provider===record.sender.provider&&n.peer.sender.nativeId===record.sender.nativeId);
  if(peers.length){mark('reached',peers.map(n=>n.id),peers[0].at);
   for(const peer of peers){
    let proof:StructureItem|undefined;
@@ -32,8 +48,10 @@ export function stages(record:RequestRecord,destination:StructureItem[],source:S
  const reply=src.find(n=>n.peer?.replyTo===record.id&&n.peer.sender?.provider===record.recipient.provider&&n.peer.sender.nativeId===record.recipient.nativeId);if(reply)mark('replied',[reply.id],reply.at);
  return result;
 }
-export function statusResult(record:RequestRecord,destination:StructureItem[],source:StructureItem[],now:number){
- return {status:'ok' as const,id:record.id,delivery:record.status,target:{provider:record.recipient.provider,nativeId:record.recipient.nativeId,generation:record.recipient.generation},at:new Date(record.at).toISOString(),stages:stages(record,destination,source,now)};
+export function statusResult(record:RequestRecord,destination:StructureItem[],source:StructureItem[],now:number,inbox?:string|null){
+ // For Grok CLI: where the envelope is in the inbox, and when the peer's record last moved (the band says when it is idle).
+ const peerActive=record.recipient.provider==='grok'?destination.reduce<string|null>((a,n)=>n.type!=='grok-receipt'&&n.at&&(!a||n.at>a)?n.at:a,null):undefined;
+ return {status:'ok' as const,id:record.id,delivery:record.status,target:{provider:record.recipient.provider,nativeId:record.recipient.nativeId,generation:record.recipient.generation},at:new Date(record.at).toISOString(),stages:stages(record,destination,source,now),...(inbox!==undefined?{inbox}:{}),...(peerActive!==undefined?{peerActiveAt:peerActive}:{})};
 }
 export function createStatus(options:{parallelReads?:boolean;dir:string;adapter:NativeAdapter;caller:RequestParty;canRead:(p:RequestParty)=>Promise<boolean>;clock?:StatusClock}){
  const time=options.clock??clock;
@@ -45,7 +63,8 @@ export function createStatus(options:{parallelReads?:boolean;dir:string;adapter:
  const once=async(id:string)=>{
   const record=(await requests(options.dir)).find(r=>r.id===id&&owned(r));if(!record)return {status:'not_found' as const};
   const [destination,source]=options.parallelReads?await Promise.all([read(record.recipient),read(record.sender)]):[await read(record.recipient),await read(record.sender)];
-  return statusResult(record,destination,source,time.now());
+  const inbox=record.recipient.provider==='grok'&&options.adapter.inboxState&&await options.canRead(record.recipient)?await options.adapter.inboxState(registration(record.recipient),record.id).catch(()=>null):undefined;
+  return statusResult(record,destination,source,time.now(),inbox);
  };
  return {
   async track(id:unknown,waitSeconds:unknown=0){

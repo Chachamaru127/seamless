@@ -95,3 +95,56 @@ export function createGrokReader(options:GrokOptions={}):TranscriptReader{
  };
 }
 export const grokSessionsRoot=(home=homedir())=>join(home,'.grok','sessions');
+// What the status of a request to a Grok CLI conversation is read from: the hook's receipts in seamless's inbox, and from
+// Grok's own record the user turns, the agent's messages and tool calls, and each Stop's hook runs (names that succeeded).
+export async function readGrokStructure(target:Registration,options:GrokOptions={}):Promise<import('../status.ts').StructureItem[]>{
+ const home=options.home??homedir(),inbox=await import('../grok-inbox.ts'),items:import('../status.ts').StructureItem[]=[];
+ for(const r of await inbox.receipts(home,target.nativeId)){
+  const sender=r.envelope.sender;
+  items.push({id:'receipt:'+inbox.keyOf(r.envelope.id),type:'grok-receipt',at:new Date(r.hookAt).toISOString(),generation:r.generation,hookName:r.hookName,peer:{id:r.envelope.id,sender:{provider:sender.id.split(':')[0],nativeId:sender.nativeId},...(r.envelope.replyTo?{replyTo:r.envelope.replyTo}:{})}});
+ }
+ const dir=await findGrokSessionDir(target.nativeId,home,target.workspace);
+ if(dir){
+  const raw=await readOwned(join(dir,'updates.jsonl'),MAX_UPDATES_BYTES);
+  if('text' in raw){
+   let last='';
+   for(const line of raw.text.split('\n').slice(-4000)){
+    if(!line.trim())continue;let j;try{j=JSON.parse(line);}catch{continue;}
+    const p=j?.params,u=p?.update;if(!u||p.sessionId!==target.nativeId)continue;
+    const meta=p._meta??{},at=Number.isFinite(meta.agentTimestampMs)?new Date(meta.agentTimestampMs).toISOString():Number.isFinite(j.timestamp)?new Date(j.timestamp*1000).toISOString():null;
+    const id=typeof meta.eventId==='string'?meta.eventId:`${target.nativeId}:${items.length}`,kind=u.sessionUpdate;
+    // One item per run of chunks of the same speaker, like the read projection.
+    if(kind==='user_message_chunk'||kind==='agent_message_chunk'){const type=kind==='user_message_chunk'?'user':'assistant';if(last!==type)items.push({id,type,at});last=type;continue;}
+    if(kind==='tool_call'){items.push({id,type:'tool',at});last='tool';continue;}
+    if(kind==='hook_execution'&&u.event_name==='stop'){items.push({id,type:'hook_stop',at,hooks:(Array.isArray(u.runs)?u.runs:[]).filter((r:any)=>r?.status?.status==='success'&&typeof r.name==='string').map((r:any)=>r.name)});last='hook';continue;}
+    if(kind==='turn_completed')last='';
+   }
+  }
+ }
+ return items.filter(n=>n.at!==null).sort((a,b)=>Date.parse(a.at!)-Date.parse(b.at!));
+}
+// Envelopes this conversation (this generation) was handed by its hook: what it has received.
+export async function grokInbound(recipient:Registration,options:GrokOptions={}){
+ const home=options.home??homedir(),inbox=await import('../grok-inbox.ts');
+ return (await inbox.receipts(home,recipient.nativeId)).filter(r=>r.generation===recipient.generation).map(r=>({id:r.envelope.id,sender:r.envelope.sender,recipient:r.envelope.recipient,text:r.envelope.text,...(r.envelope.replyTo?{replyTo:r.envelope.replyTo}:{})}));
+}
+export async function grokReceived(target:Registration,options:GrokOptions={}){
+ const home=options.home??homedir(),inbox=await import('../grok-inbox.ts');
+ return (await inbox.receipts(home,target.nativeId)).filter(r=>r.generation===target.generation).map(r=>({id:r.envelope.id,sender:r.envelope.sender,recipient:r.envelope.recipient,at:new Date(r.hookAt).toISOString()}));
+}
+// Ids of seamless sends this conversation made to a recipient, from its own record of tool calls. Only the requested ids
+// leave this function. The seamless send tool is recognised by Grok's tool metadata naming the seamless server; the exact
+// naming is confirmed in the real conversation of T1-10c (until then a sender may stay "declared").
+export async function readGrokSentIds(target:Registration,ids:string[],recipient:Pick<Registration,'provider'|'nativeId'>,options:GrokOptions={}):Promise<string[]>{
+ const home=options.home??homedir(),dir=await findGrokSessionDir(target.nativeId,home,target.workspace);if(!dir)return [];
+ const raw=await readOwned(join(dir,'updates.jsonl'),MAX_UPDATES_BYTES);if(!('text' in raw))return [];
+ const {sentTo}=await import('../inbound.ts'),found=new Set<string>();
+ for(const line of raw.text.split('\n')){
+  if(!line.includes('"tool_call"'))continue;let j;try{j=JSON.parse(line);}catch{continue;}
+  const u=j?.params?.update;if(j?.params?.sessionId!==target.nativeId||u?.sessionUpdate!=='tool_call')continue;
+  const tool=u._meta?.['x.ai/tool']??{},named=[tool.name,tool.namespace,u.title].filter(x=>typeof x==='string').join(' ');
+  if(!/seamless/.test(named)||!/send/.test(named))continue;
+  const input=u.rawInput;if(input&&typeof input.id==='string'&&ids.includes(input.id)&&sentTo(input,recipient))found.add(input.id);
+ }
+ return [...found];
+}

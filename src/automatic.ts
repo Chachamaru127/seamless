@@ -137,8 +137,9 @@ export function createAutomatic(options:AutomaticOptions={}){
    };
    const denied=await validate();if(denied)return {status:denied,...(unsupportedVersion!==undefined?{reason:unsupportedVersion,version:unsupportedVersion}:{})};
    if(method==='revalidate')return {status:'validated',target:idOf(ticket)};
-   // Delivery to Grok CLI waits for its inbox and Stop hook (specs/202610-more-peers T1-4, T1-5); nothing is reserved.
-   if(target.provider==='grok')return {status:'grok_delivery_unavailable'};
+   // A Grok CLI envelope is handed over whole as additionalContext (Grok clips at 10,000 characters), so a longer text is
+   // refused before anything is reserved rather than cut short (D7).
+   if(target.provider==='grok'&&typeof p.text==='string'&&[...p.text].length>8000)return {status:'text_too_long'};
    const records=registrations([c,target]),registry=new Registry(records);
    const delivery=new Delivery(registry,idOf(c),adapter,{tracking:{keyPath:join(home,'.seamless','key'),now:options.clock?.now},fixedTarget:records[1],validate,reservationDir:options.reservationDir??join(home,'.seamless','reservations')});
    const result=await delivery.send({target:idOf(ticket),id:p.id,text:p.text,replyTo:p.replyTo,scope:'any_registered'});

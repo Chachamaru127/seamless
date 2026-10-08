@@ -133,3 +133,4 @@
 - 実測（T0-2 の会話 `01a11aa1-…` の updates.jsonl、2026-10-08 18:00 JST に読んだ）: hook が足した文は利用者の発話（user_message_chunk）としては残らない。Stop の hook_execution の行の直後に `{"sessionUpdate": "hook_annotation", "message": "↩ Stop hook feedback, continuing: <足した文の全文>"}` として残り、agentTimestampMs は Stop の行と同じ。hook の入力の hookEventName の値は `stop`（小文字）。記録の行は時刻の順に並ぶとは限らない（続きの回の前の発話が Stop の行の後に書かれる）ので、段の観測は時刻で並べ直して読む。
 - 配信確認の結び方を強めた: 受領記録、その後の最初の Stop の行で seamless の hook が success、その直後の hook_annotation に seamless の封筒の行（文の最後の印の後の 1 行の JSON）があり、依頼 ID と送り手が一致、の 3 つがそろったときだけ。spec の「相手の会話の記録に、その依頼 ID の封筒が現れた」に、依頼 ID のまま合う。本文に偽の封筒の行を書いた場面の試験を足した。
 - `subagentType` は Grok の文書（10-hooks.md）で下請けの会話の入力にだけ入る項目。下請けの会話の実測は無い。
+- 実地検査（配送）1 回目（Codex gpt-6.1-sol、0188e35）: 不一致。Codex の作業用の環境では `ps` が許されず（operation not permitted）、実際の hook を起動する試験 1 件が前提（試験のプロセスの開始時刻）を作れずに落ちた。ほかの数字（450 件中ほか 449 件、帯 95 件、send 6 件、status 11 件）と、指定した 3 つの試験の中身は一致。→ ps でプロセスを観測できない環境ではその試験を理由つきで飛ばす形にした（製品も同じ環境では動いている Grok を確かめられない）。

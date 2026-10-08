@@ -57,7 +57,7 @@ export async function runGrokHook(input:any,o:HookOptions={}):Promise<{output:st
  for(const {name,envelope} of queue){
   const key=/^([0-9a-f]{64})\.json$/.exec(name)?.[1];
   // A broken envelope, or one that is not this conversation's, moves to failed/ so it never blocks the ones behind it.
-  if(!key||!envelope||envelope.recipient.nativeId!==sessionId||keyOf(envelope.id)!==key){await rename(join(dir,'pending',name),join(dir,'failed',name)).catch(()=>{});continue;}
+  if(!key||!envelope||envelope.recipient.nativeId!==sessionId||keyOf(envelope.sender,envelope.id)!==key){await rename(join(dir,'pending',name),join(dir,'failed',name)).catch(()=>{});continue;}
   // Addressed to another generation of this conversation (another process opened it): not ours to deliver.
   if(envelope.recipient.generation!==generation)continue;
   const taken=join(dir,'delivering',`${key}.${self}.json`);

@@ -21,11 +21,12 @@ export async function readGrokLedger(home=homedir()):Promise<GrokRow[]|null>{
  try{const v=JSON.parse(raw.text);return Array.isArray(v)?v.filter(row):null;}catch{return null;}
 }
 export const grokGeneration=(r:Pick<GrokRow,'pid'|'opened_at'>)=>`${r.pid}@${r.opened_at}`;
-// The process registers itself shortly after it starts (0.25s after the conversation record, measured 2026-10-08).
-// ps reports the start to the second, so a row is live when the process started at most 2 minutes before the row.
+// A row is live while its pid runs a process that started no later than the row (ps reports the start to the second, so
+// one second of slack). A reused pid belongs to a process started after the row and fails this. There is no lower bound:
+// a TUI can open a conversation long after it started (measured 9 s; /new and /resume open one later still).
 export async function grokRowAlive(r:GrokRow,options:GrokOptions={}):Promise<boolean>{
  const started=await (options.processStart??processStart)(r.pid),opened=Date.parse(r.opened_at);
- return started!==null&&started<=opened+1000&&opened-started<=120_000;
+ return started!==null&&started<=opened+1000;
 }
 // The installed version is in the file name the launcher points to (~/.grok/bin/grok -> ../downloads/grok-<version>-macos-<arch>).
 export async function grokVersion(home=homedir()):Promise<string|null>{
@@ -108,7 +109,7 @@ export async function readGrokStructure(target:Registration,options:GrokOptions=
  const home=options.home??homedir(),inbox=await import('../grok-inbox.ts'),items:import('../status.ts').StructureItem[]=[];
  for(const r of await inbox.receipts(home,target.nativeId)){
   const sender=r.envelope.sender;
-  items.push({id:'receipt:'+inbox.keyOf(r.envelope.id),type:'grok-receipt',at:new Date(r.hookAt).toISOString(),generation:r.generation,hookName:r.hookName,peer:{id:r.envelope.id,sender:{provider:sender.id.split(':')[0],nativeId:sender.nativeId},...(r.envelope.replyTo?{replyTo:r.envelope.replyTo}:{})}});
+  items.push({id:'receipt:'+inbox.keyOf(r.envelope.sender,r.envelope.id),type:'grok-receipt',at:new Date(r.hookAt).toISOString(),generation:r.generation,hookName:r.hookName,peer:{id:r.envelope.id,sender:{provider:sender.id.split(':')[0],nativeId:sender.nativeId},...(r.envelope.replyTo?{replyTo:r.envelope.replyTo}:{})}});
  }
  const dir=await findGrokSessionDir(target.nativeId,home,target.workspace);
  if(dir){

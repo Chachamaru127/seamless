@@ -29,13 +29,13 @@ P1 と P2 は独立で、P0 の後に並べて進められる（共通の作業 
 ## P1 Grok CLI の作り
 
 観測（一覧と読む）
-- 動いている会話: Grok の稼働中の会話の台帳 `~/.grok/active_sessions.json`（会話 ID、pid、作業場所、開始時刻。以下「台帳」。外の実行主体の「名簿」peers.json とは別）を読み、pid が生きていて開始時刻が合う行だけを「動いている」とする。世代 = `pid@台帳の opened_at`（台帳の文字列そのもの）。生きているかは ps の開始時刻で確かめ、開始が opened_at の 120 秒前から 1 秒後までの間なら同じプロセスとする（実測は 0.25 秒差。ps は秒単位なので幅を持たせる。pid の使い回しはこの幅の外で弾く）。画面なし（`grok -p`）は登録されないので対象外。台帳の行でも、要約が無いか `session_kind` を持つ会話（画面なし、下請け）は出さない。同じ会話の生きている行が 2 つあるときは、どちらも送信前から存在した「その会話」と言えないので、状態を unknown にして宛先にしない（チケットを出さない）。版が許可外（版の表で fix_required、または strictVersions のときに verified でない。1.0.46 は checking なので strictVersions では allowChecking が要る）のときは、動いていても unknown（理由 unsupported_version）にして宛先にしない。unknown の会話は、止まっている会話と同じく既定の一覧では隠れて offlineHidden に数えられ、includeOffline のときに出る（Claude と Codex と同じ）。
+- 動いている会話: Grok の稼働中の会話の台帳 `~/.grok/active_sessions.json`（会話 ID、pid、作業場所、開始時刻。以下「台帳」。外の実行主体の「名簿」peers.json とは別）を読み、pid が生きていて開始時刻が合う行だけを「動いている」とする。世代 = `pid@台帳の opened_at`（台帳の文字列そのもの）。生きているかは ps の開始時刻で確かめ、開始が opened_at の 1 秒後まで（ps は秒単位）なら同じプロセスとする。使い回された pid は行より後に起動したプロセスなので、この上限で弾く。下限は置かない（実測で起動から台帳の登録まで 9 秒かかった例があり、`/new` や `/resume` で会話を後から開くこともある。2026-10-08 の点検で 120 秒の下限を外した）。画面なし（`grok -p`）は登録されないので対象外。台帳の行でも、要約が無いか `session_kind` を持つ会話（画面なし、下請け）は出さない。同じ会話の生きている行が 2 つあるときは、どちらも送信前から存在した「その会話」と言えないので、状態を unknown にして宛先にしない（チケットを出さない）。版が許可外（版の表で fix_required、または strictVersions のときに verified でない。1.0.46 は checking なので strictVersions では allowChecking が要る）のときは、動いていても unknown（理由 unsupported_version）にして宛先にしない。unknown の会話は、止まっている会話と同じく既定の一覧では隠れて offlineHidden に数えられ、includeOffline のときに出る（Claude と Codex と同じ）。
 - 止まっている会話: 会話の保存先にあって要約に `session_kind` が無い会話（画面ありの会話。T0-1 の実測で、画面ありの要約には `session_kind` が無く、画面なしは `headless`、下請けは `subagent` か `subagent_resume` が入る）のうち、台帳に無いもの、または台帳にはあるが pid が生きていないか開始時刻が合わない行（台帳の刈り残し）。画面なし（`grok -p`、`session_kind` が headless）と下請け（`subagent`、`subagent_resume`）の会話は、動いていても止まっていても一覧に出さない（対象外）。Codex と同じく既定では一覧に出さず offlineHidden に数え、includeOffline のときだけ「止まっている」として出す（AC1 の区別）。範囲が「すべて」のときは、止まっている会話を最後に動いた時刻の新しい順に 50 件までにする（Codex の一覧と同じ上限。台帳に残った行は数えない）。台帳に行が無い止まっている会話は世代を持たない（`none`）ので、前回見た会話の記録（seen.json）には入れない（再び起動した直後に「世代が変わった」と誤って unknown にしないため）。その作業場所は、保存先のフォルダ名（作業場所の URL エンコード）を戻して実体の道にしたものを使う。宛先にはしない（D3）。一覧の各行は製品 `grok`、ホスト local、会話 ID、世代、状態を持つ。
 - 本文: `~/.grok/sessions/<作業場所>/<会話 ID>/updates.jsonl` を読み、`user_message_chunk` と `agent_message_chunk` を連結して可視の発話にする。`tool_call` は道具の呼び出し。思考（`agent_thought_chunk`）と生の履歴（chat_history.jsonl）は読まない。
 - 範囲: 作業場所は台帳の `cwd` を使い、Claude と Codex と同じ範囲判定（specs/202610-everyday-use/spec.md の探す範囲。既定は不変条件 8 のとおり同じ作業場所で、同じリポジトリとすべては本人が制限の設定で選んだときだけ。Grok のために広げない）に乗せる。範囲外の Grok の会話は一覧、読む、送るのどれも拒否する（AC8）。Grok には「範囲の未設定」が無い（範囲は台帳の作業場所から決まる）ので、AC8 の「未設定」は「台帳の行の作業場所が無いか読めない」に当たり、その会話も拒否する。制限の設定（limits.json）が壊れているときは既存と同じく拒否する。
 
 配送（送る）。封筒は会話ではなく「会話の世代」に宛てる
-- 受理: seamless が受信箱 `~/.seamless/grok-inbox/<会話 ID>/pending/<依頼 ID>.json` に封筒を書き終えた時点（spec の段の定義の Grok CLI の但し書き）。封筒には宛先の世代（pid と開始時刻）を書く。同じ依頼 ID が pending、delivering、handed、delivered、failed、unknown のどこかにあれば置き直さない。別 ID で同じ内容（送り手、宛先、replyTo、本文が同じ）も、既存の予約（依頼の hash の claim）に乗せて、前の依頼が成否不明か処理中の間は `duplicate_of_unknown` にする（AC7。Bot の経路と同じ仕組み。前の依頼が受理か不受理で終わった後の同じ内容は、本人か AI が改めて頼んだ新しい依頼として受ける。Claude と Codex と同じ）。同じ依頼 ID は予約の記録から前の結果を返し、置き直さない。予約の記録が無いのに受信箱に同じ依頼 ID がある（予約の外で置かれた）ときは、置き直さずに成否不明（unknown）とする。本文が 8,000 字を超える封筒は、送る時点で `text_too_long` として拒否する（切り詰めて欠けさせない。上限の由来は D7）。
+- 受理: seamless が受信箱 `~/.seamless/grok-inbox/<会話 ID>/pending/<送り手と依頼 ID の組の SHA-256>.json` に封筒を書き終えた時点（別の会話が同じ依頼 ID を選んでもぶつからないよう、予約と同じく送り手を名前に含める。2026-10-08 の穴探しで直した）（spec の段の定義の Grok CLI の但し書き）。封筒には宛先の世代（pid と開始時刻）を書く。同じ依頼 ID が pending、delivering、handed、delivered、failed、unknown のどこかにあれば置き直さない。別 ID で同じ内容（送り手、宛先、replyTo、本文が同じ）も、既存の予約（依頼の hash の claim）に乗せて、前の依頼が成否不明か処理中の間は `duplicate_of_unknown` にする（AC7。Bot の経路と同じ仕組み。前の依頼が受理か不受理で終わった後の同じ内容は、本人か AI が改めて頼んだ新しい依頼として受ける。Claude と Codex と同じ）。同じ依頼 ID は予約の記録から前の結果を返し、置き直さない。予約の記録が無いのに受信箱に同じ依頼 ID がある（予約の外で置かれた）ときは、置き直さずに成否不明（unknown）とする。本文が 8,000 字を超える封筒は、送る時点で `text_too_long` として拒否する（切り詰めて欠けさせない。上限の由来は D7）。
 - hook のスクリプト: seamless のリポジトリにある固定の道（`src/grok-hook.ts`）を、Node の絶対パスで起動する。会話 ID と作業場所は Grok が hook に渡す入力（標準入力の JSON。項目は T0-2 で確かめる）から取り、Grok の TUI の pid（hook のプロセスの親 `process.ppid`。T0-2 で台帳の pid と一致を確認、間にシェルは挟まらない）と台帳の行を照合する。hook の入力は camelCase（sessionId、cwd、reason、stopHookActive、promptId）。1 手の終わりの reason は `end_turn`、会話の終わりは `shutdown`。封筒の世代と一致しないときは配達しない（別プロセスが同じ会話を開いても届かない。AC2）。
 - 1 回の Stop で 1 封筒。文を足すと Grok は同じ手の続きを 1 回走らせ、続きの回の Stop（`stopHookActive: true`）でも hook が呼ばれるので、次の封筒はその回で届く（Grok の続きの上限は 1 手に 8 回）。順は受理の時刻。`pending` → `delivering`（原子的な改名。改名できなければ別の hook が取っている）→ 文脈に足す → `delivered`。壊れた封筒は `failed` に移して次へ進む（先頭で止まらない）。文脈に返す直前に `delivering` → `handed`（返した印）に改名し、受領記録を書いた後に `delivered` へ改名する。`delivering` のまま残った封筒（返す前に hook が死んだ）は、改名した hook の pid が生きていなければ次の hook が `pending` に戻す（まだ返していないので再送ではない）。`handed` のまま残った封筒（返した後、記録を書く前に死んだ）は、配達済みか不明なので戻さず、`unknown` に移して帯で「成否不明。立花さんの確認が要る」と出す（成否不明の自動再送をしない。AC7）。
 - 会話の終了時の Stop（`channel_closed`、`shutdown`）では配達しない。封筒は pending のまま（まだ配達していないので再送ではない）。
@@ -44,6 +44,7 @@ P1 と P2 は独立で、P0 の後に並べて進められる（共通の作業 
 - 返答完了: 相手が seamless の `send` で `replyTo` つきに返した時点。
 - 一覧の状態の値と帯の言葉: 動いている会話は `online`（帯の表示は「動いている」）、止まっている会話は `offline`（帯の表示は「止まっている」）。既存の Claude と Codex と同じ値と言葉。
 - 見せる場所: 帯（Claude Desktop の入力欄の上の 1 行）と、パネル「チーム」（帯の ×n で開く一覧。帯の第 4 版の設計 specs/202610-status-ui/design-v4.md）。
+- 宛先の世代が終わったとき（台帳にその世代の生きた行が無い）、pending の封筒は二度と渡らないので「宛先の会話は終わった。この依頼は届かない」と出す（台帳が読めないときは判断せず pending のまま）。
 - 未配信の表し方: 配信確認が無い間は「受理・未配信」と出し、「待機中」とは断定しない。相手の記録に 5 分以上の動きが無いときだけ「相手は 5 分以上動いていない。次の 1 手の後に届く」と添える（D5 の (b)）。hook が登録されていない、失敗した、途中で止まった、の区別は受領記録と `hook_execution` の有無から出せる範囲でだけ出す。
 - 封筒の印は「全体の形」の節の規則のとおり（ルートの不変条件 3 に従う）。
 - 本文が 8,000 字を超える Grok 宛ての送信は、検証の後、予約を作る前に `text_too_long` で止める。旧方式の名簿（registry）は Claude と Codex の登録しか受けないので、Grok 宛てはこの経路に乗らない。
@@ -94,12 +95,12 @@ P1 と P2 は独立で、P0 の後に並べて進められる（共通の作業 
 
 | # | 操作 | 誰が | いつ |
 |---|---|---|---|
-| H0 | T0-2 の試験用 hook を、試験用の作業場所の `.grok/hooks/` に置き、立花さんが `/hooks-trust` でその場所だけを信頼する（その場所の hook に実行の権限を与える。全体の設定は変えない）。「可」を evidence.md に記録 | 立花さん | T0-2 の前 |
-| H1 | `~/.grok/config.toml` に Stop hook を登録する（Grok の挙動が変わる） | 立花さん（seamless が差分を提示。「可」の返事が記録にあるまで配送の試験に入らない） | P1 の配送の試験の前 |
+| H0 | 済み（2026-10-08）。`/hooks-trust` は試験用の場所ではなく、git のリポジトリの根元（seamless 全体）を信頼した。試験の後に外す（立花さんの判断 C、`/hooks-untrust`） | 立花さん | T0-2 の前 |
+| H1 | Grok の全体の hook に seamless の Stop hook を登録する（`~/.grok/hooks/seamless.json`。この置き場所は Grok の文書で信頼の操作なしに常に読まれる。中身は `node <本線>/src/grok-hook.ts` の 1 行。Grok の全ての会話の 1 手の終わりに 0.09 秒ほど動き、受信箱の無い会話では何もしない） | 立花さん（seamless が差分を提示。「可」の返事が記録にあるまで配送の試験に入らない） | P1 の配送の試験の前 |
 | H2 | Grok Bot 側に webhook のルーチンを作る。立花さんの確認カードの承認が済んだことを evidence.md に書くまで、送る試験に入らない | 茶々丸（作成）、立花さん（確認カード） | P2 の送る試験の前 |
 | H3 | webhook の URL と鍵を Mac の環境変数に置く | 立花さん | P2 の試験の前 |
 | H4 | 名簿に茶々丸を登録する（住所と鍵の環境変数の名前） | 立花さん（seamless が雛形を出す） | H3 の後 |
-| H5 | Grok CLI 用の seamless MCP を wire.sh のレジストリに入れて配送する | 立花さん（`plan --mcp-grok` → `apply`） | T1-9 の提示の後、実会話 T1-10c の前 |
+| H5 | 不要になった（2026-10-08 確認）。Grok は `~/.claude.json` の seamless の MCP を Claude 互換で既に読み込んでいる（会話の記録 events.jsonl の mcp_server_connected、道具 5 つ）。ただし Claude、Codex、Grok の MCP はどれも本線の checkout の `src/cli.ts` を起動するので、実会話の前に H6 の本線への取り込み（push はしない）が要る | 立花さん | 実会話 T1-10 の前 |
 | H6 | main への取り込みと push | 立花さん | 各工程の判定 PASS の後 |
 | H7 | 茶々丸への webhook 送信を、契約の事前承認（seamless で本人の別の会話へ送る）に含めるかを決める | 立花さん | T2-8 の前 |
 | H8 | Grok の実行ファイルの署名が確かめられないとき、代わりの確かめ方（実体の道とハッシュの固定。署名より弱い）で呼び手の特定を進めてよいかを決める。否なら AC3 は未達で閉じる | 立花さん | T0-3b の後、T1-7 の前 |

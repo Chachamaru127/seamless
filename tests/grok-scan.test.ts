@@ -43,7 +43,7 @@ test('scope any widens to the other workspace but still never lists headless con
 });
 const more={sub:'01a11a6c-23b4-7af0-b5c4-c9893437b307',resume:'01a11a6c-23b4-7af0-b5c4-c9893437b308',liveSub:'01a11a6c-23b4-7af0-b5c4-c9893437b309',twin:'01a11a6c-23b4-7af0-b5c4-c9893437b30a'};
 test('a ledger row whose pid is alive but started at another time (a reused pid) is not running',async t=>{
- // The fixture's pid 502 is alive but started an hour before its row was written.
+ // The fixture's pid 502 runs a process that started an hour after its row was written: the pid was reused.
  const {f,result}=await list(t,{includeOffline:true});
  assert.equal(await f.processStart(502)!==null,true);
  const stale=result.candidates.find((c:any)=>c.nativeId===ids.stale);
@@ -71,10 +71,11 @@ test('a Grok version marked fix_required lists running conversations as unknown 
  const live=result.candidates.find((c:any)=>c.nativeId===ids.live);
  assert.ok(live);assert.equal(live.status,'unknown');assert.equal(live.reason,'unsupported_version');assert.equal(live.ticket,null);
 });
-test('a ledger row is live only while the process started between 120 seconds before and 1 second after the row',async()=>{
+test('a ledger row is live while its process started no later than 1 second after the row, however long before',async()=>{
  const {grokRowAlive}=await import('../src/adapters/grok.ts'),opened=Date.parse(OPENED),row={session_id:ids.live,pid:9,cwd:'/w',opened_at:OPENED};
  const at=(ms:number)=>grokRowAlive(row,{processStart:async()=>opened+ms});
- assert.deepEqual(await Promise.all([at(-120_000),at(-120_001),at(1000),at(1001),at(0)]),[true,false,true,false,true]);
+ // A TUI may open a conversation long after it started (/new, /resume): an hour before is still live. Started after the row is a reused pid.
+ assert.deepEqual(await Promise.all([at(-3_600_000),at(-120_001),at(1000),at(1001),at(0)]),[true,true,true,false,true]);
  assert.equal(await grokRowAlive(row,{processStart:async()=>null}),false);
 });
 test('a live ledger row of a headless conversation is never listed',async t=>{

@@ -15,8 +15,8 @@ export async function grokHome(t:{after:(fn:()=>Promise<void>)=>void}){
  const summary=async(cwd:string,id:string,kind?:string)=>{const dir=join(home,'.grok','sessions',encodeURIComponent(cwd),id);await mkdir(dir,{recursive:true});await writeFile(join(dir,'summary.json'),JSON.stringify({info:{id,cwd},created_at:OPENED,updated_at:OPENED,last_active_at:OPENED,...(kind?{session_kind:kind}:{})}));return dir;};
  for(const id of [ids.live,ids.stale,ids.stopped])await summary(work,id);
  await summary(work,ids.headless,'headless');await summary(other,ids.outside);await summary(other,ids.stoppedOutside);
- // pid 501 and 503 started 0.3s before their rows; 502 is gone.
+ // pid 501 and 503 started 0.3s before their rows; pid 502 now belongs to a process started an hour after its row (reused).
  const started=Date.parse(OPENED)-300;
- const processStart=async(pid:number)=>pid===501||pid===503?started:pid===502?started-3600_000:null;
+ const processStart=async(pid:number)=>pid===501||pid===503?started:pid===502?started+3600_000:null;
  return {home,work,other,rows,ledger,summary,processStart,grok:{processStart,grokVersion:async()=>'1.0.46'}};
 }

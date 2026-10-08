@@ -298,5 +298,5 @@ for(const [label,lsof] of [['whose executable lsof cannot show',''],['whose exec
 });
 test('a Grok ancestor whose ledger pid was reused by a process started at another time is caller_unobserved',async t=>{
  const g=await grokCallerFixture(t),opened=Date.parse(g.OPENED);
- assert.deepEqual(await identifyCaller({kind:'mcp'},{...g.options(),grok:{...g.f.grok,processStart:async()=>opened-3600_000}}),{status:'caller_unobserved',reason:'grok_ledger_unobserved'});
+ assert.deepEqual(await identifyCaller({kind:'mcp'},{...g.options(),grok:{...g.f.grok,processStart:async()=>opened+3600_000}}),{status:'caller_unobserved',reason:'grok_ledger_unobserved'});
 });

@@ -5,6 +5,7 @@ import {join} from 'node:path';
 import {spawn} from 'node:child_process';
 import {runGrokHook,type HookOptions} from '../src/grok-hook.ts';
 import {putEnvelope,ensureInbox,keyOf,receipts,type GrokEnvelope} from '../src/grok-inbox.ts';
+const k=(id:string)=>keyOf({id:'claude:claude-a',nativeId:'claude-a'},id);
 import {grokHome,ids,OPENED} from './support/grok-fixture.ts';
 const GEN='501@'+OPENED,HOOK='global/seamless:stop[0].hooks[0]';
 const envelope=(id:string,generation=GEN,at=1):GrokEnvelope=>({schemaVersion:1,id,sender:{id:'claude:claude-a',nativeId:'claude-a',generation:'41@100'},recipient:{id:'grok:'+ids.live,nativeId:ids.live,generation},text:'lsof の回数を数えて',acceptedAt:at});
@@ -21,38 +22,38 @@ test('one envelope: delivered with a receipt (request, conversation, generation,
  assert.equal(r.delivered,'r1');assert.match(r.output!,/SEAMLESS|seamless/);
  const out=JSON.parse(r.output!);assert.equal(out.hookSpecificOutput.hookEventName,'Stop');assert.match(out.hookSpecificOutput.additionalContext,/lsof の回数を数えて/);
  assert.match(out.hookSpecificOutput.additionalContext,/立花さんの承認ではありません/);
- assert.deepEqual(await s.ls('pending'),[]);assert.deepEqual(await s.ls('delivered'),[keyOf('r1')+'.json']);
+ assert.deepEqual(await s.ls('pending'),[]);assert.deepEqual(await s.ls('delivered'),[k('r1')+'.json']);
  const [receipt]=await receipts(s.f.home,ids.live);
  assert.equal(receipt.envelope.id,'r1');assert.equal(receipt.sessionId,ids.live);assert.equal(receipt.generation,GEN);assert.equal(receipt.hookAt,1791448141653);assert.equal(receipt.reason,'end_turn');assert.equal(receipt.hookName,HOOK);
 });
 test('a broken envelope ahead of a good one goes to failed and the good one is delivered',async t=>{
- const s=await setup(t);await writeFile(join(s.dir,'pending',keyOf('broken')+'.json'),'{not json',{mode:0o600});await putEnvelope(s.f.home,envelope('r2',GEN,5));
+ const s=await setup(t);await writeFile(join(s.dir,'pending',k('broken')+'.json'),'{not json',{mode:0o600});await putEnvelope(s.f.home,envelope('r2',GEN,5));
  const r=await runGrokHook(stop(),s.opts(7001));
- assert.equal(r.delivered,'r2');assert.deepEqual(await s.ls('failed'),[keyOf('broken')+'.json']);assert.deepEqual(await s.ls('delivered'),[keyOf('r2')+'.json']);
+ assert.equal(r.delivered,'r2');assert.deepEqual(await s.ls('failed'),[k('broken')+'.json']);assert.deepEqual(await s.ls('delivered'),[k('r2')+'.json']);
 });
 test('an envelope for another generation of the conversation stays pending and nothing is output',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r3','999@'+OPENED));
  const r=await runGrokHook(stop(),s.opts(7001));
- assert.equal(r.output,null);assert.deepEqual(await s.ls('pending'),[keyOf('r3')+'.json']);
+ assert.equal(r.output,null);assert.deepEqual(await s.ls('pending'),[k('r3')+'.json']);
 });
 test('the session-end Stop delivers nothing and leaves the envelope pending',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r4'));
  for(const reason of ['shutdown','channel_closed']){const r=await runGrokHook(stop(reason),s.opts(7001));assert.equal(r.output,null);}
- assert.deepEqual(await s.ls('pending'),[keyOf('r4')+'.json']);
+ assert.deepEqual(await s.ls('pending'),[k('r4')+'.json']);
 });
 test('two hooks running at once deliver the one envelope once',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r5'));
  const both=await Promise.all([runGrokHook(stop(),s.opts(7001,{alive:()=>true})),runGrokHook(stop(),s.opts(7002,{alive:()=>true}))]);
- assert.equal(both.filter(r=>r.delivered==='r5').length,1);assert.deepEqual(await s.ls('delivered'),[keyOf('r5')+'.json']);assert.deepEqual(await s.ls('pending'),[]);
+ assert.equal(both.filter(r=>r.delivered==='r5').length,1);assert.deepEqual(await s.ls('delivered'),[k('r5')+'.json']);assert.deepEqual(await s.ls('pending'),[]);
 });
 test('an envelope taken by a hook that died before handing it over goes back to pending',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r6'));
  await assert.rejects(runGrokHook(stop(),s.opts(7001,{dieAfter:'delivering'})));
- assert.deepEqual(await s.ls('delivering'),[`${keyOf('r6')}.7001.json`]);
+ assert.deepEqual(await s.ls('delivering'),[`${k('r6')}.7001.json`]);
  // A hook of another process that opened the same conversation (pid 503, another generation) only recovers it: back in pending.
  await s.f.ledger([{session_id:ids.live,pid:503,cwd:s.f.work,opened_at:OPENED}]);
  const other=await runGrokHook(stop(),s.opts(7002,{alive:pid=>pid!==7001,ppid:503}));
- assert.equal(other.output,null);assert.deepEqual(await s.ls('delivering'),[]);assert.deepEqual(await s.ls('pending'),[keyOf('r6')+'.json']);assert.deepEqual(await s.ls('unknown'),[]);
+ assert.equal(other.output,null);assert.deepEqual(await s.ls('delivering'),[]);assert.deepEqual(await s.ls('pending'),[k('r6')+'.json']);assert.deepEqual(await s.ls('unknown'),[]);
  // The conversation's own process then delivers it: it was never handed over, so this is the first delivery, not a resend.
  await s.f.ledger(s.f.rows);
  assert.equal((await runGrokHook(stop(),s.opts(7003,{alive:pid=>pid!==7001}))).delivered,'r6');
@@ -60,14 +61,14 @@ test('an envelope taken by a hook that died before handing it over goes back to 
 test('an envelope handed over by a hook that died before its receipt becomes unknown and never returns to pending',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r7'));
  let emitted='';await assert.rejects(runGrokHook(stop(),s.opts(7001,{dieAfter:'handed',emit:x=>{emitted=x;}})));
- assert.match(emitted,/lsof/);assert.deepEqual(await s.ls('handed'),[`${keyOf('r7')}.7001.json`]);
+ assert.match(emitted,/lsof/);assert.deepEqual(await s.ls('handed'),[`${k('r7')}.7001.json`]);
  const next=await runGrokHook(stop(),s.opts(7002,{alive:pid=>pid!==7001}));
- assert.equal(next.output,null);assert.deepEqual(await s.ls('unknown'),[keyOf('r7')+'.json']);assert.deepEqual(await s.ls('pending'),[]);assert.deepEqual(await s.ls('delivered'),[]);
+ assert.equal(next.output,null);assert.deepEqual(await s.ls('unknown'),[k('r7')+'.json']);assert.deepEqual(await s.ls('pending'),[]);assert.deepEqual(await s.ls('delivered'),[]);
 });
 test('a hook whose parent is not the ledger process of the conversation delivers nothing',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r8'));
  assert.equal((await runGrokHook(stop(),s.opts(7001,{ppid:777}))).output,null);
- assert.deepEqual(await s.ls('pending'),[keyOf('r8')+'.json']);
+ assert.deepEqual(await s.ls('pending'),[k('r8')+'.json']);
 });
 test('started as Grok starts it (node src/grok-hook.ts, Stop JSON on stdin), the hook prints the additionalContext and writes the receipt',async t=>{
  const s=await setup(t);const {processStart}=await import('../src/adapters/claude.ts');

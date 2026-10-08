@@ -65,7 +65,7 @@ export function createStatus(options:{parallelReads?:boolean;dir:string;adapter:
  const once=async(id:string)=>{
   const record=(await requests(options.dir)).find(r=>r.id===id&&owned(r));if(!record)return {status:'not_found' as const};
   const [destination,source]=options.parallelReads?await Promise.all([read(record.recipient),read(record.sender)]):[await read(record.recipient),await read(record.sender)];
-  const inbox=record.recipient.provider==='grok'&&options.adapter.inboxState&&await options.canRead(record.recipient)?await options.adapter.inboxState(registration(record.recipient),record.id).catch(()=>null):undefined;
+  const inbox=record.recipient.provider==='grok'&&options.adapter.inboxState&&await options.canRead(record.recipient)?await options.adapter.inboxState(registration(record.recipient),record.id,{id:record.sender.id,nativeId:record.sender.nativeId}).catch(()=>null):undefined;
   return statusResult(record,destination,source,time.now(),inbox);
  };
  return {

@@ -20,7 +20,9 @@ export type GrokReceipt={envelope:GrokEnvelope;sessionId:string;generation:strin
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_FILE=65_536;
 export const inboxRoot=(home=homedir())=>join(home,'.seamless','grok-inbox');
-export const keyOf=(id:string)=>createHash('sha256').update(id).digest('hex');
+// A request is named by its sender and id together, as the reservation names it: two conversations may pick the same id.
+export type InboxSender={id:string;nativeId:string};
+export const keyOf=(sender:InboxSender,id:string)=>createHash('sha256').update(JSON.stringify([sender.id,sender.nativeId,id])).digest('hex');
 export function conversationDir(home:string,sessionId:string){if(!UUID.test(sessionId))throw new Error('invalid_session');return join(inboxRoot(home),sessionId);}
 async function privateDir(path:string){
  await mkdir(path,{recursive:true,mode:0o700});
@@ -45,8 +47,8 @@ export async function publishFile(path:string,contents:string):Promise<boolean>{
  finally{await f?.close();await unlink(tmp).catch(()=>{});}
 }
 // The state that holds a request, or null. delivering/ and handed/ names carry the hook pid after the key.
-export async function stateOf(home:string,sessionId:string,id:string):Promise<{state:InboxState;name:string}|null>{
- const dir=conversationDir(home,sessionId),key=keyOf(id);
+export async function stateOf(home:string,sessionId:string,sender:InboxSender,id:string):Promise<{state:InboxState;name:string}|null>{
+ const dir=conversationDir(home,sessionId),key=keyOf(sender,id);
  for(const state of STATES){
   let names:string[]=[];try{names=await readdir(join(dir,state));}catch{continue;}
   const name=names.find(n=>n===key+'.json'||n.startsWith(key+'.')&&n.endsWith('.json')&&!n.endsWith('.tmp'));
@@ -63,9 +65,9 @@ export function validEnvelope(v:any):v is GrokEnvelope{
 export async function putEnvelope(home:string,envelope:GrokEnvelope):Promise<{status:'written'}|{status:'exists';state:InboxState}>{
  if(!validEnvelope(envelope))throw new Error('invalid_envelope');
  const dir=await ensureInbox(home,envelope.recipient.nativeId);
- const present=await stateOf(home,envelope.recipient.nativeId,envelope.id);if(present)return {status:'exists',state:present.state};
- const written=await publishFile(join(dir,'pending',keyOf(envelope.id)+'.json'),JSON.stringify(envelope));
- if(!written){const now=await stateOf(home,envelope.recipient.nativeId,envelope.id);return {status:'exists',state:now?.state??'pending'};}
+ const present=await stateOf(home,envelope.recipient.nativeId,envelope.sender,envelope.id);if(present)return {status:'exists',state:present.state};
+ const written=await publishFile(join(dir,'pending',keyOf(envelope.sender,envelope.id)+'.json'),JSON.stringify(envelope));
+ if(!written){const now=await stateOf(home,envelope.recipient.nativeId,envelope.sender,envelope.id);return {status:'exists',state:now?.state??'pending'};}
  return {status:'written'};
 }
 export async function readJson<T>(path:string,valid:(v:any)=>v is T):Promise<T|null>{

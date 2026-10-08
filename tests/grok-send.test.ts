@@ -46,3 +46,26 @@ for(const mark of [false,true])test(`the Grok inbox envelope carries humanApprov
  if(mark)assert.equal(e.humanApproval,false);else assert.ok(!Object.hasOwn(e,'humanApproval'));
  assert.notEqual(e.humanApproval,true);assert.equal(e.recipient.generation,GEN);assert.equal(e.sender.id,'claude:claude-a');
 });
+test('two conversations sending the same request id to one Grok conversation each get their own envelope and their own inbox state',async t=>{
+ const f=await grokHome(t);const reg={id:'grok:'+ids.live,provider:'grok' as const,nativeId:ids.live,generation:GEN,host:'local',displayName:'g',workspace:f.work,operations:['read' as const],grants:[]};
+ const runtime=createNativeRuntime({home:f.home,processStart:f.processStart,grokVersion:async()=>'1.0.46'});
+ const ticket=issueTicket({provider:'grok',nativeId:ids.live,generation:GEN,cwd:f.work,branch:null});
+ const as=(caller:Caller)=>createAutomatic({home:f.home,limitsPath:join(f.home,'limits.json'),caller:async()=>({status:'ok',caller}),adapter:runtime.adapter,scanOptions:{git:async cwd=>({state:'no_git',workspace:cwd}),rows:async()=>[],version:async()=>null,grok:f.grok}});
+ const a:Caller={provider:'claude',nativeId:'claude-a',generation:'41@100',cwd:f.work,socket:'unused',source:'claude-ancestor'};
+ const b:Caller={provider:'codex',nativeId:'codex-b',generation:'owner',cwd:f.work,socket:'unused',source:'codex-turn-metadata'};
+ assert.equal((await as(a)('send',{ticket,id:'task-1',text:'A の依頼'})).status,'submitted');
+ assert.equal((await as(b)('send',{ticket,id:'task-1',text:'B の依頼'})).status,'submitted');
+ assert.equal((await readdir(join(f.home,'.seamless','grok-inbox',ids.live,'pending'))).filter(n=>n.endsWith('.json')).length,2);
+ assert.equal(await runtime.adapter.inboxState!(reg,'task-1',{id:'claude:claude-a',nativeId:'claude-a'}),'pending');
+ assert.equal(await runtime.adapter.inboxState!(reg,'task-1',{id:'codex:codex-b',nativeId:'codex-b'}),'pending');
+ assert.equal(await runtime.adapter.inboxState!(reg,'task-1',{id:'claude:claude-c',nativeId:'claude-c'}),null);
+});
+test('an envelope waiting for a generation whose process is gone is orphaned; an unreadable ledger leaves it pending',async t=>{
+ const s=await setup(t);await s.send('o1');
+ const reg={id:'grok:'+ids.live,provider:'grok' as const,nativeId:ids.live,generation:GEN,host:'local',displayName:'g',workspace:s.f.work,operations:['read' as const],grants:[]};
+ const runtime=createNativeRuntime({home:s.f.home,processStart:s.f.processStart,grokVersion:async()=>'1.0.46'});
+ const state=()=>runtime.adapter.inboxState!(reg,'o1',{id:'claude:claude-a',nativeId:'claude-a'});
+ assert.equal(await state(),'pending');
+ await s.f.ledger([]);assert.equal(await state(),'orphaned');
+ await s.f.ledger('{unreadable');assert.equal(await state(),'pending');
+});

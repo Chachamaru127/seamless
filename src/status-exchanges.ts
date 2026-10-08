@@ -11,7 +11,7 @@ export type Exchange = {
   times: { reached: number | null; processing: number | null; replied: number | null }
   rejected: boolean
   /** Grok CLI only: the envelope waits in the inbox (pending) or its handing over is unknown; idle when the peer has not moved for 5 minutes. */
-  inbox?: 'pending' | 'unknown'
+  inbox?: 'pending' | 'unknown' | 'orphaned'
   idle?: boolean
 }
 export type Peer = {
@@ -27,6 +27,7 @@ export const UNKNOWN: { color: string; label: string } = { color: palette.muted,
 export const GROK_WAITING = '受理・未配信'
 export const GROK_IDLE = '相手は 5 分以上動いていない。次の 1 手の後に届く'
 export const GROK_UNKNOWN = '成否不明。立花さんの確認が要る'
+export const GROK_ORPHANED = '宛先の会話は終わった。この依頼は届かない'
 export const companyName = (provider: Peer['provider']) => provider === 'claude' ? 'Claude' : provider === 'grok' ? 'Grok' : 'Codex'
 const object = (v: unknown): Record<string, unknown> => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('Invalid object')
@@ -61,11 +62,12 @@ function outbound(value: unknown, now?: number): Exchange {
   else if (observed.has('reached')) state = { color: palette.orange, label: '届いた · 未読' }
   else if (r.delivery === 'rejected') state = { color: palette.red, label: '届かなかった' }
   // A Grok CLI envelope is handed over only at the end of the peer's next turn: until then it waits, and is not said to be on its way.
-  const inbox = r.inbox === 'pending' || r.inbox === 'delivering' ? 'pending' as const : r.inbox === 'handed' || r.inbox === 'unknown' ? 'unknown' as const : undefined
+  const inbox = r.inbox === 'pending' || r.inbox === 'delivering' ? 'pending' as const : r.inbox === 'handed' || r.inbox === 'unknown' ? 'unknown' as const : r.inbox === 'orphaned' ? 'orphaned' as const : undefined
   const activeAt = timestamp(r.peerActiveAt)
   const idle = inbox === 'pending' && now !== undefined && activeAt !== null && now - activeAt >= 5 * 60_000
   if (!observed.has('reached') && !observed.has('processing') && !observed.has('replied') && r.delivery !== 'rejected') {
     if (inbox === 'unknown') state = { color: palette.orange, label: GROK_UNKNOWN }
+    else if (inbox === 'orphaned') state = { color: palette.orange, label: GROK_ORPHANED }
     else if (inbox === 'pending') state = { color: palette.muted, label: idle ? `${GROK_WAITING} · ${GROK_IDLE}` : GROK_WAITING }
   }
   return { id: string(r.id), direction: 'outbound', at: timestamp(r.at), ...state,
@@ -241,6 +243,7 @@ export function stepsOf(peer: Peer, exchange: Exchange, readSinceMs: number | nu
     step('送った', exchange.at, true, false),
     reached !== null || isRead ? step('届いた', reached, true, false)
       : exchange.inbox === 'unknown' ? { word: GROK_UNKNOWN, at: null, state: 'bad' }
+      : exchange.inbox === 'orphaned' ? { word: GROK_ORPHANED, at: null, state: 'bad' }
       : exchange.inbox === 'pending' ? { word: exchange.idle ? `${GROK_WAITING}（${GROK_IDLE}）` : GROK_WAITING, at: null, state: 'now' }
       : { word: exchange.color === UNKNOWN.color ? '届いたかは未確認' : '届く', at: null, state: 'now' },
     replied !== null ? step('読んだ', processing, true, false) : processing !== null ? { word: '読んでいる', at: processing, state: 'now' } : step('読む', null, false, reached !== null && !isRead),

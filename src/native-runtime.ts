@@ -174,7 +174,12 @@ export function createNativeRuntime(options:RuntimeOptions={}):{observer:Observe
  if(await checkCompatibility(target))return [];
  if(target.provider==='grok')return (await grok()).readGrokSentIds(target,ids,recipient,{...options,home});
  return target.provider==='claude'?(await import('./adapters/claude.ts')).readClaudeSentIds(target,ids,recipient,{...options,home}):(await import('./adapters/codex.ts')).readCodexSentIds(target,ids,recipient,{...options,version:options.desktopVersion,owner:options.codexOwner,socketPath:join(home,'.codex','ipc','ipc.sock')});
- };adapter.inboxState=async(target,id)=>{if(target.provider!=='grok')return null;try{return (await (await import('./grok-inbox.ts')).stateOf(home,target.nativeId,id))?.state??null;}catch{return null;}};adapter.received=async target=>{
+ };adapter.inboxState=async(target,id,sender)=>{if(target.provider!=='grok')return null;try{
+  const state=(await (await import('./grok-inbox.ts')).stateOf(home,target.nativeId,sender,id))?.state??null;
+  // An envelope still waiting for a generation whose process is gone will never be handed over: say so, not "after the next turn".
+  // An unreadable ledger proves nothing, so the state stays as it is.
+  if(state==='pending'||state==='delivering'){const g=await grok(),rows=await g.readGrokLedger(home);if(rows!==null){let alive=false;for(const r of rows)if(r.session_id===target.nativeId&&g.grokGeneration(r)===target.generation&&await g.grokRowAlive(r,{...options,home}))alive=true;if(!alive)return 'orphaned';}}
+  return state;}catch{return null;}};adapter.received=async target=>{
  if(await checkCompatibility(target))return [];
  if(target.provider==='grok')return (await grok()).grokReceived(target,{...options,home});
  const reader=target.provider==='claude'?(await import('./adapters/claude.ts')).createClaudeReader({...options,home}):(await import('./adapters/codex.ts')).createCodexReader({...options,version:options.desktopVersion,owner:options.codexOwner,socketPath:join(home,'.codex','ipc','ipc.sock')});

@@ -11,7 +11,7 @@ import { ContractError, object } from './protocol.ts';
 import type { Registration } from './protocol.ts';
 export type Envelope={id:string;sender:{id:string;nativeId:string;generation:string};recipient:{id:string;nativeId:string;generation:string};text:string;replyTo?:string};
 export type Receipt={status:'submitted'|'unknown'|'rejected';nativeMessageId?:string;payloadSha256?:string;reason?:string;version?:string};
-export type NativeAdapter={inboxState?:(target:Registration,id:string)=>Promise<string|null>;received?:(target:Registration)=>Promise<import("./inbound.ts").Received[]>;sentIds?:(target:Registration,ids:string[],recipient:Pick<Registration,'provider'|'nativeId'>)=>Promise<string[]>;structure?:(target:Registration)=>Promise<StructureItem[]>;inbound?:(recipient:Registration)=>Promise<Envelope[]>;read:(target:Registration,options:{cursor?:string;limit?:number})=>Promise<unknown>;send:(target:Registration,envelope:Envelope,authorize?:()=>Promise<boolean>)=>Promise<Receipt>};
+export type NativeAdapter={inboxState?:(target:Registration,id:string,sender:{id:string;nativeId:string})=>Promise<string|null>;received?:(target:Registration)=>Promise<import("./inbound.ts").Received[]>;sentIds?:(target:Registration,ids:string[],recipient:Pick<Registration,'provider'|'nativeId'>)=>Promise<string[]>;structure?:(target:Registration)=>Promise<StructureItem[]>;inbound?:(recipient:Registration)=>Promise<Envelope[]>;read:(target:Registration,options:{cursor?:string;limit?:number})=>Promise<unknown>;send:(target:Registration,envelope:Envelope,authorize?:()=>Promise<boolean>)=>Promise<Receipt>};
 export class Delivery {
  private tracking?:{keyPath:string;now?:()=>number};
  private discovery:Discovery;

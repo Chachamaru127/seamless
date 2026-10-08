@@ -4,7 +4,7 @@ export const MAX_INPUT_BYTES=65_536;
 export type Operation='read'|'send';
 export type Scope='current_work'|'same_repository'|'any_registered';
 export type Grant={peer:string;operation:Operation;direction:'inbound'|'outbound'};
-export type Registration={id:string;provider:'codex'|'claude';nativeId:string;generation:string;host:string;displayName:string;role?:string;workspace:string;operations:Operation[];grants:Grant[]};
+export type Registration={id:string;provider:'codex'|'claude'|'grok';nativeId:string;generation:string;host:string;displayName:string;role?:string;workspace:string;operations:Operation[];grants:Grant[]};
 export type Observation={nativeId:string;generation:string;status:'online'|'offline'|'unknown';observedAt:number;contextObservedAt:number;source:string;gitSource?:string;cwd:string;context:GitContext};
 export type Query={operation:Operation;scope:Scope;role?:string;target?:string};
 export class ContractError extends Error { constructor(code='invalid_params'){super(code);this.name='ContractError';} }

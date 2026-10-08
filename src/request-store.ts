@@ -2,7 +2,7 @@ import {constants} from 'node:fs';
 import {mkdir,open,link,unlink,readdir,lstat} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {createHmac,randomBytes,randomUUID} from 'node:crypto';
-export type RequestParty={id:string;provider:'claude'|'codex';nativeId:string;generation:string;cwd:string};
+export type RequestParty={id:string;provider:'claude'|'codex'|'grok';nativeId:string;generation:string;cwd:string};
 export type RequestRecord={id:string;sender:RequestParty;recipient:RequestParty;replyTo?:string;at:number;hash:string;payloadSha256?:string;status:string};
 export const DAY=86400000;
 export async function privateJson(path:string):Promise<any>{
@@ -35,7 +35,7 @@ export async function claimRequest(dir:string,hash:string,id:string,now:number):
  }
  return {release:async()=>{const current=await privateJson(path);if(current?.id===id)await unlink(path).catch(()=>{});}};
 }
-function isRecord(r:any):r is RequestRecord{return r&&typeof r.id==='string'&&typeof r.hash==='string'&&typeof r.status==='string'&&Number.isFinite(r.at)&&[r.sender,r.recipient].every(p=>p&&['claude','codex'].includes(p.provider)&&['id','nativeId','generation','cwd'].every(k=>typeof p[k]==='string'));}
+function isRecord(r:any):r is RequestRecord{return r&&typeof r.id==='string'&&typeof r.hash==='string'&&typeof r.status==='string'&&Number.isFinite(r.at)&&[r.sender,r.recipient].every(p=>p&&['claude','codex','grok'].includes(p.provider)&&['id','nativeId','generation','cwd'].every(k=>typeof p[k]==='string'));}
 export async function requests(dir:string):Promise<RequestRecord[]>{
  const out:RequestRecord[]=[];for(const name of await readdir(dir).catch(()=>[])){if(!/^[a-f0-9]{64}\.json$/.test(name))continue;const r=await privateJson(join(dir,name));if(isRecord(r))out.push(r);}return out;
 }

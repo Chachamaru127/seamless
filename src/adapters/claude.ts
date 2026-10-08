@@ -19,7 +19,7 @@ export type ClaudeOptions=CompatibilityOptions&{home?:string;processStart?:(pid:
 const OMITTED=['thinking','tool_use','tool_result','images','non_peer_attachments','sidechains'];
 // missing = the file does not exist; unreadable = permission, symlink, foreign owner, size or I/O failure.
 type Owned={text:string}|{error:'missing'|'unreadable'};
-async function readOwned(path:string,limit:number):Promise<Owned>{
+export async function readOwned(path:string,limit:number):Promise<Owned>{
  let file;
  try{
   file=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);

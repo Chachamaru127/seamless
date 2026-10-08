@@ -3,8 +3,8 @@ export const palette = {
   background: '#1d1d1b', text: '#e9e7e2', muted: '#8d8b85', active: '#8070f0',
   green: '#38c68e', orange: '#f9a437', red: '#fe3a52', badge: '#2a2a27', divider: '#2e2e2b',
 } as const
-export function logoSvg(provider: 'codex' | 'claude', color: string): string {
-  const source = provider === 'codex' ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3.2a4.4 4.4 0 0 1 4.3 3.4 4.4 4.4 0 0 1 3.9 6.3 4.4 4.4 0 0 1-3.6 7.3 4.4 4.4 0 0 1-7.3.6 4.4 4.4 0 0 1-5.4-5 4.4 4.4 0 0 1 1.3-7.6A4.4 4.4 0 0 1 12 3.2z"/><circle cx="12" cy="12" r="2.6"/></svg>' : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.8 4h3.1l6 16h-3.1zM7.1 4h3.3l6 16h-3.2l-1.3-3.5H5.6L4.3 20H1.1zm-.5 9.7h4.3L8.7 7.9z"/></svg>'
+export function logoSvg(provider: 'codex' | 'claude' | 'grok', color: string): string {
+  const source = provider === 'grok' ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/><path d="M6 18 18 6"/></svg>' : provider === 'codex' ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3.2a4.4 4.4 0 0 1 4.3 3.4 4.4 4.4 0 0 1 3.9 6.3 4.4 4.4 0 0 1-3.6 7.3 4.4 4.4 0 0 1-7.3.6 4.4 4.4 0 0 1-5.4-5 4.4 4.4 0 0 1 1.3-7.6A4.4 4.4 0 0 1 12 3.2z"/><circle cx="12" cy="12" r="2.6"/></svg>' : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.8 4h3.1l6 16h-3.1zM7.1 4h3.3l6 16h-3.2l-1.3-3.5H5.6L4.3 20H1.1zm-.5 9.7h4.3L8.7 7.9z"/></svg>'
   return source.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ').replaceAll('currentColor', color)
 }
 
@@ -19,8 +19,8 @@ export const theme = { text: 'text', meso: 'inactive', subtle: 'subtle', success
 export const tone = { live: '#8070f0', ok: '#2f8f5b', attn: '#d9752b', fail: '#d64545', idle: '#8d8b85' } as const
 
 /** Brand tiles for the right side: a white mark on the company's color, legible on the light and the dark card. */
-const BRAND = { codex: '#10a37f', claude: '#d97757' } as const
-export function brandSvg(provider: 'codex' | 'claude'): string {
+const BRAND = { codex: '#10a37f', claude: '#d97757', grok: '#5b5b58' } as const
+export function brandSvg(provider: 'codex' | 'claude' | 'grok'): string {
   // The mark's paint (fill, stroke) sits on its <svg> tag: carry it onto the group that replaces the tag.
   const source = logoSvg(provider, '#ffffff')
   const paint = (source.match(/^<svg ([^>]*)>/)?.[1] ?? '').replace(/\s*(xmlns|viewBox)="[^"]*"/g, '')
@@ -72,8 +72,8 @@ export const dots = {
  * companies. The disc is the idle grey: 3.4:1 on the light card, 5:1 on the
  * dark one, and the dark letters read at 4.9:1 on it (checked 2026-10-07).
  */
-export function avatarSvg(provider: 'codex' | 'claude', size: 14 | 24 = 14): string {
-  const word = provider === 'codex' ? 'Cx' : 'Cl'
+export function avatarSvg(provider: 'codex' | 'claude' | 'grok', size: 14 | 24 = 14): string {
+  const word = provider === 'codex' ? 'Cx' : provider === 'grok' ? 'Gk' : 'Cl'
   const font = size === 24 ? 10 : 6.5
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="${tone.idle}"/><text x="50%" y="50%" dy=".36em" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Text',Helvetica,Arial,sans-serif" font-size="${font}" font-weight="700" fill="#1d1d1b">${word}</text></svg>`
 }

@@ -1,10 +1,10 @@
 import {readPrivateJson,writePrivateJson} from './limits.ts';
-export type Seen={provider:'claude'|'codex';nativeId:string;generation:string;cwd:string;at:number};
+export type Seen={provider:'claude'|'codex'|'grok';nativeId:string;generation:string;cwd:string;at:number};
 export type Change={change:'none'|'generation_changed'|'new'|'unknown';possible_restart_of?:string};
 const day=24*60*60*1000;
 const key=(n:Pick<Seen,'provider'|'nativeId'>)=>`${n.provider}:${n.nativeId}`;
 function valid(value:unknown):value is Seen[]{
- return Array.isArray(value)&&value.every(n=>n&&typeof n==='object'&&Object.keys(n).sort().join(',')==='at,cwd,generation,nativeId,provider'&&['claude','codex'].includes(n.provider)&&['nativeId','generation','cwd'].every(k=>typeof n[k]==='string'&&n[k])&&Number.isFinite(n.at));
+ return Array.isArray(value)&&value.every(n=>n&&typeof n==='object'&&Object.keys(n).sort().join(',')==='at,cwd,generation,nativeId,provider'&&['claude','codex','grok'].includes(n.provider)&&['nativeId','generation','cwd'].every(k=>typeof n[k]==='string'&&n[k])&&Number.isFinite(n.at));
 }
 export async function observeSeen(path:string,sessions:Omit<Seen,'at'>[],now=Date.now()):Promise<{changes:Map<string,Change>;disappeared:Seen[]}>{
  const unknown=()=>({changes:new Map(sessions.map(n=>[key(n),{change:'unknown' as const}])),disappeared:[]});

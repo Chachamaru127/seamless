@@ -1,4 +1,4 @@
-import {isVersionAllowed,versionStatus} from './compat.ts';
+import {isVersionAllowed,versionStatus,productOf} from './compat.ts';
 import {requests,DAY} from './request-store.ts';
 import {verifyInbound} from './inbound.ts';
 import {createStatus,type StatusClock} from './status.ts';
@@ -17,12 +17,12 @@ import {Registry,loadRegistry} from './registry.ts';
 import {Delivery,type NativeAdapter} from './delivery.ts';
 export type CallContext={kind:'cli'|'mcp';meta?:unknown};
 export type AutomaticOptions={clock?:StatusClock;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;wake?:(nativeId:string)=>Promise<string|null>;adapter?:NativeAdapter;limitsPath?:string;reservationDir?:string};
-export type Ticket={provider:'codex'|'claude';nativeId:string;generation:string;cwd:string;branch?:string|null};
+export type Ticket={provider:'codex'|'claude'|'grok';nativeId:string;generation:string;cwd:string;branch?:string|null};
 const idOf=(n:Pick<Ticket,'provider'|'nativeId'>)=>`${n.provider}:${n.nativeId}`;
 export function issueTicket(n:Ticket):string{return Buffer.from(JSON.stringify({provider:n.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,branch:n.branch??null})).toString('base64url');}
 export function parseTicket(value:unknown):Ticket{
  if(typeof value!=='string'||value.length>16384)throw new ContractError('invalid_ticket');
- try{const n=object(JSON.parse(Buffer.from(value,'base64url').toString('utf8')),['provider','nativeId','generation','cwd','branch']);if(!['codex','claude'].includes(n.provider as string)||!['nativeId','generation','cwd'].every(k=>typeof n[k]==='string'&&n[k]))throw Error();if(n.branch!==null&&typeof n.branch!=='string')throw Error();return n as Ticket;}catch{throw new ContractError('invalid_ticket');}
+ try{const n=object(JSON.parse(Buffer.from(value,'base64url').toString('utf8')),['provider','nativeId','generation','cwd','branch']);if(!['codex','claude','grok'].includes(n.provider as string)||!['nativeId','generation','cwd'].every(k=>typeof n[k]==='string'&&n[k]))throw Error();if(n.branch!==null&&typeof n.branch!=='string')throw Error();return n as Ticket;}catch{throw new ContractError('invalid_ticket');}
 }
 function scope(value:unknown):AutoScope{if(value===undefined)return 'current_work';if(!['current_work','same_repository','any'].includes(value as string))throw new ContractError();return value as AutoScope;}
 async function excluded(n:Ticket,limits:Limits){
@@ -61,7 +61,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   let identified:Caller|undefined;
   const caller=async(ctx:CallContext)=>{if(options.caller)return options.caller(ctx);const r=await identifyCaller(ctx,{...scanOptions,...options.callerOptions,home,strictVersions,claude:{...scanOptions.claude,...options.callerOptions?.claude,strictVersions},previous:identified});identified=r.status==='ok'?r.caller:undefined;return r;};
   const scan=options.scan??((cwd:string,s:AutoScope)=>scanSessions(cwd,s,scanOptions));
-  const inspect=options.inspect??(async(n:SessionIdentity)=>n.provider==='codex'?codexIdentity(n.nativeId,bandOwner?{...scanOptions,owner:bandOwner}:scanOptions):findClaudeIdentity(n.nativeId,home,{...scanOptions,...scanOptions.claude}));
+  const inspect=options.inspect??(async(n:SessionIdentity)=>n.provider==='codex'?codexIdentity(n.nativeId,bandOwner?{...scanOptions,owner:bandOwner}:scanOptions):n.provider==='grok'?(await import('./adapters/grok.ts')).grokIdentity(n.nativeId,{...scanOptions,...scanOptions.grok},n.generation||undefined):findClaudeIdentity(n.nativeId,home,{...scanOptions,...scanOptions.claude}));
   const wake=options.wake??((id:string)=>wakeCodexThread(id,scanOptions));
   // Unusable limits are rejected by the delivery's own re-check, which keeps the reservation retryable.
   const runtime=createNativeRuntime({...scanOptions,codexOwner:bandOwner,markUnapproved:async()=>{const current=await readLimits(limitsPath);return current.status==='ok'&&current.value.markUnapproved===true;},desktopVersion:scanOptions.version,home,codexIdentity:id=>codexIdentity(id,scanOptions)});
@@ -94,7 +94,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   if(options.compatTest&&(loaded.status!=='ok'||loaded.hash!==options.testLimitsHash))return {status:'compat_check_limits_changed'};
   const l=loaded.status==='ok'?loaded.value:unrestricted;
   const compatibilityFor=(n:Pick<SessionIdentity,'provider'>,limits:Limits)=>({...scanOptions,...(n.provider==='claude'?scanOptions.claude:{}),strictVersions:options.compatTest===true||limits.strictVersions===true});
-  const rejectedVersion=(n:Pick<SessionIdentity,'provider'|'version'>,limits:Limits)=>isVersionAllowed(n.provider==='claude'?'claude-code':'codex',n.version,compatibilityFor(n,limits))?null:{status:'unsupported_version',reason:n.version??'unknown',version:n.version??'unknown'};
+  const rejectedVersion=(n:Pick<SessionIdentity,'provider'|'version'>,limits:Limits)=>isVersionAllowed(productOf(n.provider),n.version,compatibilityFor(n,limits))?null:{status:'unsupported_version',reason:n.version??'unknown',version:n.version??'unknown'};
   const bandIdentities=new Map<string,SessionIdentity>([[idOf(c),c]]);
   const targetCompatibility=async(n:Pick<SessionIdentity,'provider'|'nativeId'|'version'>,limits:Limits)=>{
    const compatibility=compatibilityFor(n,limits);
@@ -137,6 +137,8 @@ export function createAutomatic(options:AutomaticOptions={}){
    };
    const denied=await validate();if(denied)return {status:denied,...(unsupportedVersion!==undefined?{reason:unsupportedVersion,version:unsupportedVersion}:{})};
    if(method==='revalidate')return {status:'validated',target:idOf(ticket)};
+   // Delivery to Grok CLI waits for its inbox and Stop hook (specs/202610-more-peers T1-4, T1-5); nothing is reserved.
+   if(target.provider==='grok')return {status:'grok_delivery_unavailable'};
    const records=registrations([c,target]),registry=new Registry(records);
    const delivery=new Delivery(registry,idOf(c),adapter,{tracking:{keyPath:join(home,'.seamless','key'),now:options.clock?.now},fixedTarget:records[1],validate,reservationDir:options.reservationDir??join(home,'.seamless','reservations')});
    const result=await delivery.send({target:idOf(ticket),id:p.id,text:p.text,replyTo:p.replyTo,scope:'any_registered'});
@@ -154,7 +156,7 @@ export function createAutomatic(options:AutomaticOptions={}){
    try{bandReceived=await adapter.received?.(registrations([c])[0])??[];}catch{}
    for(const r of bandReceived){
     const provider=r.sender.id.split(':')[0];
-    if((provider==='claude'||provider==='codex')&&r.sender.id===provider+':'+r.sender.nativeId&&!peers.has(r.sender.id))peers.set(r.sender.id,{provider,nativeId:r.sender.nativeId,generation:r.sender.generation,cwd:'',socket:''});
+    if((provider==='claude'||provider==='codex'||provider==='grok')&&r.sender.id===provider+':'+r.sender.nativeId&&!peers.has(r.sender.id))peers.set(r.sender.id,{provider,nativeId:r.sender.nativeId,generation:r.sender.generation,cwd:'',socket:''});
    }
    peers.delete(idOf(c));
    const identities=await Promise.all([...peers].map(async([id,peer])=>{
@@ -188,11 +190,11 @@ export function createAutomatic(options:AutomaticOptions={}){
    }
    return inbound;})();
    if(method!=='band')await inboundPromise;
-   const candidates=await Promise.all(visible.map(async n=>({id:idOf(n),provider:n.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,version:n.version||null,versionStatus:versionStatus(n.provider==='claude'?'claude-code':'codex',n.version,compatibilityFor(n,l)),...(p.peek===true||method==='band'?{change:'unknown'}:seen.changes.get(idOf(n))),status:n.status??(seen.changes.get(idOf(n))?.change==='generation_changed'?'unknown':'online'),reason:n.reason??(seen.changes.get(idOf(n))?.change==='generation_changed'?'generation_changed':null),requests:options.compatTest?[]:await status.recent({...n,id:idOf(n)}),operations:{read:l.operations?.read??true,send:l.operations?.send??true},ticket:method==='band'?null:n.status&&n.status!=='online'?null:await ticketFor(n)})));
+   const candidates=await Promise.all(visible.map(async n=>({id:idOf(n),provider:n.provider,host:'local',nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,version:n.version||null,versionStatus:versionStatus(productOf(n.provider),n.version,compatibilityFor(n,l)),...(p.peek===true||method==='band'?{change:'unknown'}:seen.changes.get(idOf(n))),status:n.status??(seen.changes.get(idOf(n))?.change==='generation_changed'?'unknown':'online'),reason:n.reason??(seen.changes.get(idOf(n))?.change==='generation_changed'?'generation_changed':null),requests:options.compatTest?[]:await status.recent({...n,id:idOf(n)}),operations:{read:l.operations?.read??true,send:l.operations?.send??true},ticket:method==='band'?null:n.status&&n.status!=='online'?null:await ticketFor(n)})));
    const inbound=await inboundPromise;
    // Hide only sessions the scan saw as not running; a changed generation is still reachable.
    const listed=method==='band'||p.includeOffline===true?candidates:candidates.filter((_,i)=>(visible[i].status??'online')==='online');
-   return {status:'ok',inbound,caller:{provider:c.provider,nativeId:c.nativeId,generation:c.generation,cwd:c.cwd,source:c.source,version:c.version||null,versionStatus:versionStatus(c.provider==='claude'?'claude-code':'codex',c.version,compatibilityFor(c,l))},codexWorkspace:found.codexWorkspace,...(found.codexTruncated?{codexTruncated:found.codexTruncated}:{}),excludeExpired,offlineHidden:candidates.length-listed.length,candidates:listed};
+   return {status:'ok',inbound,caller:{provider:c.provider,nativeId:c.nativeId,generation:c.generation,cwd:c.cwd,source:c.source,version:c.version||null,versionStatus:versionStatus(productOf(c.provider),c.version,compatibilityFor(c,l))},codexWorkspace:found.codexWorkspace,...(found.codexTruncated?{codexTruncated:found.codexTruncated}:{}),excludeExpired,offlineHidden:candidates.length-listed.length,candidates:listed};
   }
   if(visible.length!==1)return {status:visible.length?'ambiguous':'target_unavailable'};
   const n=visible[0];

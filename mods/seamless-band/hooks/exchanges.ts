@@ -12,7 +12,7 @@ export type Exchange = {
   rejected: boolean
 }
 export type Peer = {
-  provider: 'claude' | 'codex'
+  provider: 'claude' | 'codex' | 'grok'
   nativeId: string
   generation: string
   cwd: string
@@ -21,7 +21,7 @@ export type Peer = {
   exchanges: Exchange[]
 }
 export const UNKNOWN = { color: palette.muted, label: '未確認' }
-export const companyName = (provider: Peer['provider']) => provider === 'claude' ? 'Claude' : 'Codex'
+export const companyName = (provider: Peer['provider']) => provider === 'claude' ? 'Claude' : provider === 'grok' ? 'Grok' : 'Codex'
 const object = (v: unknown): Record<string, unknown> => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('Invalid object')
   return v as Record<string, unknown>
@@ -69,14 +69,14 @@ export function peersOf(json: string): Peer[] {
   const peers: Peer[] = []
   const candidates = array(data.candidates).map(object)
   for (const c of candidates) {
-    if (c.provider !== 'claude' && c.provider !== 'codex') continue
+    if (c.provider !== 'claude' && c.provider !== 'codex' && c.provider !== 'grok') continue
     peers.push({ provider: c.provider, nativeId: string(c.nativeId), generation: string(c.generation), cwd: string(c.cwd),
       online: onlineOf(c.status), exchanges: array(c.requests).map(outbound) })
   }
   for (const value of array(data.inbound)) {
     const r = object(value), from = object(r.from)
     const id = string(from.id), nativeId = string(from.nativeId)
-    const provider = id.startsWith('claude:') ? 'claude' : id.startsWith('codex:') ? 'codex' : null
+    const provider = id.startsWith('claude:') ? 'claude' : id.startsWith('codex:') ? 'codex' : id.startsWith('grok:') ? 'grok' : null
     if (!provider) continue
     const matching = candidates.find(c => c.id === id && c.nativeId === nativeId)
     let peer = peers.find(p => p.provider === provider && p.nativeId === nativeId)
@@ -101,7 +101,7 @@ export function latest(exchanges: Exchange[]): Exchange {
 }
 
 export function companiesOf(peers: Peer[]) {
-  return (['codex', 'claude'] as const).flatMap(provider => {
+  return (['codex', 'claude', 'grok'] as const).flatMap(provider => {
     const exchanges = peers.filter(p => p.provider === provider).flatMap(p => p.exchanges)
     return exchanges.length ? [{ provider, count: exchanges.length, ...latest(exchanges) }] : []
   })
@@ -159,7 +159,7 @@ export type Tally = {
  * `problems` the requests that did not arrive.
  */
 export function talliesOf(peers: Peer[], readSinceMs: number | null): Tally[] {
-  return (['codex', 'claude'] as const).flatMap(provider => {
+  return (['codex', 'claude', 'grok'] as const).flatMap(provider => {
     const exchanges = peers.filter(p => p.provider === provider).flatMap(p => p.exchanges)
     if (exchanges.length === 0) return []
     const sent = exchanges.filter(e => e.direction === 'outbound')

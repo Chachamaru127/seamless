@@ -6,7 +6,7 @@ import {dirname,join,basename} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 
 export type AutoScope='current_work'|'same_repository'|'any';
-export type Limits={version:1;markUnapproved?:boolean;strictVersions?:boolean;exclude:Array<{provider?:'codex'|'claude';nativeId?:string;workspace?:string}>;scope:AutoScope|null;operations:{read:boolean;send:boolean}|null};
+export type Limits={version:1;markUnapproved?:boolean;strictVersions?:boolean;exclude:Array<{provider?:'codex'|'claude'|'grok';nativeId?:string;workspace?:string}>;scope:AutoScope|null;operations:{read:boolean;send:boolean}|null};
 export const unrestricted:Limits={version:1,exclude:[],scope:null,operations:null};
 export type LimitsRead=
  | {status:'absent';hash:null}
@@ -19,7 +19,7 @@ export function validLimits(value:unknown):value is Limits{
  if(!value||typeof value!=='object'||Array.isArray(value))return false;
  const v=value as Record<string,unknown>;
  if(!['version','exclude','scope','operations'].every(k=>Object.hasOwn(v,k))||Object.keys(v).some(k=>!['version','exclude','scope','operations','markUnapproved','strictVersions'].includes(k))||Object.hasOwn(v,'markUnapproved')&&typeof v.markUnapproved!=='boolean'||Object.hasOwn(v,'strictVersions')&&typeof v.strictVersions!=='boolean'||v.version!==1||!Array.isArray(v.exclude)||v.scope!==null&&!['current_work','same_repository','any'].includes(v.scope as string))return false;
- if(!v.exclude.every(e=>e&&typeof e==='object'&&!Array.isArray(e)&&Object.keys(e).length>0&&Object.keys(e).every(k=>['provider','nativeId','workspace'].includes(k))&&(e.provider===undefined||['claude','codex'].includes(e.provider))&&['nativeId','workspace'].every(k=>e[k]===undefined||typeof e[k]==='string'&&e[k].length>0)&&(e.workspace===undefined||e.workspace.startsWith('/'))))return false;
+ if(!v.exclude.every(e=>e&&typeof e==='object'&&!Array.isArray(e)&&Object.keys(e).length>0&&Object.keys(e).every(k=>['provider','nativeId','workspace'].includes(k))&&(e.provider===undefined||['claude','codex','grok'].includes(e.provider))&&['nativeId','workspace'].every(k=>e[k]===undefined||typeof e[k]==='string'&&e[k].length>0)&&(e.workspace===undefined||e.workspace.startsWith('/'))))return false;
  const o=v.operations;
  return o===null||!!o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===2&&Object.keys(o).every(k=>['read','send'].includes(k))&&typeof (o as Record<string,unknown>).read==='boolean'&&typeof (o as Record<string,unknown>).send==='boolean';
 }

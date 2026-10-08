@@ -7,11 +7,11 @@ import {realpath,readdir,stat} from 'node:fs/promises';
 import {readPrivateJson,writePrivateJson} from './limits.ts';
 import {command,findClaudeIdentityByPid,claudeSessionRecord,claudeProcessMatches,processFiles,type ProcessFiles} from './native-runtime.ts';
 import {codexIdentity,type SessionIdentity,type ScanOptions} from './sessions-scan.ts';
-export type Caller=SessionIdentity&{source:'claude-ancestor'|'codex-turn-metadata'};
+export type Caller=SessionIdentity&{source:'claude-ancestor'|'codex-turn-metadata'|'grok-ancestor'};
 export type CallerResult={status:'ok';caller:Caller}|{status:'caller_unobserved';reason:string}|{status:'unsupported_version';reason:string;version:string};
 // executable is read with lsof only when the process may be a Claude or Codex ancestor; command is argv[0] from ps.
 export type Ancestor={pid:number;ppid:number;executable:string|null;command?:string};
-export type CallerOptions=ScanOptions&{signature?:SignatureVerifier;codexLocations?:()=>Promise<string[]>;pid?:number;env?:NodeJS.ProcessEnv;cwd?:string;processCwd?:(pid:number)=>Promise<string|null>;process?:(pid:number)=>Promise<Ancestor|null>;previous?:Caller};
+export type CallerOptions=ScanOptions&{signature?:SignatureVerifier;codexLocations?:()=>Promise<string[]>;pid?:number;env?:NodeJS.ProcessEnv;cwd?:string;processCwd?:(pid:number)=>Promise<string|null>;process?:(pid:number)=>Promise<Ancestor|null>;previous?:Caller;grokLocations?:()=>Promise<string[]>};
 export async function codexLocations(home=homedir()):Promise<string[]>{
  const releases=join(home,'.codex','packages','standalone','releases');
  const names=await readdir(releases).catch(()=>[]);
@@ -22,7 +22,12 @@ async function knownCodex(executable:string,locations:()=>Promise<string[]>):Pro
  const known=await Promise.all((await locations()).map(path=>realpath(path).catch(()=>null)));
  return known.includes(actual);
 }
-export type SignatureTeam='2DC432GLL2'|'Q6L2SF6YDW';
+// The Grok launcher (~/.grok/bin/grok) and the versioned binaries it points to (~/.grok/downloads/grok-<version>-macos-<arch>).
+export async function grokLocations(home=homedir()):Promise<string[]>{
+ const downloads=join(home,'.grok','downloads'),names=await readdir(downloads).catch(()=>[]);
+ return [join(home,'.grok','bin','grok'),...names.filter(name=>/^grok-\d+\.\d+\.\d+-macos-/.test(name)).map(name=>join(downloads,name))];
+}
+export type SignatureTeam='2DC432GLL2'|'Q6L2SF6YDW'|'5Y6N3AJ54S';
 export type SignatureVerifier=(path:string,team:SignatureTeam)=>Promise<string|null>;
 const runSignature=promisify(execFile);
 export function createSignatureVerifier(run:(file:string,args:string[],options:{timeout:number})=>Promise<unknown>=runSignature):SignatureVerifier{
@@ -35,12 +40,13 @@ const signatureFields=['dev','ino','size','mtimeMs','ctimeMs'] as const;
 type SignatureEntry=Pick<Awaited<ReturnType<typeof stat>>,typeof signatureFields[number]>&{team:SignatureTeam;at:number};
 type SignatureCache=Record<string,SignatureEntry>;
 function validSignatureCache(value:unknown):value is SignatureCache{
- return !!value&&typeof value==='object'&&!Array.isArray(value)&&Object.entries(value).every(([path,v])=>path.startsWith('/')&&v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')==='at,ctimeMs,dev,ino,mtimeMs,size,team'&&[...signatureFields,'at'].every(k=>typeof v[k]==='number'&&Number.isFinite(v[k]))&&['2DC432GLL2','Q6L2SF6YDW'].includes(v.team));
+ return !!value&&typeof value==='object'&&!Array.isArray(value)&&Object.entries(value).every(([path,v])=>path.startsWith('/')&&v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')==='at,ctimeMs,dev,ino,mtimeMs,size,team'&&[...signatureFields,'at'].every(k=>typeof v[k]==='number'&&Number.isFinite(v[k]))&&['2DC432GLL2','Q6L2SF6YDW','5Y6N3AJ54S'].includes(v.team));
 }
-export async function signed(path:string,provider:'claude'|'codex',verify:SignatureVerifier,home:string,now=Date.now()){
+export async function signed(path:string,provider:'claude'|'codex'|'grok',verify:SignatureVerifier,home:string,now=Date.now()){
  try{
   path=await realpath(path);const info=await stat(path);
-  const team=provider==='codex'?'2DC432GLL2':'Q6L2SF6YDW';
+  // Grok Build CLI is signed with X.AI Corporation's Developer ID (team 5Y6N3AJ54S, checked 2026-10-08).
+  const team=provider==='codex'?'2DC432GLL2':provider==='grok'?'5Y6N3AJ54S':'Q6L2SF6YDW';
   const cachePath=join(home,'.seamless','signature-cache.json');
   const read=await readPrivateJson(cachePath,validSignatureCache);
   const fresh=(entry:SignatureEntry)=>entry.at<=now&&now-entry.at<=86400000;
@@ -76,6 +82,12 @@ async function stillCaller(previous:Caller,options:CallerOptions):Promise<boolea
    const m=await claudeSessionRecord(previous.pid,home);
    return !!m&&m.sessionId===previous.nativeId&&`${previous.pid}@${m.startedAt}`===previous.generation&&m.messagingSocketPath===previous.socket&&await realpath(m.cwd)===previous.cwd&&await claudeProcessMatches(previous.pid,m.procStart,options.claude?.command??command);
   }
+  if(previous.source==='grok-ancestor'){
+   if(previous.pid===undefined)return false;
+   const {readGrokLedger,grokRowAlive,grokGeneration}=await import('./adapters/grok.ts');
+   const rows=(await readGrokLedger(home))?.filter(r=>r.pid===previous.pid)??[];
+   return rows.length===1&&rows[0].session_id===previous.nativeId&&grokGeneration(rows[0])===previous.generation&&await realpath(rows[0].cwd)===previous.cwd&&await grokRowAlive(rows[0],{...options,...options.grok});
+  }
   const n=await codexIdentity(previous.nativeId,options);
   return !!n&&n.generation===previous.generation&&n.cwd===previous.cwd;
  }catch{return false;}
@@ -89,19 +101,34 @@ export async function identifyCaller(context:{kind:'cli'|'mcp';meta?:unknown},op
   // The executable is listed with lsof only for a process that has a Claude session record or whose argv[0] is a known
   // Codex binary; other ancestors are passed over. If that finds nothing, every ancestor is listed once more, as before.
   // The executable that is verified always comes from lsof, never from argv[0].
-  let skipped=false;
+  let skipped=false,ledger:Promise<import('./adapters/grok.ts').GrokRow[]|null>|undefined;
+  const grok=await import('./adapters/grok.ts'),grokRows=()=>ledger??=grok.readGrokLedger(home),grokPaths=options.grokLocations??(()=>grokLocations(home));
+  // A Grok TUI ancestor is the caller only when its pid is in Grok's ledger, the row's process started when the row says,
+  // the row's workspace is the process's own working directory, and the executable carries X.AI's signature.
+  // Environment variables and arguments naming a conversation are never used.
+  const grokCaller=async(current:Ancestor,files?:ProcessFiles):Promise<CallerResult>=>{
+   const rows=(await grokRows())?.filter(r=>r.pid===current.pid)??[];
+   if(rows.length!==1||!await grok.grokRowAlive(rows[0],{...options,...options.grok}))return fail('grok_ledger_unobserved');
+   const cwd=files?.cwd??await (options.processCwd??processCwd)(current.pid);
+   let workspace:string;try{workspace=await realpath(rows[0].cwd);if(!cwd||await realpath(cwd)!==workspace)return fail('caller_workspace_mismatch');}catch{return fail('caller_workspace_mismatch');}
+   if(!await signed(current.executable!,'grok',options.signature??verifySignature,home))return fail('signature_untrusted');
+   const version=await (options.grok?.grokVersion??(()=>grok.grokVersion(home)))();
+   if(!isVersionAllowed('grok',version,options))return {status:'unsupported_version',reason:version??'unknown',version:version??'unknown'};
+   return {status:'ok',caller:{version:version||null,provider:'grok',nativeId:rows[0].session_id,generation:grok.grokGeneration(rows[0]),cwd:workspace,socket:'',pid:current.pid,source:'grok-ancestor'}};
+  };
   const walk=async(every:boolean):Promise<CallerResult|'codex'|null>=>{
    let current=await inspect(options.pid??process.pid);const seen=new Set<number>();
    for(let i=0;i<8&&current&&current.ppid>1;i++){
     if(seen.has(current.ppid))break;seen.add(current.ppid);
     current=await inspect(current.ppid);if(!current)break;
     let files:ProcessFiles|undefined;
-    const candidate=every||await claudeSessionRecord(current.pid,home)!==null||typeof current.command==='string'&&await knownCodex(current.command,locations);
+    const candidate=every||await claudeSessionRecord(current.pid,home)!==null||typeof current.command==='string'&&await knownCodex(current.command,locations)||!!(await grokRows())?.some(r=>r.pid===current!.pid);
     if(current.executable===null&&candidate){files=await processFiles(current.pid,run);current={...current,executable:files.executable};}
     if(current.executable===null){skipped=true;continue;}
     const n=await findClaudeIdentityByPid(current.pid,home,{...options,...options.claude},true,files);
     if(n){if(!await signed(current.executable,'claude',options.signature??verifySignature,home))return fail('signature_untrusted');if(!isClaudeVersionAllowed(n.version??'unknown',{...options,...options.claude}))return {status:'unsupported_version',reason:n.version??'unknown',version:n.version??'unknown'};return {status:'ok',caller:{...n,provider:'claude',source:'claude-ancestor'}};}
     if(await knownCodex(current.executable,locations)){if(!await signed(current.executable,'codex',options.signature??verifySignature,home))return fail('signature_untrusted');return 'codex';}
+    if(await knownCodex(current.executable,grokPaths))return grokCaller(current,files);
    }
    return null;
   };

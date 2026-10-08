@@ -1,7 +1,7 @@
 import type { Registration } from '../protocol.ts';
 import { ContractError } from '../protocol.ts';
 export const MAX_READ_LIMIT=100;
-export type ReadRole='user'|'assistant'|'peer';
+export type ReadRole='user'|'assistant'|'peer'|'tool';
 export type ReadItem={nativeItemId:string;role:ReadRole;text:string;at:string|null;peer?:{namespace:string;declaredSender?:string;messageId?:string;replyTo?:string;envelope?:Envelope}};
 export type Party={id:string;nativeId:string;generation:string};
 // Declared bridge data decoded from a native peer record. It is not authenticated identity or human approval.

@@ -163,3 +163,11 @@
 - 問題 1（承認の取り違え）: Grok は seamless__sessions を呼ぶ前に道具の使用許可を求め、297.764 秒待った（events.jsonl の permission_requested 10:10:02.035、permission_resolved allow 10:14:59.801）。この allow は、観測の台本が時間切れで `/exit` と Enter を打った時刻と同じで、台本の打鍵が許可の確認に答えた形になった。直後の seamless__send は待ち 0 ミリ秒で通った。使われた道具は seamless の一覧と送信で、宛先は立花さんのこの会話（契約の事前承認の「本人の別の会話へ送る依頼と返信」の範囲）。本来は立花さんが Grok の画面で決める承認を、私の台本が代わりにした。以後の実会話の台本は、許可の確認が出たら止まり、打鍵しない。
 - 問題 2（照合の取りこぼし）: Grok は MCP の道具を `use_tool`（rawInput の `tool_name: "seamless__send"`、`tool_input: {...}`）で呼ぶ。readGrokSentIds がこの包みを読まず、Grok からの依頼の送り主が「未確認」になっていた → 包みを読む形に直し、この会話の記録で `t110a-190942-reply` が照合できることを確かめ、試験を足した。`bash scripts/verify.sh` exit 0（node 453 件、帯 96 件）。
 - 分かったこと: Grok は seamless の道具を使うたびに（少なくとも会話の最初の 1 回は）使用許可を求める。立花さんが Grok の画面で許可しないと、Grok からの返信は止まる。
+
+### 本人の判断と T1-10e、T1-10f（2026-10-08 20:00〜20:04 JST）
+
+- 立花さん「a. 許可する」: Grok で seamless の道具をいつも許可する。Grok の文書（22-permissions-and-safety.md）では `~/.grok/config.toml` の `[permission]` 節に `allow = ["MCPTool(seamless__*)"]` と書くと、seamless の道具だけを確認なしで通せる。今の確認は、Grok が Claude の設定の既定（`~/.claude/settings.json` の `permissions.defaultMode: auto`）を読み込んで auto-review で動いているために出ている（config.toml の `[ui] permission_mode` は always-approve だが、画面の表示は auto-review だった）。安全に関わる設定なので、書き換えは立花さんが行う。
+- 立花さん「b、出さない」: 帯に相手の最新の発言は出さない（OD2 は「出さない」で閉じる。10/5 の判断を維持）。
+- T1-10e: 20:03:10 JST、この会話から `node src/cli.ts read` で Grok の会話 `grok:01a11b2d-c64d-7ef0-9ad5-d6168af67934`（世代 `5249@2026-10-08T11:02:27.575027Z`）を読んだ。status ok、発話 2 件（利用者「「はい」とだけ答えてください。…」11:02:39Z、Grok「はい」11:02:43Z）、思考の行は無い（omitted に thoughts、chat_history、tool_inputs、tool_results、hook_executions）。道具の使用許可の確認は 0 件。
+- T1-10f: Grok の返信が届いた 19:15:10 JST から 46 分後の 20:01:54 JST に、この会話が送り手の依頼を数えて 1 件（`t110a-190942`）のまま。返信を受けた後に seamless が自動で依頼を増やしていない。
+- Codex Desktop の seamless の MCP（pid 85882、ChatGPT の下の codex、18:38 起動）は本線への取り込み（19:08）より前から動いていて古いコードのまま。T1-10b と TC-1 は Codex Desktop を開き直した後に行う。

@@ -58,8 +58,11 @@ Grok Bot（茶々丸の確認、seamless 側で検証できたものに印）
 - 逆向き（Bot → Mac）: Bot が Mac でコマンドを 1 つずつ本人の承認を受けて実行できる。✔ seamless 側で確認: 今の呼び手の特定は Claude の祖先か Codex の metadata を求めるので、Bot の Mac コマンドは `caller_unobserved`（native_ancestor_missing）になる。名乗りの引数で代える設計にしない方針は変えない。
 - 受け口の Bot は「seamless」（今朝作られ、中身は空）か茶々丸。未決。
 
-ChatGPT Dot
-- 立花さんの情報（2026-10-08）: MCP Events への対応で連携できる見込み。調査結果は Codex のクラウド側（durable）の会話 01a11923 にあり、seamless からは読めない（同じ Mac の会話ではない）。本文の貼り付け待ち。入口、記録の場所、本人確認の方法は未確認のまま。
+ChatGPT Dot（Codex の調査、立花さんが 2026-10-08 に貼り付け。全文は `.local/grok-consult/dot-research-2026-10-08.md`）
+- Dot（ChatGPT の個人用の常駐エージェント）へは、ChatGPT の Tunnel（クラウドから Mac の MCP サーバーへ stdio を運ぶ仕組み）に seamless の MCP を載せると、起動とツール一覧までは通る（隔離試験で確認）。
+- しかし Dot が自分から動き出す（seamless からの送信で応答を始める）には、MCP Events（MCP の新しい仕様 2026-07-28 にあるイベントの発見・購読・callback の仕組み）への対応が要る。今の seamless は 2025-06-18 の仕様で、`events/list` は unknown_method。購読の保持、ChatGPT の callback の安全な保持、署名つきのイベント配送、ローカルの送信をイベントへ変える入口、のすべてが未実装。
+- 逆向き（Dot → Mac の会話）には、Dot を表す宛先と、Tunnel 越しの呼び手の認証が要る。今の呼び手の特定（ローカルの祖先プロセス）では Tunnel の遠隔の呼び手は `caller_unobserved` になる。→ 新 8 の「外の実行主体を名簿と鍵で確かめる」に乗せる（署名の secret が鍵に当たる）。
+- 未確認: Tunnel の実際の接続状態、Dot 側の購読とイベント受信、MCP Events の一次仕様（発見、購読、callback、署名の正確な形）。
 
 ## 受け入れ条件（AC）
 
@@ -77,7 +80,7 @@ ChatGPT Dot
 | AC8 | 登録と鍵が通っても、範囲が未設定、設定が壊れている、範囲外の会話を名指し、のどれでも一覧、読む、送るを拒否する。届いた文は受信側の承認設定や sandbox を変えない | 3 条件の拒否の自動試験。受信後に承認設定と sandbox の設定が変わっていない比較 |
 | AC9 | Grok CLI の会話の可視の発話を読める（Claude、Codex と同じ操作）。Grok Bot は一覧と本文の読み取りに非対応で、その旨を操作の可否として示す | Grok CLI の読み取りの実測 1 回。Grok Bot の登録で read が不可と表示される |
 | AC10 | 既存の Claude⇄Codex の往復と全自動試験が壊れない | 既存の検証一式が exit 0、実往復 1 回 |
-| AC11 | ChatGPT Dot は、調査の結果をこの spec に追記して別途の承認を得るまで実装しない | この spec の改訂と承認の記録 |
+| AC11 | ChatGPT Dot は、MCP Events の一次仕様を読んで AC（イベントの購読、署名つき配送、Dot の宛先と呼び手の鍵）をこの spec に追記し、別途の承認を得るまで実装しない。seamless の MCP の仕様の版の引き上げ（2025-06-18 → 2026-07-28）が Claude と Codex の接続を壊さないことを AC10 で守る | この spec の改訂と承認の記録。版の引き上げ後も AC10 が exit 0 |
 
 ## Evidence of done
 
@@ -110,7 +113,7 @@ ChatGPT Dot
 - Q1 済み（2026-10-08）: 正式な口は無い。Stop hook の additionalContext が唯一の「動いている会話の実行主体に文を入れる」道。D5 で届け方を決める。
 - Q2 Grok CLI の呼び手を実観測で特定する材料: active_sessions.json の pid と会話 ID の対応（TUI が登録する実例は未観測。TUI を 1 つ起動して登録と削除を見る）。実行ファイルの署名（xAI）の確認方法は未確認。
 - Q3 Grok Bot の webhook の上限、順序、再送、受理の応答の形。
-- Q4 ChatGPT Dot の入口と本人確認。
+- Q4 ChatGPT Dot: MCP Events の一次仕様（2026-07-28 版の発見、購読、callback、署名）と、Tunnel の接続の実態。Codex の調査で「何が足りないか」は分かった（上の事実）。一次仕様を読んでから AC を書く（AC11）。
 
 ## 範囲外
 

@@ -75,3 +75,23 @@ test('Codex sent IDs reject test and look-alike servers',()=>{
  const item=(server:string)=>({type:'mcpToolCall',server,tool:'send',arguments:JSON.stringify({id:'one',ticket,text:'hidden'})});
  assert.deepEqual(projectCodexSentIds({turns:[{items:['seamless_test','claudex_test','seamlessx','Seamless'].map(item)}]},['one'],recipient),[]);
 });
+// TC-4 (specs/202610-more-peers): between Claude and Codex too, a reply received and ten minutes passing (test clock) make no new request.
+test('ten minutes after a Codex reply arrives (test clock), seamless has made no new request',async t=>{
+ const {mkdtemp,rm,realpath,readdir}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path');
+ const {createAutomatic,issueTicket}=await import('../src/automatic.ts');
+ const home=await realpath(await mkdtemp(join(tmpdir(),'seamless-tc4-')));t.after(()=>rm(home,{recursive:true,force:true}));
+ const T=Date.parse('2026-10-08T13:52:52Z');let now=T,sends=0;
+ const caller={provider:'claude' as const,nativeId:'claude-a',generation:'41@100',cwd:home,socket:'unused',source:'claude-ancestor' as const};
+ const codex={provider:'codex' as const,nativeId:'codex-b',generation:'owner-1',cwd:home,socket:'unused'};
+ const reply={id:'tc1-reply',replyTo:'tc1',sender:{id:'codex:codex-b',nativeId:'codex-b',generation:'owner-1'},recipient:{id:'claude:claude-a',nativeId:'claude-a',generation:'41@100'},at:new Date(T).toISOString()};
+ const automatic=createAutomatic({home,limitsPath:join(home,'limits.json'),clock:{now:()=>now,sleep:async()=>{}},caller:async()=>({status:'ok',caller}),
+  scan:async()=>({sessions:[caller,{...codex}],codexWorkspace:'observed'}),inspect:async()=>({...codex}),scanOptions:{git:async cwd=>({state:'no_git',workspace:cwd})},
+  adapter:{read:async()=>({status:'ok',items:[]}),send:async(_t,e)=>{sends++;return {status:'submitted',nativeMessageId:e.id};},received:async()=>[reply],structure:async()=>[]}});
+ await automatic('send',{ticket:issueTicket({...codex,branch:null}),id:'tc1',text:'x'});
+ const count=async()=>(await readdir(join(home,'.seamless','reservations')).catch(()=>[])).filter(n=>/^[0-9a-f]{64}\.json$/.test(n)).length;
+ assert.equal(await count(),1);assert.equal(sends,1);
+ for(const method of ['band','sessions'])await automatic(method,{});
+ now=T+10*60_000;
+ for(const method of ['band','sessions'])await automatic(method,{});
+ assert.equal(await count(),1);assert.equal(sends,1);
+});

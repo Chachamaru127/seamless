@@ -1,7 +1,7 @@
 # 作業単位（1 タスク = 1 ターン。Done when は Yes か No で判定できる 1 行）
 
-Status: 承認 2 回目済み（2026-10-08 立花さん「全部対応させよう。今日決めることは推奨で実行し完了させて」。推奨の順: P0 → P1 を先に完了 → P2 は T0-4b と T0-6 の答えが揃ってから → P3。図面検査 22 回目 PASS）
-Updated: 2026-10-08 JST
+Status: 承認 2 回目済み（2026-10-08 立花さん「全部対応させよう。今日決めることは推奨で実行し完了させて」。推奨の順: P0 → P1 を先に完了 → P2 は T0-4b と T0-6 の答えが揃ってから → P3。計画の図面検査 22 回目 PASS）。P1 の実装の判定: PASS（3b9196d、Codex Astra。evidence.md の T1-12）
+Updated: 2026-10-09 JST
 
 着手禁止の規則: 「前提」に書いた作業の Done when が Yes になるまで、その作業に入らない。否認（「否」）も Done だが、否認なら後続は着手禁止のまま。
 
@@ -31,7 +31,7 @@ Updated: 2026-10-08 JST
 | T1-6 | 段の観測（受領記録 + hook_execution = 配信確認、その後の発話 = 処理開始、replyTo の返信 = 返答完了）と循環の試験 `tests/grok-status.test.ts` | T1-5 | その試験で: 4 段の見本 → 4 段とも observed; 受領記録だけ → 配信確認 unobserved; hook_execution だけ → 配信確認 unobserved; 別プロセスが同じ会話を開いた見本 → 配信確認 unobserved; 受領記録の後に利用者の発話を挟んで別の Stop の hook_execution だけがある見本 → 配信確認 unobserved（無関係な Stop を結ばない）; 返信の受信後 10 分（試験の時計）→ 依頼の件数が前後で同じ。6 場面が全部この結果（T0-2 で hook_execution に依頼 ID か hook の識別が入ると分かったときは、識別の不一致の見本 → 配信確認 unobserved を 7 場面目として足し、7 場面が全部この結果。T0-2 の実測で、識別は hook の名前（hook_execution）と依頼 ID（hook_annotation）の 2 つで結ぶ） |
 | T1-6b | 帯（入力欄の上の 1 行）とパネル「チーム」（帯の ×n で開く一覧）に「未配信」、相手の記録に 5 分以上動きが無いときの「相手は 5 分以上動いていない。次の 1 手の後に届く」、unknown の封筒の「成否不明。立花さんの確認が要る」を出す（D5 の (b)） | T1-6 | 帯の試験 `mods/seamless-band/tests/exchanges.test.tsx` で、配信確認が無い Grok の相手に「受理・未配信」が出て、5 分以上動きが無い見本にだけ添え書きが出て、unknown の封筒がある見本に「成否不明」が出る |
 | T1-7 | 呼び手の特定に Grok CLI の道を足す（祖先の grok の pid と台帳の行の一致、作業場所の一致、署名または H8 で可とした代わりの確かめ方）と試験（caller-scan.test.ts に追加） | T0-3a が Yes、または T0-3b で「可」 | その試験で、見本の台帳の行と pid と作業場所が一致し署名の確認（H8 の代わりの確かめ方なら、実体の道とハッシュの一致）が通る祖先では呼び手がその会話（製品 grok、会話 ID、世代）として特定され、pid の不一致、作業場所の不一致、署名の確認の失敗（代わりの確かめ方ならハッシュの不一致）、名乗りだけ（環境変数や引数の会話 ID）、の 4 つはそれぞれ `caller_unobserved` になる |
-| T1-8 | Grok CLI 側の認可の拒否（台帳の行の作業場所が無いか読めない、制限の設定が壊れている、範囲外の名指し）と、受信後に承認設定と sandbox が変わらない比較の試験（automatic.test.ts に追加） | T1-2 | その試験で、3 条件それぞれで一覧、読む、送るの 3 操作が拒否され（9 場面）、受信の前後で `~/.claude/settings.json` の permissions と crossSessionInbound、`~/.codex/config.toml` の approval と sandbox の節、`~/.grok/config.toml` を TOML として読んで hooks の表を除き、表と鍵を名前順に並べて JSON にした文字列、の hash が一致する |
+| T1-8 | Grok CLI 側の認可の拒否（台帳の行の作業場所が無いか読めない、制限の設定が壊れている、範囲外の名指し）と、受信後に承認設定と sandbox が変わらない比較の試験（automatic.test.ts に追加） | T1-2 | その試験で、3 条件それぞれで一覧、読む、送るの 3 操作が拒否され（9 場面。一覧の拒否は、成功の応答でその会話を候補に出さないこと。最初の条件は 2 つの形で試すので試験の確認は 12）、受信の前後で `~/.claude/settings.json` の permissions と crossSessionInbound、`~/.codex/config.toml` の approval と sandbox の節、`~/.grok/config.toml` を TOML として読んで hooks の表を除き、表と鍵を名前順に並べて JSON にした文字列、の hash が一致する |
 | T1-9 | H1（`~/.grok/hooks/seamless.json` の中身）と、実会話の前の本線への取り込み（push はしない。Claude、Codex、Grok の MCP が本線の `src/cli.ts` を起動するため）の手順を立花さんに提示する。H5 は不要になった（Plans.md の Human gates） | T1-4、T1-5、T1-6、T1-8、T0-3a（T0-3a が No なら T0-3b の H8 の判断の記録も。T1-7 は含めない。H8 が否でも AC2 と AC9 の実会話に進めるため） | evidence.md に立花さんの「可」か「否」の記録がある（否なら T1-10 以降は着手禁止） |
 | T1-10a | 実会話: Claude → Grok CLI を 1 回。送信前後の会話 ID と世代、時刻、段、製品の版を evidence.md に記録 | T1-9 が可、H6 の本線への取り込み（push なし）と H1 の適用完了（evidence.md に記録） | 記録に、受理と配信確認と処理開始と返答完了の 4 段すべての時刻があり、世代が前後で一致し、製品の版が書いてある |
 | T1-10b | 実会話: Codex → Grok CLI を 1 回（同上） | T1-9 が可、H6 の本線への取り込み（push なし）と H1 の適用完了 | T1-10a と同じ条件 |

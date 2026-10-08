@@ -14,11 +14,13 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_LEDGER_BYTES=1_048_576,MAX_SUMMARY_BYTES=65_536,MAX_UPDATES_BYTES=64*1024*1024;
 const OMITTED=['thoughts','chat_history','tool_inputs','tool_results','hook_executions'];
 function row(v:any):v is GrokRow{return !!v&&typeof v==='object'&&typeof v.session_id==='string'&&UUID.test(v.session_id)&&Number.isSafeInteger(v.pid)&&v.pid>0&&typeof v.cwd==='string'&&v.cwd.startsWith('/')&&typeof v.opened_at==='string'&&Number.isFinite(Date.parse(v.opened_at));}
-// null = the ledger could not be read safely; [] = no running TUI conversation.
+// null = the ledger could not be read safely; [] = no running TUI conversation. One row of another shape (a missing
+// working directory, say) makes the whole ledger unreadable: dropping only that row would turn its conversation into a
+// stopped one, listed with the workspace its folder name suggests.
 export async function readGrokLedger(home=homedir()):Promise<GrokRow[]|null>{
  const raw=await readOwned(join(home,'.grok','active_sessions.json'),MAX_LEDGER_BYTES);
  if('error' in raw)return raw.error==='missing'?[]:null;
- try{const v=JSON.parse(raw.text);return Array.isArray(v)?v.filter(row):null;}catch{return null;}
+ try{const v=JSON.parse(raw.text);return Array.isArray(v)&&v.every(row)?v:null;}catch{return null;}
 }
 export const grokGeneration=(r:Pick<GrokRow,'pid'|'opened_at'>)=>`${r.pid}@${r.opened_at}`;
 // A row is live while its pid runs a process that started no later than the row (ps reports the start to the second, so

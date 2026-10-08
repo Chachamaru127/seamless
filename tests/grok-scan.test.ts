@@ -108,3 +108,8 @@ test('a stopped Grok conversation without a ledger row is not remembered, so sta
  const seen=JSON.parse(await readFile(join(f.home,'.seamless','seen.json'),'utf8'));
  assert.ok(!seen.some((n:any)=>n.nativeId===ids.stopped));
 });
+test('a ledger row without its working directory makes the ledger unreadable: no Grok conversation is listed, running or stopped',async t=>{
+ // Grok's ledger with the live row's cwd missing: the conversation must not come back as a stopped one from its folder name.
+ const {result}=await list(t,{includeOffline:true},async f=>{await f.ledger(f.rows.map(r=>r.session_id===ids.live?{session_id:r.session_id,pid:r.pid,opened_at:r.opened_at}:r));});
+ assert.equal(result.status,'ok');assert.deepEqual(grokIds(result),[]);
+});

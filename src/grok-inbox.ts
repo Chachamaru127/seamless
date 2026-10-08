@@ -24,10 +24,19 @@ export const inboxRoot=(home=homedir())=>join(home,'.seamless','grok-inbox');
 export type InboxSender={id:string;nativeId:string};
 export const keyOf=(sender:InboxSender,id:string)=>createHash('sha256').update(JSON.stringify([sender.id,sender.nativeId,id])).digest('hex');
 export function conversationDir(home:string,sessionId:string){if(!UUID.test(sessionId))throw new Error('invalid_session');return join(inboxRoot(home),sessionId);}
+async function isPrivateDir(path:string){
+ try{const s=await lstat(path);return s.isDirectory()&&!s.isSymbolicLink()&&s.uid===process.getuid?.()&&(s.mode&0o777)===0o700;}catch{return false;}
+}
 async function privateDir(path:string){
  await mkdir(path,{recursive:true,mode:0o700});
- const s=await lstat(path);
- if(!s.isDirectory()||s.isSymbolicLink()||s.uid!==process.getuid?.()||(s.mode&0o777)!==0o700)throw new Error('unsafe_inbox');
+ if(!await isPrivateDir(path))throw new Error('unsafe_inbox');
+}
+// Whether every directory on the way to this conversation's inbox, and each state in it, is a real directory of this
+// user that no one else can enter. Checked again when the hook reads, since it may have changed after the write.
+export async function inboxSafe(home:string,sessionId:string):Promise<boolean>{
+ let dir:string;try{dir=conversationDir(home,sessionId);}catch{return false;}
+ for(const path of [join(home,'.seamless'),inboxRoot(home),dir,...STATES.map(state=>join(dir,state))])if(!await isPrivateDir(path))return false;
+ return true;
 }
 export async function ensureInbox(home:string,sessionId:string){
  await privateDir(join(home,'.seamless'));await privateDir(inboxRoot(home));

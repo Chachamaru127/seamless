@@ -124,7 +124,7 @@
 
 ### T1-4、T1-5、T1-6、T1-6b、TC-3a（2026-10-08 JST）
 
-- 受信箱 `src/grok-inbox.ts`（`~/.seamless/grok-inbox/<会話 ID>/{pending,delivering,handed,delivered,failed,unknown}/`、ディレクトリは 0700、ファイルは 0600、名前は依頼 ID の SHA-256）。hook `src/grok-hook.ts`（Grok が `node <道>/src/grok-hook.ts` で起動する入口と、試験から呼ぶ関数）。送る経路は配送の部品（native-runtime の adapter.send）から受信箱へ置く。段の観測は status.ts の Grok の分岐と adapters/grok.ts の readGrokStructure。帯は exchanges.ts の「受理・未配信」「相手は 5 分以上動いていない。次の 1 手の後に届く」「成否不明。立花さんの確認が要る」。
+- 受信箱 `src/grok-inbox.ts`（`~/.seamless/grok-inbox/<会話 ID>/{pending,delivering,handed,delivered,failed,unknown}/`、ディレクトリは 0700、ファイルは 0600、名前は依頼 ID の SHA-256）。hook `src/grok-hook.ts`（Grok が `node <道>/src/grok-hook.ts` で起動する入口と、試験から呼ぶ関数）。送る経路は配送の部品（native-runtime の adapter.send）から受信箱へ置く。段の観測は status.ts の Grok の分岐と adapters/grok.ts の readGrokStructure。帯は exchanges.ts の「受理・未配信」「相手は 5 分以上動いていない。次の 1 手の後に届く」「成否不明。立花さんの確認が要る」。（この行は 2026-10-08 18:00 頃の版の記録。名前は 07407e7 から送り手と依頼 ID の組の SHA-256、状態は 20c41e3 から delivering を外した 5 つ）
 - 試験: tests/grok-hook.test.ts（7 場面と、相手の会話でない hook、実際に `node src/grok-hook.ts` を起動する場面。9 件）、tests/grok-send.test.ts（5 場面と封筒の印 2 件。6 件）、tests/grok-status.test.ts（6 場面、hook の名前が違う 7 場面目、続きの回の Stop を数えない場面、ファイルから読む場面、返信の後 10 分。9 件）、帯の試験 3 件。
 - `bash scripts/verify.sh` exit 0（node の試験 448 件、帯 92 件）。
 - 文言の訂正: T1-5 の「同じ ID → duplicate」は、実際には前の結果を返して置き直さない（Claude と Codex と同じ）。同じ内容の別 ID が duplicate になるのは前の依頼が成否不明か処理中の間だけ（予約の claim の既存の仕組み）。tasks.md と Plans.md を実際の動きに合わせた。
@@ -152,6 +152,8 @@
 1. C: seamless のリポジトリで Grok を開き `/hooks-untrust` で信頼を外す。
 2. H6（本線への取り込み、push なし）: `git -C ~/LocalWork/Code/seamless merge --ff-only claude/seamless-claude-codex-c2a20e`。本線 4fa898e からの早送り（54 コミット）。Claude、Codex、Grok の seamless の MCP は本線の `src/cli.ts` を起動するので、新しく開いた会話から今回のコードで動く。開いたままの会話の MCP は古いコードのまま。
 3. H1: `.local/grok-t02/h1-seamless-hook.json` を `~/.grok/hooks/seamless.json` に写す。中身は Stop hook 1 本（`node <本線>/src/grok-hook.ts`、時間切れ 10 秒）。戻すときはこのファイルを消す。
+
+立花さんの返事: 可。3 操作を立花さんが自分の端末で行った（信頼の取り外し、本線への ff の取り込み、hook の写し）。本線は 19:08 に f9b2dc4 になり（T1-10a の節）、のちに d784be8 へ進んだ。`~/.grok/hooks/seamless.json` があり、Grok がそれを読む（T1-10a の hook の行 `global/seamless:stop[0].hooks[0]`）。
 
 ### T1-10a 実会話: Claude → Grok CLI（2026-10-08 19:09〜19:15 JST）
 
@@ -255,3 +257,42 @@
 - 壊した 12 通りすべてで、足した試験が落ちた（作業ツリーの写しで 1 つずつ壊して走らせた。作業ツリーは変えていない）。
 - 実地検査の回数: team-build の「L では施工と逆の家系に実地検査を 1 回」に従う。この計画では T1-11 の前に実地検査を増やさない。
 - 実会話の証拠の範囲: T1-10a〜f の 4 段の観測は、本線 d784be8 の hook（`delivering` があった版）で取ったもの。Grok が呼ぶ hook は本線の checkout の `src/grok-hook.ts` を指すので、今回の hook の直しを実会話で確かめるには、立花さんの本線への取り込み（ff、push なし）が先に要る。取り込みの後に Claude → Grok を 1 回やり直す。それまで、hook の直しの根拠は自動試験と上の壊し方の確認だけ。
+
+## T1-11 P1 の判定（2026-10-08 23:42〜23:52 JST、判定した版 20c41e3、比べる元 4fa898e）
+
+- 判定役: Codex `gpt-6-astra`、推論 xhigh、読み取り専用（`codex-headless exec -s read-only`）。作ったのは Claude なので逆の家系。依頼文は `.local/t111/judge-prompt.md`、結果は `.local/t111/judge.md`。
+- 結果: FAIL。不成立は「確かめること」の 1、6、12。2〜5、7〜11 は Yes。
+  1. AC1: 止まった会話を製品の一覧で引き、「動いている」と出なかった実測が無い（台帳の観測だけ）。
+  6. AC8: 台帳の行に作業場所の項目そのものが無いと、読み取りがその行を捨て、止まった会話の走査が保存先のフォルダ名から作業場所を補って一覧に戻す。
+  12. セキュリティ: 受信箱のディレクトリの検査は書くときだけで、hook は読む前に確かめない。書いた後に 0700 でなくなったり symlink に替わったりしても配達する。
+- 残件（判定役）: 直した hook の実会話は未実測。別 ID の同じ内容を止める期限（前の計画の 24 時間）を今回の Plans に書く余地がある。末尾 200 行の窓。
+- 図面検査（必須、Claude `claude-haiku-5-5`、推論 medium、読み取り専用）: FAIL。食い違いは、Plans.md と実装（受領記録の名前、処理開始の基準、hook の入力の cwd、受領記録の項目、hook_annotation の位置、orphaned の扱い）、記録の欠け（T1-9 の返事、T1-10b の Codex の版、T1-10d の呼び手、T1-10f の 10 分の前後、TC-1 の verify、AC ごとの対応）、書類どうし（H6 の push、T1-9 の H5、127 行の古い状態）。T1-7 の「名乗りだけ」の試験が無いという指摘は読み違い（`tests/caller-scan.test.ts` の 271 行にある）。結果は `.local/t111/haiku.md`。
+- 別の敵対（穴探し）は頼んでいない。判定役が判定の後に兼ねた。
+
+## T1-12 判定の指摘の直し（2026-10-08 23:52〜23:59 JST）
+
+- 番号 6: 台帳に形の崩れた行が 1 つでもあれば、台帳全体を読めないもの（null）とする。読めない台帳では、一覧に Grok の会話を 1 件も出さず（動いている会話も止まった会話も）、hook は配達せず、呼び手は特定しない。試験「a ledger row without its working directory makes the ledger unreadable」を足した。崩れた行だけを捨てる形に戻すとその試験が落ちる。
+- 番号 12: hook は読む前に、`~/.seamless`、`grok-inbox`、会話のディレクトリ、5 つの状態のディレクトリが、本人の 0700 の実ディレクトリ（symlink でない）かを確かめ直す（`inboxSafe`）。違えば何も取らない（reason `unsafe_inbox`）。試験「an inbox whose directories changed after the write」を足した（pending を 0755 にした場合と、delivered を symlink に替えた場合）。確かめ直しを外すとその試験が落ちる。
+- 番号 1: 止まった会話の一覧の実測（2026-10-08 23:53:48 JST、この作業場所で `node src/cli.ts sessions`）。台帳には立花さんの Grok（pid 77155、別の作業場所）だけ。既定の一覧に Grok の会話は 0 件（止まった会話は隠れ、offlineHidden 16）。止まった会話を含める一覧（`{"includeOffline":true}`）では、試験で開いて閉じた 2 つの会話 `grok:01a11afd-…`（19:09 の世代、23:29 に閉じた）と `grok:01a11bbd-…`（23:04 の世代、23:25 に閉じた）が、どちらも `offline`、理由 `process_exited`、切符なしで出た。「動いている」とは出ていない。
+- 図面検査の指摘: Plans.md の配送、配信確認、処理開始、未配信の節を実装に合わせた（受領記録の名前と項目、hook は入力の cwd を使わない、hook_annotation は Stop の行の後で次の利用者の発話より前の最初の 1 件、処理開始は配信確認の Stop の行より後で利用者の発話を数えない、orphaned は台帳から推した表示、形の崩れた台帳）。H6 を「取り込み（ff、push なし）は実会話の前、push は判定 PASS の後」に直した。tasks.md の T1-9 の前提から H5 の文を外した。127 行の古い記述に注記を付けた。
+- 欠けていた記録:
+  - T1-9 の返事: 「可」（T1-9 の節に足した）。
+  - T1-10b の Codex の版: ChatGPT.app 26.1002.52244、同梱の codex-cli 0.162.0-alpha.2。アプリの更新は 2026-10-07 16:03 が最後なので、T1-10b（10-08 22:52）の時点も同じ版。
+  - T1-10d の呼び手: 依頼 `t110d2-232411` の予約の送り手は `grok:01a11bbd-0cd6-79e3-8d1a-fccd1783d6d1`、世代 `82960@2026-10-08T14:04:31.522549Z`（開き直した Grok の画面の台帳の行と同じ）。送り手が Grok になるのは、呼び手が Grok の祖先として特定されたとき（`grok-ancestor`）だけ。
+  - T1-10f の 10 分の前後: Grok の返信 `t110a-190942-reply` の受理は 10:15:09.872Z。その時点でこの会話が送り手の依頼は 1 件（`t110a-190942`）。10 分後の 10:25:09Z も 1 件。次の依頼は 13:35:23Z の `t110c-223447`（Grok が送った別の試験）。予約の記録 `~/.seamless/reservations` の受理時刻で数えた。
+  - TC-1 の verify: TC-1（22:39〜22:52）の直前の版 3f8ce0b（22:37）で exit 0。後の版 d784be8（454 件と帯 98 件）、3429ce3（455 件と帯 98 件）、20c41e3（462 件と帯 99 件）でも exit 0。
+- 判定役の残件「別 ID の同じ内容を止める期限」: 前の計画（specs/202610-everyday-use/Plans.md）の 24 時間を Grok の経路も同じ予約の仕組みで使う。今回は Plans に書き足さない（予約の仕組みは変えていない）。
+- 気づいたこと（窓）の補足: 末尾 200 行の窓は、Grok の会話の記録（宛先の構造）にも効く。受領記録の後に Grok の記録が 200 項目を超えると、配信確認と処理開始が「未確認」に戻る。Claude の場合と同じく、見えない段を成功にはしない。
+
+### AC と証拠の対応（P1 の分）
+
+| AC | 自動試験 | 実会話と実測 |
+|---|---|---|
+| AC1 一覧 | tests/grok-scan.test.ts（動いている会話、止まった会話は既定で隠れ includeOffline で offline、pid の使い回し、二重起動、headless と下請けを出さない、崩れた台帳） | T0-1、P1 の事前の実機確認、T1-12 の止まった会話の一覧 |
+| AC2 Claude か Codex → Grok の 4 段、別の世代に届かない | tests/grok-status.test.ts（4 段、受領記録だけ、hook の行だけ、別の世代の受領記録、次の利用者の発話の後の Stop、別の hook、別の ID、続きの Stop、処理開始の境目、ファイルから）、tests/grok-hook.test.ts（別の世代の封筒は pending のまま） | T1-10a（Claude → Grok）、T1-10b（Codex → Grok）。否定の実例: 閉じた世代あての返信 `t110d-225322-reply` は orphaned で届かない（T1-10d のやり直しの節） |
+| AC3 Grok → Claude か Codex、名乗りでは通さない | tests/caller-scan.test.ts の 251〜299 行（台帳と作業場所と署名、名乗りだけは caller_unobserved（271 行）、headless の grok で祖先の探索を止める、pid の使い回し） | T1-10c（Grok → Claude）、T1-10d のやり直し（Grok → Codex） |
+| AC6 返信の後に依頼が増えない | tests/grok-status.test.ts の 87 行（Grok）、tests/inbound.test.ts の 79 行（Claude⇄Codex） | T1-10f（Grok、10 分の前後で 1 件）、TC-4（Claude⇄Codex、37 分後も 2 件） |
+| AC7 Grok の受信箱の経路で再実行しない | tests/grok-send.test.ts の 26、30、81 行（同じ ID、書き込み後の切断、予約の外の同じ ID）、tests/grok-hook.test.ts（取った hook が死んだら unknown で戻さない） | なし（実会話で切断は起こしていない） |
+| AC8 Grok の範囲の拒否、受信で設定が変わらない | tests/automatic.test.ts の 542 行（作業場所が読めない台帳、壊れた制限、範囲外の名指しで一覧、読む、送るを拒否）、570 行と 584 行（受信の前後で Claude、Codex、Grok の承認と sandbox の設定の hash が同じ）、tests/grok-scan.test.ts の 111 行（崩れた台帳） | なし |
+| AC9 Grok の会話を読む | tests/grok-read.test.ts | T1-10e |
+| AC10 既存の往復と全試験 | `bash scripts/verify.sh` | TC-1（Claude ⇄ Codex の 4 段） |

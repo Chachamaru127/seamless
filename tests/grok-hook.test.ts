@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readdir,writeFile,readFile,realpath} from 'node:fs/promises';
+import {readdir,writeFile,readFile,realpath,chmod,rename,mkdir,symlink} from 'node:fs/promises';
 import {join} from 'node:path';
 import {spawn} from 'node:child_process';
 import {runGrokHook,renderEnvelope,type HookOptions} from '../src/grok-hook.ts';
@@ -85,6 +85,17 @@ test('an envelope handed over by a hook that died before its receipt becomes unk
  assert.match(emitted,/lsof/);assert.deepEqual(await s.ls('handed'),[`${k('r7')}.7001.json`]);
  const next=await runGrokHook(stop(),s.opts(7002,{alive:pid=>pid!==7001}));
  assert.equal(next.output,null);assert.deepEqual(await s.ls('unknown'),[k('r7')+'.json']);assert.deepEqual(await s.ls('pending'),[]);assert.deepEqual(await s.ls('delivered'),[]);
+});
+test('an inbox whose directories changed after the write (open to others, or a link) gives nothing to Grok',async t=>{
+ const s=await setup(t);await putEnvelope(s.f.home,envelope('r14'));
+ await chmod(join(s.dir,'pending'),0o755);
+ const open=await runGrokHook(stop(),s.opts(7001));
+ assert.equal(open.output,null);assert.equal(open.reason,'unsafe_inbox');
+ await chmod(join(s.dir,'pending'),0o700);
+ // delivered/ replaced by a link to a directory elsewhere.
+ const elsewhere=join(s.f.home,'elsewhere');await mkdir(elsewhere,{mode:0o700});await rename(join(s.dir,'delivered'),join(s.f.home,'old-delivered'));await symlink(elsewhere,join(s.dir,'delivered'));
+ const linked=await runGrokHook(stop(),s.opts(7001));
+ assert.equal(linked.output,null);assert.equal(linked.reason,'unsafe_inbox');assert.deepEqual(await s.ls('pending'),[k('r14')+'.json']);
 });
 test('a hook whose parent is not the ledger process of the conversation delivers nothing',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r8'));

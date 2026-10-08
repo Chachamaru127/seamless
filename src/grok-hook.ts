@@ -3,7 +3,7 @@ import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {readGrokLedger,grokGeneration,grokRowAlive,SEAMLESS_ENVELOPE_MARK,type GrokOptions} from './adapters/grok.ts';
-import {conversationDir,keyOf,readJson,validEnvelope,publishFile,type GrokEnvelope,type GrokReceipt} from './grok-inbox.ts';
+import {conversationDir,inboxSafe,keyOf,readJson,validEnvelope,publishFile,type GrokEnvelope,type GrokReceipt} from './grok-inbox.ts';
 // The Stop hook of a Grok CLI conversation (specs/202610-more-peers T1-4). Grok runs it as its own child at the end of each
 // turn (measured 2026-10-08: the hook's parent is the TUI process listed in Grok's ledger). It hands at most one envelope
 // addressed to this very process (its generation) to Grok as additionalContext, which Grok reads as hook feedback and acts on
@@ -48,6 +48,8 @@ export async function runGrokHook(input:any,o:HookOptions={}):Promise<{output:st
  const generation=grokGeneration(row);
  let dir:string;try{dir=conversationDir(home,sessionId);}catch{return {output:null,reason:'no_session'};}
  if(!(await names(join(dir,'pending'))).length&&!(await names(join(dir,'handed'))).length)return {output:null,reason:'empty'};
+ // A directory that is now a link, someone else's, or open to others is not the inbox seamless wrote: nothing is taken.
+ if(!await inboxSafe(home,sessionId))return {output:null,reason:'unsafe_inbox'};
  await recover(dir,self,alive);
  const queue:{name:string;envelope:GrokEnvelope|null}[]=[];
  for(const name of await names(join(dir,'pending')))queue.push({name,envelope:await readJson(join(dir,'pending',name),validEnvelope)});

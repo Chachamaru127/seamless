@@ -1,5 +1,5 @@
 import { avatarSvg, dots, marks, theme, tone, trackSvg } from './appearance'
-import { peersOf, talliesOf, peerName, peerBadge, summaryOf, companyName, focusOf, noticesOf, settle, stepsOf } from './exchanges'
+import { peersOf, talliesOf, peerName, peerBadge, summaryOf, companyName, focusOf, noticesOf, settle, stepsOf, stateLineOf } from './exchanges'
 import type { Exchange, Peer, Step } from './exchanges'
 import { atom, read, update } from 'claude-code'
 import type { AgentInfo, EngineInterface, Register, Timer, TurnCompleteReason, TurnStepChunk } from 'claude-code'
@@ -12,7 +12,7 @@ import type {
   ActivityPlanItem,
 } from '../types'
 import { activityOf, agentNameOf, partialArgsOf, plainText, stanceOf } from './activity-of'
-import { clip, durationOf, oneLine, printable, sizeOf, thoughtOf, charsIn } from './text'
+import { clip, durationOf, oneLine, printable, sizeOf, thoughtOf, charsIn, isAcknowledgment } from './text'
 
 const IDLE: ActivityNow = {
   phase: 'idle',
@@ -241,7 +241,8 @@ export const register: Register = (on, options) => {
       await remember($, { kind: 'turn', label: clip(prompt, 60), durationMs: null, outcome: 'ok' })
     }
     live.readSinceMs = live.turnStartMs
-    if (prompt !== '' && !prompt.startsWith('<')) {
+    // 「やっていいよ」「進めて」のような相づちは目的を置き換えない: 最後の実のある指示を保つ (design v5).
+    if (prompt !== '' && !prompt.startsWith('<') && !isAcknowledgment(prompt)) {
       await update($, goal, () => printable(prompt, MAX_GOAL_CHARS))
       // A new request starts a new piece of work: a plan already finished belongs to the last one.
       await update($, plan, items => items.every(item => item.status === 'completed') ? [] : items)
@@ -653,9 +654,8 @@ export const register: Register = (on, options) => {
       agentRows.push(<Text key="agents-more" color={theme.subtle}>{`ほか ${working.length - MAX_AGENT_ROWS}個`}</Text>)
     }
 
-    // Per peer: who, where, whether it runs; then its newest requests, each
-    // with its way so far: sent › arrived › read › answered, with the times.
-    const stepRow = (key: string, list: Step[]) => stepRowOf({ Box, Text, Svg }, key, list)
+    // Per peer: who, where, whether it runs; then its newest requests, each in one line of how it stands now
+    // (design v5). The dots of each step stay in the team pane.
     const peerRows = exchanges.peers.map((peer, i) => {
       const newest = [...peer.exchanges].sort((a, b) => (b.at ?? 0) - (a.at ?? 0)).slice(0, MAX_PEER_REQUESTS)
       const where = printable(peer.cwd, 1000).split(/[\\/]/).filter(Boolean).pop() || '作業場所は未確認'
@@ -674,7 +674,7 @@ export const register: Register = (on, options) => {
             {/* A failed look leaves the last state unconfirmed: it is not shown as if it stood. */}
             {exchanges.unknown
               ? <Text key={`req-unknown-${i}-${j}`} color={theme.subtle}>状態は未確認</Text>
-              : stepRow(`req-steps-${i}-${j}`, stepsOf(peer, x, live.readSinceMs))}
+              : <Text key={`req-state-${i}-${j}`} color={theme.subtle} wrap="truncate-end">{printable(stateLineOf(peer, x, live.readSinceMs, nowMs, clockOf), 120)}</Text>}
           </Box>
         })}
       </Box>

@@ -1,5 +1,5 @@
 import { palette } from '../mods/seamless-band/hooks/appearance.ts'
-import { printable } from '../mods/seamless-band/hooks/text.ts'
+import { durationOf, printable } from '../mods/seamless-band/hooks/text.ts'
 
 export type Exchange = {
   id: string
@@ -249,6 +249,28 @@ export function stepsOf(peer: Peer, exchange: Exchange, readSinceMs: number | nu
     replied !== null ? step('読んだ', processing, true, false) : processing !== null ? { word: '読んでいる', at: processing, state: 'now' } : step('読む', null, false, reached !== null && !isRead),
     step('返信', replied, replied !== null, false),
   ]
+}
+
+/**
+ * The open band's line for one exchange: how it stands now, in words (design v5). The dots of each step stay in the
+ * team pane; here the reader sees at a glance what is happening — being read for 12 seconds, answered at 19:15.
+ */
+export function stateLineOf(peer: Peer, exchange: Exchange, readSinceMs: number | null, nowMs: number, clock: (ms: number) => string): string {
+  const at = (ms: number | null) => ms === null ? '' : ` ${clock(ms)}`
+  if (exchange.direction === 'inbound') {
+    const what = isReply(peer, exchange) ? '返信を受け取った' : '依頼を受け取った'
+    const isRead = exchange.at !== null && readSinceMs !== null && exchange.at <= readSinceMs
+    return `${what}${at(exchange.at)}${exchange.color === UNKNOWN.color ? '（送り主は未確認）' : ''}${isRead ? '' : '・まだ読んでいない'}`
+  }
+  const { reached, processing, replied } = exchange.times
+  if (replied !== null) return `返信あり${at(replied)}`
+  if (processing !== null) return `読んでいる（${durationOf(nowMs - processing)}）`
+  if (exchange.rejected) return '届かなかった'
+  if (reached !== null) return `届いた・未読${at(reached)}`
+  if (exchange.inbox === 'unknown') return GROK_UNKNOWN
+  if (exchange.inbox === 'orphaned') return GROK_ORPHANED
+  if (exchange.inbox === 'pending') return exchange.idle ? `${GROK_WAITING}（${GROK_IDLE}）` : GROK_WAITING
+  return exchange.color === UNKNOWN.color ? '届いたかは未確認' : '送った・届くのを待っている'
 }
 
 /** What the closed band says of the exchanges in a few words, and how strongly. */

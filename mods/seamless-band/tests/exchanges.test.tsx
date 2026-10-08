@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { peersOf, companiesOf, focusOf, noticesOf, settle, stepsOf, peerName } from '../hooks/exchanges'
 import { trackSvg } from '../hooks/appearance'
 import { requestResults } from './fixtures/status-results'
-import { clip, durationOf } from '../hooks/text'
+import { clip, durationOf, isAcknowledgment } from '../hooks/text'
 
 const BAND = { plugin: 'seamless-band', surface: 'desktop', component: 'AbovePrompt', props: { hasSurvey: false, isWorking: false, maxRows: 30, bodyColumns: 120, scroll: { offset: 0, bodyRows: 30 }, view: {} } } as const
 const START = { surface: 'desktop', isInteractive: true, cwd: '/work' } as const
@@ -319,7 +319,8 @@ test('desktop band draws inside the app card with theme colors: purpose bold, ac
   expect((await ui.find({ key: 'peer-0' }))?.text).toContain('project')
   expect((await ui.find({ key: 'peer-0' }))?.text).toContain('返信')
   expect((await ui.find({ key: 'peer-1' }))?.text).toContain('届いた')
-  expect((await ui.find({ key: 'peer-1' }))?.text).toContain('読む')
+  // design v5: each request is one line of how it stands now, not the dots of its steps.
+  expect((await ui.find({ key: 'peer-1' }))?.text).toContain('未読')
   expect(await ui.find({ key: 'plan' })).toBeUndefined()
   await ui.press({ key: 'toggle' })
   expect(await ui.find({ key: 'details' })).toBeUndefined()
@@ -536,10 +537,10 @@ test('the open band puts the exchanges first: each peer, whether it runs, and ea
   const peer = (await ui.find({ key: 'peer-0' }))?.text ?? ''
   expect(peer).toContain('動いている')
   expect(peer).toContain('「設計の疑問点を3件、返して…」')
-  expect(peer).toMatch(/送った \d+:\d\d─届いた \d+:\d\d─読んでいる \d+:\d\d〜─返信/)
-  const chain = (await ui.find({ key: 'req-steps-0-0' }))?.children as { type: string; props: Record<string, unknown> }[] | undefined
-  const now = chain?.find(node => node.type === 'Svg' && node.props.alt === '今ここ')
-  expect(now?.props.source).toContain('#d9752b')
+  // design v5: the request says what is happening now — being read for how long — and the step dots stay in the team pane.
+  expect(peer).toMatch(/読んでいる（\d+(秒|分\d+秒)）/)
+  expect(peer).not.toMatch(/送った \d+:\d\d─届いた/)
+  expect(await ui.find({ key: 'req-steps-0-0' })).toBeUndefined()
 })
 
 test('a stage once seen stays: a look that misses it does not take the request back', () => {
@@ -650,4 +651,23 @@ test('a Grok request whose recipient conversation has ended says it will not arr
   const text = (await ui.find({ key: 'peer-0' }))?.text ?? ''
   expect(text).toContain('宛先の会話は台帳から消えている。このままでは届かない')
   expect(text).not.toContain('次の 1 手の後に届く')
+})
+
+// design v5: the purpose keeps the last instruction with an aim of its own; a reply that only lets work go on does not replace it.
+test('the purpose is not replaced by acknowledgments, and a new instruction with its own aim replaces it', () => {
+  for (const ack of ['やっていいよ', '進めて', 'OK', '承認', '承認する', '推奨で', 'A,進める', 'A,進める\nB,１往復した後\nC,外す', 'A,yatta', 'B,承認する', 'はい。']) expect(isAcknowledgment(ack)).toBe(true)
+  for (const aim of ['UI を洗練させて', '別件も直して', '状況と残タスクをわかりやすく', 'ミスアライメント、オーバーエンジニアリングになっていないか確認']) expect(isAcknowledgment(aim)).toBe(false)
+})
+test('the open band keeps the purpose through 「やっていいよ」 and 「進めて」 until 「別件も直して」', async ($, on) => {
+  const { clock } = seat(on, response([]))
+  on('turn.complete', ($, e) => ({ text: e.answer }))
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  for (const [text, goal] of [['UI を洗練させて', 'UI を洗練させて'], ['やっていいよ', 'UI を洗練させて'], ['進めて', 'UI を洗練させて'], ['別件も直して', '別件も直して']] as const) {
+    await $.turn.start({ text, turnId: text }); await clock.settle()
+    await $.turn.complete({ turnId: text, answer: 'はい', durationMs: 1000, isAborted: false, reason: 'answer', category: null, explanation: null }); await clock.settle()
+    const ui = await $.ui.mount(BAND)
+    await ui.press({ key: 'toggle' })
+    expect((await ui.find({ key: 'goal' }))?.text).toContain(goal)
+    await ui.press({ key: 'toggle' })
+  }
 })

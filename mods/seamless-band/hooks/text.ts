@@ -68,3 +68,16 @@ export function visible(text: string): string {
 export function charsIn(chunk: string): number {
   return Array.from(chunk.replace(/\s+/g, '')).length
 }
+
+/**
+ * A reply that only lets work go on — 「やっていいよ」「進めて」「承認」「A,進める」 — carries no aim of its own,
+ * so the band keeps the last instruction that did (design v5). Anything with a word of its own, such as
+ * 「別件も直して」, is a new aim.
+ */
+const ACKNOWLEDGMENTS = /^(やって(いい|ok|オッケー)?よ?|やっていい|進めて(ください|いい|ok)?|進める|続けて(ください)?|続ける|ok|okay|オッケー|おけ|はい|うん|ええ|お願い(します)?|よろしく(お願いします)?|承認(する|します)?|いいよ|いいね|いいです|それで(お願い(します)?|いい|ok)?|推奨で|推奨どおり|go|yes|y|了解(です)?|りょうかい|どうぞ|やって|完了させて|やった|yatta|外す|外した|可|否|後で|あとで)$/
+export function isAcknowledgment(prompt: string): boolean {
+  const parts = prompt.toLowerCase().split(/[\s\n]+/).map(p => p.replace(/[。、．，,.!！?？「」『』"'（）()・…〜~ー-]+$/g, '')).filter(Boolean)
+  if (parts.length === 0) return false
+  // A choice answered by its letter or number (「A,進める」「B,１往復した後」) is a decision on the AI's question, not a new aim.
+  return parts.every(p => ACKNOWLEDGMENTS.test(p.replace(/[。、．，,.!！?？]/g, '')) || /^[a-z0-9０-９][,、:：.．]\S{0,16}$/.test(p))
+}

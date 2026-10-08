@@ -122,12 +122,14 @@ export async function identifyCaller(context:{kind:'cli'|'mcp';meta?:unknown},op
     if(seen.has(current.ppid))break;seen.add(current.ppid);
     current=await inspect(current.ppid);if(!current)break;
     let files:ProcessFiles|undefined;
-    const candidate=every||await claudeSessionRecord(current.pid,home)!==null||typeof current.command==='string'&&await knownCodex(current.command,locations)||!!(await grokRows())?.some(r=>r.pid===current!.pid)||
-     // A Grok process names itself grok (measured 2026-10-08). Its executable is always checked, so a headless grok -p,
-     // which is not in the ledger, stops the walk instead of letting a Claude or Codex ancestor above it be taken as the caller.
-     typeof current.command==='string'&&/^grok(-\d+\.\d+\.\d+-macos-.*)?$/.test(basename(current.command));
+    // A Grok process names itself grok (measured 2026-10-08). Such an ancestor ends the walk here: it is the caller only when
+    // it is a known, signed Grok in the ledger, and otherwise (a headless grok -p, an executable lsof cannot show, a grok
+    // installed elsewhere) nothing above it is taken as the caller, so a Claude or Codex ancestor is never mistaken for it.
+    const grokNamed=typeof current.command==='string'&&/^grok(-\d+\.\d+\.\d+-macos-.*)?$/.test(basename(current.command));
+    const candidate=every||grokNamed||await claudeSessionRecord(current.pid,home)!==null||typeof current.command==='string'&&await knownCodex(current.command,locations)||!!(await grokRows())?.some(r=>r.pid===current!.pid);
     if(current.executable===null&&candidate){files=await processFiles(current.pid,run);current={...current,executable:files.executable};}
-    if(current.executable===null){skipped=true;continue;}
+    if(current.executable===null){if(grokNamed)return fail('grok_identity_unobserved');skipped=true;continue;}
+    if(grokNamed&&!await knownCodex(current.executable,grokPaths))return fail('grok_identity_unobserved');
     const n=await findClaudeIdentityByPid(current.pid,home,{...options,...options.claude},true,files);
     if(n){if(!await signed(current.executable,'claude',options.signature??verifySignature,home))return fail('signature_untrusted');if(!isClaudeVersionAllowed(n.version??'unknown',{...options,...options.claude}))return {status:'unsupported_version',reason:n.version??'unknown',version:n.version??'unknown'};return {status:'ok',caller:{...n,provider:'claude',source:'claude-ancestor'}};}
     if(await knownCodex(current.executable,locations)){if(!await signed(current.executable,'codex',options.signature??verifySignature,home))return fail('signature_untrusted');return 'codex';}

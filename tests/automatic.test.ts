@@ -539,7 +539,7 @@ async function settingsHash(home:string){
  const claude=JSON.parse(await readFile(join(home,'.claude','settings.json'),'utf8')),codex=await readFile(join(home,'.codex','config.toml'),'utf8');
  return createHash('sha256').update(JSON.stringify([claude.permissions,claude.crossSessionInbound,tomlPick(codex,isCodexGuard),tomlPick(await readFile(join(home,'.grok','config.toml'),'utf8'),table=>!isHooks(table))])).digest('hex');
 }
-test('Grok targets: unreadable ledger workspace, unusable limits and out-of-scope names refuse list, read and send (9 cases)',async t=>{
+test('Grok targets: unreadable ledger workspace, unusable limits and out-of-scope names refuse list, read and send (3 conditions, the first in two forms: 12 checks)',async t=>{
  const g=await grokAutomatic(t),{issueTicket}=await import('../src/automatic.ts');
  const live='grok:'+g.ids.live,outside='grok:'+g.ids.outside,gone=join(g.f.work,'gone');
  // An empty list from a successful look, not an error status that also has no candidates.

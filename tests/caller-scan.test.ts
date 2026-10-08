@@ -289,3 +289,14 @@ test('a ledger row for the same conversation under another pid does not make the
  const g=await grokCallerFixture(t);await g.f.ledger([{...g.f.rows[0],pid:777}]);
  assert.deepEqual(await identifyCaller({kind:'mcp'},g.options()),{status:'caller_unobserved',reason:'grok_ledger_unobserved'});
 });
+for(const [label,lsof] of [['whose executable lsof cannot show',''],['whose executable is not a known Grok','elsewhere']] as const)test(`a grok-named ancestor ${label} stops the walk before a Codex ancestor`,async t=>{
+ const g=await grokCallerFixture(t),codex=join(g.f.home,'codex');await writeFile(codex,'fixture');const other=join(g.f.home,'grok');await writeFile(other,'x');
+ const options:CallerOptions={...g.options(),codexLocations:async()=>[codex],signature:async(_p,want)=>want,
+  process:async pid=>pid===99?{pid,ppid:600,executable:'node'}:pid===600?{pid,ppid:41,executable:null,command:'grok'}:pid===41?{pid,ppid:1,executable:codex}:null,
+  claude:{command:async(file,args)=>{if(file==='lsof'&&args.includes('600'))return lsof?`fcwd\ntDIR\nn${g.f.work}\nftxt\ntREG\nn${other}`:`fcwd\ntDIR\nn${g.f.work}`;throw new Error('none');}}};
+ assert.deepEqual(await identifyCaller({kind:'mcp',meta:{'x-codex-turn-metadata':{session_id:'codex-a'}}},options),{status:'caller_unobserved',reason:'grok_identity_unobserved'});
+});
+test('a Grok ancestor whose ledger pid was reused by a process started at another time is caller_unobserved',async t=>{
+ const g=await grokCallerFixture(t),opened=Date.parse(g.OPENED);
+ assert.deepEqual(await identifyCaller({kind:'mcp'},{...g.options(),grok:{...g.f.grok,processStart:async()=>opened-3600_000}}),{status:'caller_unobserved',reason:'grok_ledger_unobserved'});
+});

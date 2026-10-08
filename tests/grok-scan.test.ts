@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {writeFile} from 'node:fs/promises';
+import {join} from 'node:path';
 import {createAutomatic} from '../src/automatic.ts';
 import {COMPATIBILITY} from '../src/compat.ts';
 import type {Caller} from '../src/caller.ts';
@@ -74,4 +76,27 @@ test('a ledger row is live only while the process started between 120 seconds be
  const at=(ms:number)=>grokRowAlive(row,{processStart:async()=>opened+ms});
  assert.deepEqual(await Promise.all([at(-120_000),at(-120_001),at(1000),at(1001),at(0)]),[true,false,true,false,true]);
  assert.equal(await grokRowAlive(row,{processStart:async()=>null}),false);
+});
+test('a live ledger row of a headless conversation is never listed',async t=>{
+ const headlessLive='01a11a6c-23b4-7af0-b5c4-c9893437b30b';
+ for(const input of [{},{includeOffline:true}]){
+  const {result}=await list(t,input,async f=>{await f.summary(f.work,headlessLive,'headless');await f.ledger([...f.rows,{session_id:headlessLive,pid:501,cwd:f.work,opened_at:OPENED}]);});
+  assert.ok(!grokIds(result).includes(headlessLive));
+ }
+});
+test('by default a conversation open twice and one of a fix_required version are hidden and counted in offlineHidden',async t=>{
+ const twice=await list(t,{},async f=>{await f.summary(f.work,more.twin);await f.ledger([...f.rows,{session_id:more.twin,pid:501,cwd:f.work,opened_at:OPENED},{session_id:more.twin,pid:503,cwd:f.work,opened_at:OPENED}]);});
+ assert.ok(!grokIds(twice.result).includes(more.twin));assert.equal(twice.result.offlineHidden,3);
+ const old=await list(t,{},async()=>{},'0.9.0');
+ assert.deepEqual(grokIds(old.result),[]);assert.equal(old.result.offlineHidden,3);
+});
+test('with scope any, stopped conversations are cut to the 50 most recently active',async t=>{
+ const {result}=await list(t,{scope:'any',includeOffline:true},async f=>{
+  for(let i=0;i<55;i++){const id=`01a11a6c-23b4-7af0-b5c4-${String(i).padStart(12,'0')}`;const dir=await f.summary(f.other,id);
+   await writeFile(join(dir,'summary.json'),JSON.stringify({info:{id,cwd:f.other},last_active_at:new Date(Date.parse(OPENED)+i*1000).toISOString()}));}
+ });
+ // The dead ledger row (ids.stale) is listed from the ledger; the cut applies to conversations found only in the folders.
+ const stopped=result.candidates.filter((c:any)=>c.provider==='grok'&&c.status==='offline'&&c.nativeId!==ids.stale);
+ assert.equal(stopped.length,50);
+ assert.ok(!stopped.some((c:any)=>c.nativeId==='01a11a6c-23b4-7af0-b5c4-000000000000'));
 });

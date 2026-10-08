@@ -16,7 +16,7 @@ th,td{text-align:left;vertical-align:top;padding:9px 10px;border-top:1px solid v
 th{color:var(--sub);font-weight:500}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .ok{background:var(--ok)}.attn{background:var(--attn)}.todo{border:2px solid var(--sub);box-sizing:border-box}
-.bar{height:12px;border-radius:6px;background:var(--line);overflow:hidden;margin:6px 0 4px}.bar>i{display:block;height:100%;width:24%;background:var(--ok)}
+.bar{height:12px;border-radius:6px;background:var(--line);overflow:hidden;margin:6px 0 4px}.bar>i{display:block;height:100%;width:22%;background:var(--ok)}
 .decide{border-left:4px solid var(--attn)}.decide h3{color:var(--attn);font-size:15px;margin:0 0 8px}
 .rec{background:#fff6ec;border-radius:8px;padding:8px 12px;margin:8px 0}
 @media (prefers-color-scheme:dark){.rec{background:#2d2419}}
@@ -30,9 +30,9 @@ code{background:rgba(127,127,127,.15);border-radius:4px;padding:1px 5px;font-siz
 <p class="lead">Grok CLI の「一覧に出す」「中身を読む」「Grok から送る人を確かめる」ができて、実機の Grok でも動きました。Grok へ送る部分は、立花さんの 1 操作待ちです。</p>
 
 <h2>ひとことで</h2>
-<p>作業 51 件のうち 12 件が済みました。残りの多くは「立花さんの操作」か「茶々丸の答え」を待っています。</p>
+<p>作業 51 件のうち 11 件が済み、1 件（署名が無いときの代わりの確かめ方）は不要になりました。残りの多くは「立花さんの操作」か「茶々丸の答え」を待っています。P1 はまだ完成ではありません（実会話と判定役の合格が残っています）。</p>
 <div class="bar"><i></i></div>
-<p class="note">100% = specs/202610-more-peers/tasks.md の 51 件がすべて済み、工程ごとの判定役の合格がそろい、main に取り込まれた状態。今は約 24%（済み 12、待ち 3 種、未着手 36）。</p>
+<p class="note">100% = specs/202610-more-peers/tasks.md の 51 件がすべて済み、工程ごとの判定役の合格がそろい、main に取り込まれた状態。今は約 22%（不要の 1 件を除く 50 件のうち済み 11）。</p>
 
 <h2>実際にはどういうこと</h2>
 <div class="card"><table>
@@ -45,6 +45,7 @@ code{background:rgba(127,127,127,.15);border-radius:4px;padding:1px 5px;font-siz
 
 <h2>実機で確かめたこと</h2>
 <div class="card">
+<p>一覧の速さは 1.0 秒前後で、Grok を足す前（1.5 秒）より遅くなっていません。</p>
 <p>この作業場所で Grok を 1 つ起動し、「了解とだけ答えて」と打ちました。そのあと seamless で一覧を出すと、その会話が「Grok・この Mac・動いている」で出ました。中身を読むと、立花さん側の 1 件と Grok の「了解」の 1 件だけが出て、Grok の考え事の行は出ませんでした。</p>
 </div>
 

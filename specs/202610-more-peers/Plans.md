@@ -30,18 +30,20 @@ P1 と P2 は独立で、P0 の後に並べて進められる（共通の作業 
 
 観測（一覧と読む）
 - 動いている会話: Grok の稼働中の会話の台帳 `~/.grok/active_sessions.json`（会話 ID、pid、作業場所、開始時刻。以下「台帳」。外の実行主体の「名簿」peers.json とは別）を読み、pid が生きていて開始時刻が合う行だけを「動いている」とする。世代 = `pid@開始時刻`。画面なし（`grok -p`）は登録されないので対象外。
-- 止まっている会話: 会話の保存先にはあるが台帳に無い会話。Codex と同じく既定では一覧に出さず offlineHidden に数え、includeOffline のときだけ「止まっている」として出す（AC1 の区別）。宛先にはしない（D3）。一覧の各行は製品 `grok`、ホスト local、会話 ID、世代、状態を持つ。
+- 止まっている会話: 会話の保存先にはあるが台帳に無い会話、または台帳にはあるが pid が生きていないか開始時刻が合わない行（台帳の刈り残し）。Codex と同じく既定では一覧に出さず offlineHidden に数え、includeOffline のときだけ「止まっている」として出す（AC1 の区別）。宛先にはしない（D3）。一覧の各行は製品 `grok`、ホスト local、会話 ID、世代、状態を持つ。
 - 本文: `~/.grok/sessions/<作業場所>/<会話 ID>/updates.jsonl` を読み、`user_message_chunk` と `agent_message_chunk` を連結して可視の発話にする。`tool_call` は道具の呼び出し。思考（`agent_thought_chunk`）と生の履歴（chat_history.jsonl）は読まない。
 - 範囲: 作業場所は台帳の `cwd` を使い、Claude と Codex と同じ範囲判定（同じ作業場所、同じリポジトリ）に乗せる。範囲外の Grok の会話は一覧、読む、送るのどれも拒否する（AC8）。Grok には「範囲の未設定」が無い（範囲は台帳の作業場所から決まる）ので、AC8 の「未設定」は「台帳の行の作業場所が無いか読めない」に当たり、その会話も拒否する。制限の設定（limits.json）が壊れているときは既存と同じく拒否する。
 
 配送（送る）。封筒は会話ではなく「会話の世代」に宛てる
-- 受理: seamless が受信箱 `~/.seamless/grok-inbox/<会話 ID>/pending/<依頼 ID>.json` に封筒を書き終えた時点（spec の段の定義の Grok CLI の但し書き）。封筒には宛先の世代（pid と開始時刻）を書く。同じ依頼 ID が pending、delivering、handed、delivered、failed、unknown のどこかにあれば置き直さない。別 ID で同じ内容（送り手、宛先、replyTo、本文が同じ）も、既存の予約（依頼の hash の claim）に乗せて duplicate にする（AC7。Bot の経路と同じ仕組み）。本文が 8,000 字を超える封筒は、送る時点で `text_too_long` として拒否する（切り詰めて欠けさせない）。
+- 受理: seamless が受信箱 `~/.seamless/grok-inbox/<会話 ID>/pending/<依頼 ID>.json` に封筒を書き終えた時点（spec の段の定義の Grok CLI の但し書き）。封筒には宛先の世代（pid と開始時刻）を書く。同じ依頼 ID が pending、delivering、handed、delivered、failed、unknown のどこかにあれば置き直さない。別 ID で同じ内容（送り手、宛先、replyTo、本文が同じ）も、既存の予約（依頼の hash の claim）に乗せて duplicate にする（AC7。Bot の経路と同じ仕組み）。本文が 8,000 字を超える封筒は、送る時点で `text_too_long` として拒否する（切り詰めて欠けさせない。上限の由来は D7）。
 - hook のスクリプト: seamless のリポジトリにある固定の道（`src/grok-hook.ts`）を、Node の絶対パスで起動する。会話 ID と作業場所は Grok が hook に渡す入力（標準入力の JSON。項目は T0-2 で確かめる）から取り、自分のプロセスの pid（Grok の TUI の pid は hook の親から取る。取り方は T0-2 で確かめる）と台帳の行を照合する。封筒の世代と一致しないときは配達しない（別プロセスが同じ会話を開いても届かない。AC2）。
 - 1 回の Stop で 1 封筒。順は受理の時刻。`pending` → `delivering`（原子的な改名。改名できなければ別の hook が取っている）→ 文脈に足す → `delivered`。壊れた封筒は `failed` に移して次へ進む（先頭で止まらない）。文脈に返す直前に `delivering` → `handed`（返した印）に改名し、受領記録を書いた後に `delivered` へ改名する。`delivering` のまま残った封筒（返す前に hook が死んだ）は、改名した hook の pid が生きていなければ次の hook が `pending` に戻す（まだ返していないので再送ではない）。`handed` のまま残った封筒（返した後、記録を書く前に死んだ）は、配達済みか不明なので戻さず、`unknown` に移して帯で「成否不明。立花さんの確認が要る」と出す（成否不明の自動再送をしない。AC7）。
 - 会話の終了時の Stop（`channel_closed`、`shutdown`）では配達しない。封筒は pending のまま（まだ配達していないので再送ではない）。
 - 配信確認: hook が `delivered/<依頼 ID>.json` に受領記録（依頼 ID、会話 ID、世代、hook の時刻、Stop の理由）を書き、かつ Grok の記録に同じ時刻以降の `hook_execution`（Stop、completed）がある時点。受領記録だけ、記録だけ、のどちらか片方では立てない。会話の終了時の Stop（`channel_closed`、`shutdown`）は Grok が無視するので、hook はその理由では配達せず pending に戻す。
 - 処理開始: 受領記録の時刻より後に、同じ会話の記録に相手の発話か道具の呼び出しが現れた時点（Claude と Codex と同じ近似。依頼の内容への反応かどうかは判定しない）。
 - 返答完了: 相手が seamless の `send` で `replyTo` つきに返した時点。
+- 一覧の状態の値と帯の言葉: 動いている会話は `online`（帯の表示は「動いている」）、止まっている会話は `offline`（帯の表示は「止まっている」）。既存の Claude と Codex と同じ値と言葉。
+- 見せる場所: 帯（Claude Desktop の入力欄の上の 1 行）と、パネル「チーム」（帯の ×n で開く右の一覧。帯の第 4 版の設計 specs/202610-status-ui/design-v4.md）。
 - 未配信の表し方: 配信確認が無い間は「未配信」と出し、「待機中」とは断定しない。相手の記録に 5 分以上の動きが無いときだけ「相手は 5 分以上動いていない。次の 1 手の後に届く」と添える（D5 の (b)）。hook が登録されていない、失敗した、途中で止まった、の区別は受領記録と `hook_execution` の有無から出せる範囲でだけ出す。
 - 封筒の印は「全体の形」の節の規則のとおり（ルートの不変条件 3 に従う）。
 - H0 の判断: T0-2 の試験用 hook は試験用の作業場所の `.grok/hooks/` にだけ置き、本人が `/hooks-trust` でその場所だけを信頼する。`/hooks-trust` はその場所の hook に実行の権限を与える操作なので、本人の操作として H0 に置き、evidence.md に「可」の記録があるまで T0-2 に入らない。止まる条件 3（受信側の権限を緩める設計）に当たる可能性がある。当たるか否かの判定は本人（H0）が行い、seamless は決めない。判断材料: `/hooks-trust` はその場所の hook に実行の権限を与える操作である。一方、hook の中身は文脈に文を足すだけで、受信側の承認設定も sandbox も変えず、実行の権限を与える先は本人が置いた seamless のスクリプトだけである。全体の設定（`~/.grok/config.toml`）は H1 で別に承認を取る。

@@ -76,6 +76,6 @@ Updated: 2026-10-08 JST
 |---|---|---|---|
 | TC-1 | 各工程の判定の前に、`bash scripts/verify.sh` を走らせ、既存の Claude⇄Codex の実往復を 1 回行い、壊れていないことを記録（AC10） | 各工程の実装の後 | evidence.md に、その工程の verify.sh の exit 0 と、往復の 4 段の時刻がある |
 | TC-4 | Claude⇄Codex の相手でも、返信の受信後 10 分で依頼が増えないことを 1 回実測（AC6 の「相手ごと」） | TC-1 | 記録の 10 分の前後で依頼の件数が同じ |
-| TC-2 | リポジトリのルートにある GOD_Plans.md（製品全体の台帳）と Plans.md（ルート）の状態の行を、その工程の判定 PASS を受けた版のコミット（判定の直前のコミット）の短い SHA に直し、直した分を記録のコミットとして足す | 各工程の PASS | 2 つのファイルの状態の行に、判定 PASS を受けた版のコミットの SHA があり、evidence.md のその工程の判定の記録と同じ SHA である |
+| TC-2 | リポジトリのルートにある GOD_Plans.md（製品全体の台帳）と Plans.md（ルート）の状態の行を、その工程で判定役が読んだ版のコミットの短い SHA（evidence.md の判定の記録に書く SHA と同じもの）に直し、直した分を記録のコミットとして足す | 各工程の PASS | 2 つのファイルの状態の行の SHA が、evidence.md のその工程の判定の記録の SHA と同じである |
 | TC-3a | 封筒の印の試験（Grok の受信箱へ置く封筒）を既存の試験に足す | T1-5 | その試験で、markUnapproved が無い設定では humanApproval が無く、markUnapproved:true では humanApproval:false が付き、どちらでも humanApproval:true が無い |
 | TC-3b | 封筒の印の試験（webhook へ送る封筒と、署名済みの受信の封筒）を既存の試験に足す | T2-2、T2-3 | その試験で、2 経路とも、markUnapproved が無い設定では humanApproval が無く、markUnapproved:true では humanApproval:false が付き、どちらでも humanApproval:true が無い |

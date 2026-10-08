@@ -20,3 +20,32 @@
 - 「今日決めること」の推奨: P1（Grok CLI）を先に完了させ、P2（茶々丸）は T0-4b と T0-6 の答えが揃ってから着手する。
 - 本人判断の確認事項 (a)(b)(c) は返事が無いので、判断材料に書いた「今の形」で進める。(a) hook の信頼付与は止まる条件に書き足さず H0 と H1 で止まる。(b) T0-3b の Open question の更新は承認済み本文の変更に当たらない扱い。(c) H8 が否なら AC3 未達を P1 の判定の記録に書く。
 - 実装の担当: リーダー Claude Opus 5.5（立花さんが 2026-10-08 にモデルを Fable 5.1 から切り替え）。チームは team-build（大きさ L）。
+
+## P0 の記録（2026-10-08 JST）
+
+### T0-1 台帳の実例（16:30〜16:31 JST、Grok CLI 1.0.46 (2765805b9442)）
+
+擬似端末（Python の pty）で `~/.grok/bin/grok` を画面ありで起動し、12 秒後に台帳を読み、`/exit` で終えてから再び読んだ。作業場所は試験用のフォルダ（scratchpad の grok-t01）。
+
+- 登録時（起動 12 秒後）の `~/.grok/active_sessions.json`:
+  ```
+  [{"session_id": "01a11a6c-23b4-7af0-b5c4-c9893437b306", "pid": 9454, "cwd": "/private/tmp/claude-502/.../scratchpad/grok-t01", "opened_at": "2026-10-08T07:30:57.414144Z"}]
+  ```
+- 削除時（`/exit` の後）: `[]`
+- 値の形: 会話 ID `session_id` は UUID（版 7。先頭が時刻）。`pid` は整数で、起動した子プロセスの pid そのもの（9454 = pty.fork の子）。`cwd` は絶対パスで、`/private/tmp` のように実体の道（realpath）で書かれる。`opened_at` は ISO 8601 の UTC、マイクロ秒つき、末尾 `Z`。
+- 会話の保存先: `~/.grok/sessions/<作業場所の URL エンコード>/<会話 ID>/`。中身は summary.json、updates.jsonl、chat_history.jsonl、events.jsonl、prompt_context.json、system_prompt.txt ほか。
+- 要約（summary.json）の `info.id` と `info.cwd`、`created_at`（07:30:57.163224Z。台帳の opened_at より 0.25 秒早い）、`updated_at`、`last_active_at`。
+- 計画と違った点: 画面ありの会話の要約には `session_kind` が無い。手元の 511 件の要約のうち 452 件が `headless`、24 件が `subagent`、1 件が `subagent_resume`、残り 34 件は項目なし（画面あり）。Plans.md の「止まっている会話」の判定を「`session_kind` が無い = 画面あり」に直した（同じコミット）。
+- updates.jsonl の hook_execution の行（T0-2 の先取り。H0 の試験ではなく、既存の全体の hook の記録）: `{"timestamp": 秒, "method": "_x.ai/session/update", "params": {"sessionId", "update": {"sessionUpdate": "hook_execution", "event_name": "stop", "runs": [{"name": "global/settings:stop[1].hooks[0]", "status": {"status": "success", "elapsed_ms": 数}}]}, "_meta": {"eventId": "<会話 ID>-<連番>", "agentTimestampMs": ミリ秒}}}`。hook の識別（`runs[].name`）は入る。依頼 ID が入るかは T0-2 の実測で確かめる。
+- 既存の全体の hook（`global/settings` と `plugin/codex/hooks`）が session_start、stop、session_end で既に動いている。seamless の hook はこれと並ぶ 1 本になる。
+
+### T0-3a 署名（16:29 JST）
+
+- `codesign --verify --verbose=2 ~/.grok/bin/grok`: `valid on disk`、`satisfies its Designated Requirement`。
+- `codesign -dv`: `Identifier=xai-grok-pager`、`Authority=Developer ID Application: X.AI Corporation (5Y6N3AJ54S)`、`TeamIdentifier=5Y6N3AJ54S`。
+- `~/.grok/bin/grok` は `~/.grok/downloads/grok-1.0.46-macos-aarch64` への symlink。
+- 結果: Yes。T0-3b と H8 は不要。T1-7 は TeamIdentifier `5Y6N3AJ54S` の確認で進める。
+
+### T0-4a と T0-6 茶々丸への質問（16:33 JST）
+
+- `.local/grok-consult/questions.md`（本線の checkout）に、webhook の 4 問（Q1 上限、Q2 応答の形、Q3 順序、Q4 再送）と、逆向きの経路の 1 問（Q5）を書いた。立花さんに「Grok に聞いて」と頼む（ハンドオフの手順）。答えは `.local/grok-consult/answers.md` に来る。

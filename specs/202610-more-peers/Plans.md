@@ -30,7 +30,7 @@ P1 と P2 は独立で、P0 の後に並べて進められる（共通の作業 
 
 観測（一覧と読む）
 - 動いている会話: Grok の稼働中の会話の台帳 `~/.grok/active_sessions.json`（会話 ID、pid、作業場所、開始時刻。以下「台帳」。外の実行主体の「名簿」peers.json とは別）を読み、pid が生きていて開始時刻が合う行だけを「動いている」とする。世代 = `pid@開始時刻`。画面なし（`grok -p`）は登録されないので対象外。
-- 止まっている会話: 会話の保存先にあって要約の `session_kind` が TUI の会話のうち、台帳に無いもの、または台帳にはあるが pid が生きていないか開始時刻が合わない行（台帳の刈り残し）。画面なし（`grok -p`、`session_kind` が headless）の会話は、動いていても止まっていても一覧に出さない（対象外）。Codex と同じく既定では一覧に出さず offlineHidden に数え、includeOffline のときだけ「止まっている」として出す（AC1 の区別）。宛先にはしない（D3）。一覧の各行は製品 `grok`、ホスト local、会話 ID、世代、状態を持つ。
+- 止まっている会話: 会話の保存先にあって要約に `session_kind` が無い会話（画面ありの会話。T0-1 の実測で、画面ありの要約には `session_kind` が無く、画面なしは `headless`、下請けは `subagent` か `subagent_resume` が入る）のうち、台帳に無いもの、または台帳にはあるが pid が生きていないか開始時刻が合わない行（台帳の刈り残し）。画面なし（`grok -p`、`session_kind` が headless）と下請け（`subagent`、`subagent_resume`）の会話は、動いていても止まっていても一覧に出さない（対象外）。Codex と同じく既定では一覧に出さず offlineHidden に数え、includeOffline のときだけ「止まっている」として出す（AC1 の区別）。宛先にはしない（D3）。一覧の各行は製品 `grok`、ホスト local、会話 ID、世代、状態を持つ。
 - 本文: `~/.grok/sessions/<作業場所>/<会話 ID>/updates.jsonl` を読み、`user_message_chunk` と `agent_message_chunk` を連結して可視の発話にする。`tool_call` は道具の呼び出し。思考（`agent_thought_chunk`）と生の履歴（chat_history.jsonl）は読まない。
 - 範囲: 作業場所は台帳の `cwd` を使い、Claude と Codex と同じ範囲判定（specs/202610-everyday-use/spec.md の探す範囲。既定は不変条件 8 のとおり同じ作業場所で、同じリポジトリとすべては本人が制限の設定で選んだときだけ。Grok のために広げない）に乗せる。範囲外の Grok の会話は一覧、読む、送るのどれも拒否する（AC8）。Grok には「範囲の未設定」が無い（範囲は台帳の作業場所から決まる）ので、AC8 の「未設定」は「台帳の行の作業場所が無いか読めない」に当たり、その会話も拒否する。制限の設定（limits.json）が壊れているときは既存と同じく拒否する。
 

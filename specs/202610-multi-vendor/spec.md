@@ -1,6 +1,6 @@
 # seamless 多社連携（Grok CLI、Grok Bot、ChatGPT Dot）と帯 第5版
 
-状態: 草案 第2版（敵対 Codex Astra の 12 指摘を反映。立花さんの承認待ち 1 回目）
+状態: superseded（2026-10-08。Grok CLI、Grok Bot、Dot の部分は specs/202610-more-peers/spec.md に引き継ぎ、そちらが承認 1 回目済みの正本。帯 第5版の部分は未計画の案のまま。この文書は編集しない）
 更新: 2026-10-08 JST
 大きさ: L（製品の不変条件 8 を改訂するため、ルートの spec.md を先に直す）
 依頼: 立花さん（2026-10-08）「seamless を Grok CLI、Grok Bot、ChatGPT Dot とも連携できるようにしたい。Grok CLI はあえて止めているだけ。Grok Bot はハンドオフを確認して検証。Dot は確認中なので最後。」

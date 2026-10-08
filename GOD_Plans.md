@@ -7,7 +7,7 @@
 | 機能 | 状態 | 仕様 | 計画 | 証拠 |
 |---|---|---|---|---|
 | CodexとClaudeの元会話をつなぐ | 実会話とDesktop方式検証完了。実装計画の独立判定APPROVE | [仕様](specs/202610-session-interop/spec.md) | [計画](specs/202610-session-interop/Plans.md) | [証拠](specs/202610-session-interop/evidence.md) |
-| Grok CLI、Grok Bot、ChatGPT Dot へ広げる | 2026-10-08 承認 2 回目。P0 から実装中（P1 を先に完了、P2 は茶々丸の答えの後） | [仕様](specs/202610-more-peers/spec.md) | [計画](specs/202610-more-peers/Plans.md) | [証拠](specs/202610-more-peers/evidence.md) |
+| Grok CLI、Grok Bot、ChatGPT Dot へ広げる | 2026-10-08 承認 2 回目。P1 の一覧、読む、呼び手、認可を実装（verify exit 0、図面検査 PASS、実地検査 一致）。Grok へ送る部分は H0 待ち、P2 は茶々丸の答え待ち、P3 は Dot の受け入れ条件の承認待ち | [仕様](specs/202610-more-peers/spec.md) | [計画](specs/202610-more-peers/Plans.md) | [証拠](specs/202610-more-peers/evidence.md) |
 
 | 両方向のセッション探索 P1 | 66試験PASS、verify実終了0。最終66試験版のHaiku / Opus独立判定PASS。P1共通核完了。当時のP1単独起動。nativeモードの最新検収は製品検証を参照 | [仕様](specs/202610-session-discovery/spec.md) | [計画](specs/202610-session-discovery/Plans.md) | [証拠](specs/202610-session-discovery/evidence.md) |
 

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>seamless 相手を増やす 進み具合</title>
+<style>
+:root{--bg:#faf9f6;--card:#fff;--line:#e4e1d9;--text:#1e1d1a;--sub:#6b685f;--ok:#2f8f5b;--attn:#d9752b;--fail:#d64545;--blue:#3b6fd1}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--card:#1d1d1b;--line:#2e2e2b;--text:#e9e7e2;--sub:#9b988f}}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.8 -apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;padding:32px 16px 80px}
+main{max-width:760px;margin:0 auto}
+h1{font-size:22px;line-height:1.4;margin:0 0 6px}
+.lead{font-size:17px;color:var(--sub);margin:0 0 28px}
+h2{font-size:17px;margin:36px 0 10px;padding-left:10px;border-left:4px solid var(--blue)}
+p{margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:0 0 12px;overflow-x:auto}
+table{border-collapse:collapse;width:100%;margin:8px 0 14px;font-size:15px}
+th,td{text-align:left;vertical-align:top;padding:9px 10px;border-top:1px solid var(--line)}
+th{color:var(--sub);font-weight:500}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.ok{background:var(--ok)}.attn{background:var(--attn)}.todo{border:2px solid var(--sub);box-sizing:border-box}
+.bar{height:12px;border-radius:6px;background:var(--line);overflow:hidden;margin:6px 0 4px}.bar>i{display:block;height:100%;width:24%;background:var(--ok)}
+.decide{border-left:4px solid var(--attn)}.decide h3{color:var(--attn);font-size:15px;margin:0 0 8px}
+.rec{background:#fff6ec;border-radius:8px;padding:8px 12px;margin:8px 0}
+@media (prefers-color-scheme:dark){.rec{background:#2d2419}}
+.note{color:var(--sub);font-size:14px}
+pre{background:rgba(127,127,127,.12);border-radius:8px;padding:10px 12px;font-size:14px;overflow-x:auto;white-space:pre-wrap}
+code{background:rgba(127,127,127,.15);border-radius:4px;padding:1px 5px;font-size:14px}
+.answer{background:var(--card);border:2px dashed var(--line);border-radius:12px;padding:14px 18px;margin-top:20px}
+</style></head><body><main>
+
+<h1>seamless の相手を増やす ── 今日の進み具合（2026-10-08）</h1>
+<p class="lead">Grok CLI の「一覧に出す」「中身を読む」「Grok から送る人を確かめる」ができて、実機の Grok でも動きました。Grok へ送る部分は、立花さんの 1 操作待ちです。</p>
+
+<h2>ひとことで</h2>
+<p>作業 51 件のうち 12 件が済みました。残りの多くは「立花さんの操作」か「茶々丸の答え」を待っています。</p>
+<div class="bar"><i></i></div>
+<p class="note">100% = specs/202610-more-peers/tasks.md の 51 件がすべて済み、工程ごとの判定役の合格がそろい、main に取り込まれた状態。今は約 24%（済み 12、待ち 3 種、未着手 36）。</p>
+
+<h2>実際にはどういうこと</h2>
+<div class="card"><table>
+<tr><th>段</th><th>状態</th><th>中身</th></tr>
+<tr><td>P0 事実確認</td><td><span class="dot attn"></span>半分</td><td>Grok の台帳の形、署名（X.AI の開発者署名を確認）、MCP Events の仕様は済み。hook の合言葉の試験は立花さんの操作（H0）待ち。茶々丸への 5 問は答え待ち</td></tr>
+<tr><td>P1 Grok CLI</td><td><span class="dot attn"></span>作れる所まで済み</td><td>一覧、読む、送る人の確認、範囲外の拒否ができた。試験 424 件と帯 89 件がすべて合格。Grok へ送る部分（受信箱と hook）は H0 の後</td></tr>
+<tr><td>P2 茶々丸</td><td><span class="dot todo"></span>待ち</td><td>決めた順のとおり、茶々丸の答え（webhook の 4 問と、Mac に入る経路の 1 問）が来てから始める</td></tr>
+<tr><td>P3 Dot</td><td><span class="dot attn"></span>承認待ち</td><td>受け入れ条件を 3 行書き、穴探し（Codex）の指摘 12 件をすべて直した</td></tr>
+</table></div>
+
+<h2>実機で確かめたこと</h2>
+<div class="card">
+<p>この作業場所で Grok を 1 つ起動し、「了解とだけ答えて」と打ちました。そのあと seamless で一覧を出すと、その会話が「Grok・この Mac・動いている」で出ました。中身を読むと、立花さん側の 1 件と Grok の「了解」の 1 件だけが出て、Grok の考え事の行は出ませんでした。</p>
+</div>
+
+<h2>計画から変わったこと（2 つ）</h2>
+<div class="card">
+<p><b>良い方: Grok の署名が確かめられた。</b> 実行ファイルに X.AI の開発者署名（識別子 5Y6N3AJ54S）がありました。なので「署名が無いときの代わりの確かめ方」（H8）は不要になりました。</p>
+<p><b>注意: Dot が頼る MCP Events は、まだ草稿だった。</b> 「2026-07-28 版の仕様に入った」と言われていましたが、実際は 2026-10-05 に出たばかりの草稿（SEP-3415、レビュー前）でした。ChatGPT は先行して対応しています。形が変わる恐れがあるので、Dot の実装は承認の後も、作る直前に版をもう一度確かめます。</p>
+</div>
+
+<h2>今日決めること（2 つ）と、頼みたいこと（1 つ）</h2>
+
+<div class="card decide">
+<h3>A. 試験用の場所で Grok の hook を信頼してよいか（H0）</h3>
+<div class="rec">推奨: 可。手順は下の 3 行です</div>
+<pre>cd ~/LocalWork/Code/seamless/.local/grok-t02 && grok
+/hooks-trust
+/exit</pre>
+<p>許可すると: 私が Grok を起動して「1 手の終わりに文を足せるか」を合言葉で試します（T0-2）。通れば、Grok へ送る部分（受信箱、hook、届いたかの観測、帯の「未配信」表示）を作り、次の「全体の設定に hook を登録する」（H1）の差分を出して止まります。</p>
+<p>今回はしないこと: Grok の全体の設定の変更。この場所の外の hook。</p>
+<p>知っておくこと: 信頼はこの場所の hook だけでなく、MCP、指示書、skill にもかかります。この場所には試験用の hook と説明しか置いていません。</p>
+<p>後から戻せるか: 戻せます。この場所を消し、<code>~/.grok/trusted_folders.toml</code> からこの場所の行を消せば元どおりです。</p>
+</div>
+
+<div class="card decide">
+<h3>B. Dot の受け入れ条件を承認するか（T3-3）</h3>
+<div class="rec">推奨: 承認する。ただし実装は Q5（Dot から送るときの本人確認の方法）が分かるまで始めない</div>
+<p>中身（3 行）: (1) Dot の購読を、本人確認できた接続からだけ受けて保つ。(2) Mac から Dot へは、1 回だけ署名つきで送り、勝手に送り直さない。内部の住所へは送らない。(3) Dot から Mac へ送るときは、名乗りではなく鍵で確かめる。</p>
+<p>許可すると: spec に承認を記録し、次は ChatGPT の Tunnel の仕様を読んで Q5 を調べます。</p>
+<p>今回はしないこと: Dot の実装、Tunnel の設定、仕様の版の引き上げ。Claude と Codex がいま使う入口は変えません。</p>
+<p>後から戻せるか: 戻せます。仕様の文だけです。</p>
+</div>
+
+<div class="card">
+<h3 style="font-size:15px;margin:0 0 8px">C. 茶々丸に 5 問を渡してほしい（頼みごと）</h3>
+<p>質問は <code>~/LocalWork/Code/seamless/.local/grok-consult/questions.md</code> に書きました。ハンドオフの手順どおり、茶々丸に「Grok に聞いて」と伝えてください。答えは同じ場所の answers.md に来ます。答えが来たら、茶々丸の段（P2）を始めます。</p>
+</div>
+
+<h2>後回しでよいこと（推奨どおりなら返事は不要）</h2>
+<div class="card"><table>
+<tr><th>項目</th><th>今の形</th><th>理由</th></tr>
+<tr><td>名前が grok の、確かめられない祖先から seamless が呼ばれたとき</td><td>送り手を決めずに止める</td><td>その上にいる Claude や Codex の会話を、送り手と取り違えないため。別の場所に入れた Grok からは送れなくなる</td></tr>
+<tr><td>Grok へ送る機能ができるまで</td><td>Grok 宛ての送信は、予約を作らずに「まだ送れない」で止める</td><td>中途半端な記録を残さないため</td></tr>
+</table></div>
+
+<h2>点検の記録</h2>
+<div class="card">
+<p>図面検査（Haiku、計画と実装の食い違い探し）: 1〜3 回目は FAIL で、すべて直しました。大きかったのは「画面なしの Grok の中から呼ばれたとき、その上の Claude の会話を送り手と取り違える穴」で、直したうえで試験を足しました。4 回目で PASS（食い違いなし）になり、任意の改善 3 点も入れました。</p>
+<p>実地検査（Codex、別の頭で検証一式を走らせる）: 1 回目は Codex 側の環境の制限で 4 件が動かず不一致、2 回目と 3 回目は一致でした。</p>
+<p>穴探し（Codex Astra、Dot の受け入れ条件）: 12 件（重い 7、中 5）をすべて直しました。</p>
+</div>
+
+<div class="answer">
+<p><b>返事の例</b>: 「A は可、B は承認」。そのうえで A の 3 行を実行し、C を茶々丸に渡してください。</p>
+<p class="note">書類: specs/202610-more-peers/ の spec.md（受け入れ条件）、Plans.md（作り方）、tasks.md（作業の一覧）、evidence.md（証拠）。</p>
+</div>
+
+</main></body></html>

@@ -100,3 +100,10 @@ test('with scope any, stopped conversations are cut to the 50 most recently acti
  assert.equal(stopped.length,50);
  assert.ok(!stopped.some((c:any)=>c.nativeId==='01a11a6c-23b4-7af0-b5c4-000000000000'));
 });
+test('a stopped Grok conversation without a ledger row is not remembered, so starting it again lists it online at once',async t=>{
+ const {f,result}=await list(t,{includeOffline:true});
+ assert.ok(grokIds(result).includes(ids.stopped));
+ const {readFile}=await import('node:fs/promises');
+ const seen=JSON.parse(await readFile(join(f.home,'.seamless','seen.json'),'utf8'));
+ assert.ok(!seen.some((n:any)=>n.nativeId===ids.stopped));
+});

@@ -174,7 +174,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   // A Codex conversation the caller names but Desktop has not loaded is opened, then observed again.
   if(p.target&&method!=='band'&&visible.length===1&&visible[0].provider==='codex'&&visible[0].reason==='unreachable'&&await wake(visible[0].nativeId)){const current=await inspect(visible[0]);if(current)visible[0]={...current,provider:'codex'};}
   if(method==='sessions'||method==='band'){
-   const seen=options.compatTest||p.peek===true||method==='band'?{disappeared:[],changes:new Map()}:await observeSeen(join(home,'.seamless','seen.json'),found.sessions,options.clock?.now()??Date.now());
+   const seen=options.compatTest||p.peek===true||method==='band'?{disappeared:[],changes:new Map()}:await observeSeen(join(home,'.seamless','seen.json'),found.sessions.filter(n=>!(n.provider==='grok'&&n.generation==='none')),options.clock?.now()??Date.now());
    const expired:string[]=[];
    for(const old of seen.disappeared){if(await excluded(old,{...l,exclude:l.exclude.filter(e=>e.nativeId!==undefined)})&&visible.some(n=>n.provider===old.provider&&n.cwd===old.cwd&&seen.changes.get(idOf(n))?.change==='new'))expired.push(old.nativeId);}
    const excludeExpired=[...new Set(expired)];

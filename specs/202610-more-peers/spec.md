@@ -56,7 +56,7 @@ Grok Bot（茶々丸の確認、seamless 側で検証できたものに印）
 - 外から会話へ直接入る入口は無い。入口は webhook で動くルーチン（URL と鍵は本人がアプリからコピーし、Bot は鍵を見ない）。
 - 起きた Bot はほかの Bot へ渡せる。本人への通知は判断が要るときだけにできる。
 - 届く中身の大きさの上限、再送、順序、配送の確認は未公開 → 未確認のまま扱う。
-- 逆向き（Bot → Mac）: Bot が Mac でコマンドを 1 つずつ本人の承認を受けて実行できる。✔ seamless 側で確認: 今の呼び手の特定は Claude の祖先か Codex の metadata を求めるので、Bot の Mac コマンドは `caller_unobserved`（native_ancestor_missing）になる。名乗りの引数で代える設計にしない方針は変えない。
+- 逆向き（Bot → Mac）: Bot が Mac でコマンドを 1 つずつ本人の承認を受けて実行できる。✔ seamless 側で確認: 今の呼び手の特定は Claude の祖先か Codex の metadata を求めるので、Bot の Mac コマンドは `caller_unobserved`（native_ancestor_missing）になる。鍵の無い名乗りで代える設計にしない方針は変えない。
 - 受け口の Bot は茶々丸（D1 で決定）。
 
 ChatGPT Dot（Codex の調査、立花さんが 2026-10-08 に貼り付け。全文は `.local/grok-consult/dot-research-2026-10-08.md`）

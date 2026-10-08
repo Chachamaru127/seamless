@@ -10,13 +10,14 @@ Updated: 2026-10-08 JST
 | # | 作業 | 前提 | Done when |
 |---|---|---|---|
 | T0-1 | Grok の TUI を 1 つ起動し、`~/.grok/active_sessions.json` に行が増え、終了で消えることを見る。項目名と時刻の形を evidence.md に写す | なし | evidence.md に登録時と削除時の 2 回分の中身があり、項目ごとの値の形（会話 ID は UUID か、pid は整数か、作業場所は絶対パスか、開始時刻の書式）が書いてある |
-| T0-2 | 試験用の作業場所の `.grok/hooks/` に command 型の Stop hook を置き、合言葉（例: `SEAMLESS-T02-OK`）を含む `additionalContext` を返す。hook が受け取る標準入力の JSON（会話 ID、作業場所、理由）と、hook から見た TUI の pid の取り方も evidence.md に写す。Grok に「文脈にある合言葉を答えて」と頼む | H0 が可（evidence.md に記録） | updates.jsonl に hook_execution の行があり、その後の発話に合言葉がそのまま含まれ、evidence.md に hook の入力の項目名（会話 ID、作業場所、Stop の理由が入っているか否か）、pid の取り方（取った pid が台帳の行の pid と一致したこと）、hook_execution の行に依頼 ID が入るか否かの確認結果（入る／入らない）、がある |
+| T0-2 | 試験用の作業場所の `.grok/hooks/` に command 型の Stop hook を置き、合言葉（例: `SEAMLESS-T02-OK`）を含む `additionalContext` を返す。hook が受け取る標準入力の JSON（会話 ID、作業場所、理由）と、hook から見た TUI の pid の取り方も evidence.md に写す。Grok に「文脈にある合言葉を答えて」と頼む | T0-1、H0 が可（evidence.md に記録） | updates.jsonl に hook_execution の行があり、その後の発話に合言葉がそのまま含まれ、evidence.md に hook の入力の項目名（会話 ID、作業場所、Stop の理由が入っているか否か）、pid の取り方（取った pid が台帳の行の pid と一致したこと）、hook_execution の行に依頼 ID が入るか否かの確認結果（入る／入らない）、がある |
 | T0-3a | `~/.grok/bin/grok` の署名を `codesign --verify` で確かめ、開発元の識別子を evidence.md に写す | なし | evidence.md に識別子の値がある（Yes）。確かめられなければ「確認不能」と書く（No） |
 | T0-3b | T0-3a が No のときだけ: 代わりの確かめ方（実行ファイルの実体の道とハッシュの固定）を spec の Q2 に書き、立花さんに可否を聞く（H8）。可なら T1-7 はその確かめ方で進め、否なら T1-7 と T1-10c、T1-10d は着手禁止のまま（AC3 は未達として evidence.md に書く） | T0-3a が No | spec の Q2 に代わりの確かめ方と、立花さんの「可」か「否」の記録がある |
 | T0-4a | Grok Bot の webhook の事実（1 回の POST の上限、応答の形、順序、再送）を `.local/grok-consult/questions.md` に 4 問で書き、立花さんに「茶々丸に聞いて」と頼む（ハンドオフの手順。答え手は茶々丸） | なし | questions.md に 4 問がある |
 | T0-4b | 茶々丸の答えを evidence.md に写す。「未公開」の問いには、Plans.md の保守的な既定を採ると書く | T0-4a | evidence.md に 4 問それぞれ、数値か文の答え、または「未公開」（「分からない」も未公開として扱う）があり、未公開の問いには採る既定が書いてある |
 | T0-5 | MCP Events の一次仕様（2026-07-28 版）を読み、4 項目（イベントの発見の方法、購読の方法と保持、callback の呼び方、署名の方式）を evidence.md に写す | なし | evidence.md に 4 項目（発見、購読、callback、署名）それぞれの引用と出典の URL がある |
-| T0-6 | 茶々丸が Mac で CLI を実行する経路（既存の Tailscale の経路か、新しい常駐処理や口が要るか）を questions.md で聞き、答えを evidence.md に写す | なし | evidence.md に「既存の経路」か「新しい口が要る（→ 止まる条件に当たるので P2 の受ける経路は着手禁止）」のどちらかがある |
+| T0-6 | 茶々丸が Mac で CLI を実行する経路（既存の Tailscale の経路か、新しい常駐処理や口が要るか）を questions.md で聞き、答えを evidence.md に写す | なし | evidence.md に「既存の経路」か「新しい口が要る」のどちらかがある |
+| T0-6b | T0-6 が「新しい口が要る」のときだけ: 止まる条件に当たるので止まり、立花さんに H9 の判断を聞く。「範囲から外す」なら T2-3、T2-4、T2-5、T2-8c〜e は未達として evidence.md に書き、T2-9 は送る経路（T2-2、T2-8a、T2-8b、T2-8f）だけを判定する | T0-6 が「新しい口が要る」 | evidence.md に立花さんの H9 の判断と、未達にした作業の一覧がある |
 
 ## P1 Grok CLI
 
@@ -29,16 +30,16 @@ Updated: 2026-10-08 JST
 | T1-5 | 送る経路（受信箱へ置く = 受理。同じ依頼 ID と同じ内容の別 ID は置き直さない。8,000 字超は text_too_long）と試験 `tests/grok-send.test.ts` | T1-4 | その試験で: 受理 → pending に封筒 1 件と status submitted; 同じ ID → duplicate で封筒は 1 件のまま; 同じ内容の別 ID → duplicate で封筒は 1 件のまま; 8,001 字 → text_too_long で封筒なし; 置いた後の切断 → status unknown で封筒は 1 件のまま。5 場面が全部この結果 |
 | T1-6 | 段の観測（受領記録 + hook_execution = 配信確認、その後の発話 = 処理開始、replyTo の返信 = 返答完了）と循環の試験 `tests/grok-status.test.ts` | T1-5 | その試験で: 4 段の見本 → 4 段とも observed; 受領記録だけ → 配信確認 unobserved; hook_execution だけ → 配信確認 unobserved; 別プロセスが同じ会話を開いた見本 → 配信確認 unobserved; 返信の受信後 10 分（試験の時計）→ 依頼の件数が前後で同じ。5 場面が全部この結果 |
 | T1-6b | 帯（入力欄の上の 1 行）とパネル「チーム」（帯の ×n で開く一覧）に「未配信」、相手の記録に 5 分以上動きが無いときの「相手は 5 分以上動いていない。次の 1 手の後に届く」、unknown の封筒の「成否不明。立花さんの確認が要る」を出す（D5 の (b)） | T1-6 | 帯の試験で、配信確認が無い Grok の相手に「未配信」が出て、5 分以上動きが無い見本にだけ添え書きが出て、unknown の封筒がある見本に「成否不明」が出る |
-| T1-7 | 呼び手の特定に Grok CLI の道を足す（祖先の grok の pid と台帳の行の一致、作業場所の一致、署名または H8 で可とした代わりの確かめ方）と試験（caller-scan.test.ts に追加） | T0-3a が Yes、または T0-3b で「可」 | その試験で、見本の台帳の行と pid と作業場所が一致し署名の確認が通る祖先では呼び手がその会話（製品 grok、会話 ID、世代）として特定され、pid の不一致、作業場所の不一致、署名の確認の失敗、名乗りだけ（環境変数や引数の会話 ID）、の 4 つはそれぞれ `caller_unobserved` になる |
-| T1-8 | Grok CLI 側の認可の拒否（台帳の行の作業場所が無いか読めない、制限の設定が壊れている、範囲外の名指し）と、受信後に承認設定と sandbox が変わらない比較の試験（automatic.test.ts に追加） | T1-2 | その試験で、3 条件それぞれで一覧、読む、送るの 3 操作が拒否され（9 場面）、受信の前後で `~/.claude/settings.json` の permissions と crossSessionInbound、`~/.codex/config.toml` の approval と sandbox の節、`~/.grok/config.toml` を TOML として読んで hooks の表を除いた残りを正規化した文字列、の hash が一致する |
+| T1-7 | 呼び手の特定に Grok CLI の道を足す（祖先の grok の pid と台帳の行の一致、作業場所の一致、署名または H8 で可とした代わりの確かめ方）と試験（caller-scan.test.ts に追加） | T0-3a が Yes、または T0-3b で「可」 | その試験で、見本の台帳の行と pid と作業場所が一致し署名の確認（H8 の代わりの確かめ方なら、実体の道とハッシュの一致）が通る祖先では呼び手がその会話（製品 grok、会話 ID、世代）として特定され、pid の不一致、作業場所の不一致、署名の確認の失敗（代わりの確かめ方ならハッシュの不一致）、名乗りだけ（環境変数や引数の会話 ID）、の 4 つはそれぞれ `caller_unobserved` になる |
+| T1-8 | Grok CLI 側の認可の拒否（台帳の行の作業場所が無いか読めない、制限の設定が壊れている、範囲外の名指し）と、受信後に承認設定と sandbox が変わらない比較の試験（automatic.test.ts に追加） | T1-2 | その試験で、3 条件それぞれで一覧、読む、送るの 3 操作が拒否され（9 場面）、受信の前後で `~/.claude/settings.json` の permissions と crossSessionInbound、`~/.codex/config.toml` の approval と sandbox の節、`~/.grok/config.toml` を TOML として読んで hooks の表を除き、表と鍵を名前順に並べて JSON にした文字列、の hash が一致する |
 | T1-9 | H1 と H5 の差分と手順を立花さんに提示する（config.toml の hook の行、wire.sh の `--mcp-grok`） | T1-4、T1-5、T1-6、T1-7、T1-8 | evidence.md に立花さんの「可」か「否」の記録がある（否なら T1-10 以降は着手禁止） |
-| T1-10a | 実会話: Claude → Grok CLI を 1 回。送信前後の会話 ID と世代、時刻、段、製品の版を evidence.md に記録 | T1-9 が可 | 記録に、受理と配信確認と処理開始と返答完了の 4 段すべての時刻があり、世代が前後で一致し、製品の版が書いてある |
-| T1-10b | 実会話: Codex → Grok CLI を 1 回（同上） | T1-9 が可 | T1-10a と同じ条件 |
-| T1-10c | 実会話: Grok CLI の会話から Claude の会話へ依頼を送り、Claude が返信する | T1-9 が可 | 記録に、呼び手が Grok の会話（会話 ID と世代）として特定された送信と、Claude の返信が Grok の側で返答完了として観測された時刻と、製品の版がある |
-| T1-10d | 実会話: Grok CLI の会話から Codex の会話へ依頼を送り、Codex が返信する | T1-9 が可 | T1-10c と同じ条件（相手は Codex） |
+| T1-10a | 実会話: Claude → Grok CLI を 1 回。送信前後の会話 ID と世代、時刻、段、製品の版を evidence.md に記録 | T1-9 が可、H1 の適用完了（evidence.md に記録） | 記録に、受理と配信確認と処理開始と返答完了の 4 段すべての時刻があり、世代が前後で一致し、製品の版が書いてある |
+| T1-10b | 実会話: Codex → Grok CLI を 1 回（同上） | T1-9 が可、H1 の適用完了 | T1-10a と同じ条件 |
+| T1-10c | 実会話: Grok CLI の会話から Claude の会話へ依頼を送り、Claude が返信する | T1-9 が可、H5 の適用完了（evidence.md に記録）、T1-7 が済み | 記録に、呼び手が Grok の会話（会話 ID と世代）として特定された送信と、Claude の返信が Grok の側で返答完了として観測された時刻と、製品の版がある |
+| T1-10d | 実会話: Grok CLI の会話から Codex の会話へ依頼を送り、Codex が返信する | T1-9 が可、H5 の適用完了、T1-7 が済み | T1-10c と同じ条件（相手は Codex） |
 | T1-10e | Grok CLI の本文の読み取りを 1 回（AC9） | T1-9 が可 | 記録に読み取った発話の件数と時刻があり、思考の行が含まれていない |
 | T1-10f | Grok CLI との返信の受信後 10 分の実観測（依頼の件数が増えない。AC6） | T1-10a | 記録の 10 分の前後で依頼の件数が同じ |
-| T1-11 | 作った側と逆の家系の判定役（リーダーが作れば Codex Astra。読み取り専用）に P1 を判定させる | T1-10a〜f、TC-1、TC-3a | evidence.md に判定の結果（PASS か FAIL と指摘）がある |
+| T1-11 | 作った側と逆の家系の判定役（リーダーが作れば Codex Astra。読み取り専用）に P1 を判定させる。H8 が否で T1-10c と T1-10d が未達なら、AC3 を未達として evidence.md に書いたうえで判定を頼む | T1-10a、T1-10b、T1-10e、T1-10f、TC-1、TC-3a（T1-10c と T1-10d は H8 が可のときだけ） | evidence.md に判定の結果（PASS か FAIL と指摘）がある |
 | T1-12 | T1-11 の指摘を直し、再判定を頼む（PASS まで繰り返す。1 回を 1 ターン） | T1-11 | evidence.md に PASS がある |
 
 ## P2 Grok Bot

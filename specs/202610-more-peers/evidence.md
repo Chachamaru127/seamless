@@ -145,3 +145,10 @@
 - `bash scripts/verify.sh` exit 0（node の試験 452 件、帯 96 件）。
 - 図面検査（直し）1 回目（Haiku 5.5、07407e7）: FAIL。コードの直し（鍵の統一、orphaned、判定の上限）は「正しく直っている」。指摘は主に書類のずれで、反映した: Plans の H0 の段落、T1-10a〜d の前提を H5 から H6（本線への取り込み、push なし）に、orphaned の対象は pending と delivering、台帳のファイルが無いときは空（Grok が終了後に `[]` を残す T0-1 の観測）、帯の文言を推定と分かる「宛先の会話は台帳から消えている。このままでは届かない」に、GOD_Plans の原因の行を「候補」に。承認 2 回目の判断材料（approval-2-easy.html）は承認の記録なので書き換えない。A の判断（守りの上積みは止める）に沿って、図面検査の再実行はしない。
 - 根拠の追記: (1) hook が受信箱の無い会話で何もせずに終わる時間は 0.086 秒（18:00 JST、`time` で 1 回）。(2) Grok は `~/.claude.json` の seamless の MCP を読み込んでいる（T0-2 の会話 `01a11a9e-…` の events.jsonl: mcp_config_resolved に seamless（source local、stdio）、mcp_server_connected に tool_count 5、道具 sessions、read、send、limits、status_panel）。その起動コマンドは本線の checkout の `src/cli.ts mcp`（`~/.claude.json` の command と args を値を出さずに確認）。(3) 茶々丸への Q6 は、他の問いと同じく本線の `.local/grok-consult/questions.md`（リポジトリの外の相談用）に書いた。(4) evidence の T1-4 の節の「名前は依頼 ID の SHA-256」は、07407e7 から「送り手と依頼 ID の組の SHA-256」。(5) 直した判定を外す確認: 鍵を依頼 ID だけに戻すと tests/grok-send.test.ts が 8 件中 1 件失敗、orphaned の判定を外すと 8 件中 1 件失敗、元に戻すと 8 件すべて通過（node --test、18:44 JST）。
+
+### T1-9 の提示（2026-10-08 18:55 JST）
+
+立花さんにお願いした操作（返事の記録は次の節に書く）:
+1. C: seamless のリポジトリで Grok を開き `/hooks-untrust` で信頼を外す。
+2. H6（本線への取り込み、push なし）: `git -C ~/LocalWork/Code/seamless merge --ff-only claude/seamless-claude-codex-c2a20e`。本線 4fa898e からの早送り（54 コミット）。Claude、Codex、Grok の seamless の MCP は本線の `src/cli.ts` を起動するので、新しく開いた会話から今回のコードで動く。開いたままの会話の MCP は古いコードのまま。
+3. H1: `.local/grok-t02/h1-seamless-hook.json` を `~/.grok/hooks/seamless.json` に写す。中身は Stop hook 1 本（`node <本線>/src/grok-hook.ts`、時間切れ 10 秒）。戻すときはこのファイルを消す。

@@ -95,6 +95,13 @@ export function createGrokReader(options:GrokOptions={}):TranscriptReader{
  };
 }
 export const grokSessionsRoot=(home=homedir())=>join(home,'.grok','sessions');
+export const SEAMLESS_ENVELOPE_MARK='--- seamless の封筒（機械用） ---';
+function annotatedEnvelope(message:string):{id:string;sender:{provider:string;nativeId:string};replyTo?:string}|null{
+ const at=message.lastIndexOf(SEAMLESS_ENVELOPE_MARK);if(at<0)return null;
+ const line=message.slice(at+SEAMLESS_ENVELOPE_MARK.length).trim().split('\n')[0];
+ try{const e=JSON.parse(line);if(e?.schemaVersion!==1||typeof e.id!=='string'||typeof e.sender?.id!=='string'||typeof e.sender?.nativeId!=='string')return null;
+  return {id:e.id,sender:{provider:e.sender.id.split(':')[0],nativeId:e.sender.nativeId},...(typeof e.replyTo==='string'?{replyTo:e.replyTo}:{})};}catch{return null;}
+}
 // What the status of a request to a Grok CLI conversation is read from: the hook's receipts in seamless's inbox, and from
 // Grok's own record the user turns, the agent's messages and tool calls, and each Stop's hook runs (names that succeeded).
 export async function readGrokStructure(target:Registration,options:GrokOptions={}):Promise<import('../status.ts').StructureItem[]>{
@@ -116,6 +123,9 @@ export async function readGrokStructure(target:Registration,options:GrokOptions=
     // One item per run of chunks of the same speaker, like the read projection.
     if(kind==='user_message_chunk'||kind==='agent_message_chunk'){const type=kind==='user_message_chunk'?'user':'assistant';if(last!==type)items.push({id,type,at});last=type;continue;}
     if(kind==='tool_call'){items.push({id,type:'tool',at});last='tool';continue;}
+    // What a Stop hook handed over is recorded as a hook_annotation right after that Stop: "↩ Stop hook feedback, continuing: "
+    // and the whole text (measured 2026-10-08). seamless's text ends with its envelope as one JSON line; its request id is read from there.
+    if(kind==='hook_annotation'&&typeof u.message==='string'&&u.message.includes(SEAMLESS_ENVELOPE_MARK)){const peer=annotatedEnvelope(u.message);if(peer)items.push({id,type:'hook_note',at,peer});continue;}
     if(kind==='hook_execution'&&u.event_name==='stop'){items.push({id,type:'hook_stop',at,hooks:(Array.isArray(u.runs)?u.runs:[]).filter((r:any)=>r?.status?.status==='success'&&typeof r.name==='string').map((r:any)=>r.name)});last='hook';continue;}
     if(kind==='turn_completed')last='';
    }

@@ -620,3 +620,22 @@ test('the open band shows a waiting Grok request as accepted and not delivered',
   await ui.press({ key: 'toggle' })
   expect((await ui.find({ key: 'peer-0' }))?.text ?? '').toContain('受理・未配信')
 })
+const grokWaiting = (activeAt: number) => ({ ...candidate([staged({}, { inbox: 'pending', peerActiveAt: new Date(activeAt).toISOString() })], 'grok', '01a11a77-0e68-7ce1-a4c6-9e88420abdb5'), status: 'online' })
+// The test clock starts at 1,000,000 ms.
+for (const [minutes, idle] of [[6, true], [4, false]] as const) test(`the open band ${idle ? 'adds' : 'does not add'} the idle note when the Grok peer last moved ${minutes} minutes ago`, async ($, on) => {
+  const { clock } = seat(on, { status: 'ok', candidates: [grokWaiting(1_000_000 - minutes * 60_000)], inbound: [] })
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'toggle' })
+  const text = (await ui.find({ key: 'peer-0' }))?.text ?? ''
+  expect(text).toContain('受理・未配信')
+  if (idle) expect(text).toContain('相手は 5 分以上動いていない。次の 1 手の後に届く')
+  else expect(text).not.toContain('5 分以上')
+})
+test('the open band shows a Grok request whose handing over is unknown as needing the person\'s check', async ($, on) => {
+  const { clock } = seat(on, { status: 'ok', candidates: [{ ...candidate([staged({}, { inbox: 'unknown' })], 'grok', '01a11a77-0e68-7ce1-a4c6-9e88420abdb5'), status: 'online' }], inbound: [] })
+  await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
+  const ui = await $.ui.mount(BAND)
+  await ui.press({ key: 'toggle' })
+  expect((await ui.find({ key: 'peer-0' }))?.text ?? '').toContain('成否不明。立花さんの確認が要る')
+})

@@ -129,3 +129,7 @@
 - `bash scripts/verify.sh` exit 0（node の試験 448 件、帯 92 件）。
 - 文言の訂正: T1-5 の「同じ ID → duplicate」は、実際には前の結果を返して置き直さない（Claude と Codex と同じ）。同じ内容の別 ID が duplicate になるのは前の依頼が成否不明か処理中の間だけ（予約の claim の既存の仕組み）。tasks.md と Plans.md を実際の動きに合わせた。
 - まだ確かめていないこと: Grok が seamless の MCP で send したときの道具の呼び出しの記録の名前（readGrokSentIds の照合）。実会話 T1-10c で確かめる。それまで Grok からの依頼は「送り主は未確認」と出ることがある。
+- 図面検査（配送）1 回目（Haiku 5.5、2a0bffb）: FAIL。(1) H0 の信頼がリポジトリ全体に広がったまま解除の判断が記録されていない → T1-9 の立花さんの判断に入れる。(2) T1-6b の帯の描画で 5 分の添え書きと成否不明を確かめていない → 試験を 3 件足した。(3) 足された文が Grok の記録に利用者の発話として出るなら配信確認が立たない、未測定 → 下の実測で確かめた。(4) Plans の古い文言（grok_delivery_unavailable、終了時の Stop、exists の扱い）と P2 の T2-2 の同じ ID の結果 → 直した。不変条件 1〜8 への違反は無し。
+- 実測（T0-2 の会話 `01a11aa1-…` の updates.jsonl、2026-10-08 18:00 JST に読んだ）: hook が足した文は利用者の発話（user_message_chunk）としては残らない。Stop の hook_execution の行の直後に `{"sessionUpdate": "hook_annotation", "message": "↩ Stop hook feedback, continuing: <足した文の全文>"}` として残り、agentTimestampMs は Stop の行と同じ。hook の入力の hookEventName の値は `stop`（小文字）。記録の行は時刻の順に並ぶとは限らない（続きの回の前の発話が Stop の行の後に書かれる）ので、段の観測は時刻で並べ直して読む。
+- 配信確認の結び方を強めた: 受領記録、その後の最初の Stop の行で seamless の hook が success、その直後の hook_annotation に seamless の封筒の行（文の最後の印の後の 1 行の JSON）があり、依頼 ID と送り手が一致、の 3 つがそろったときだけ。spec の「相手の会話の記録に、その依頼 ID の封筒が現れた」に、依頼 ID のまま合う。本文に偽の封筒の行を書いた場面の試験を足した。
+- `subagentType` は Grok の文書（10-hooks.md）で下請けの会話の入力にだけ入る項目。下請けの会話の実測は無い。

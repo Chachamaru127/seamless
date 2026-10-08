@@ -21,9 +21,11 @@ export function stages(record:RequestRecord,destination:StructureItem[],source:S
   const receipt=dest.find(n=>n.type==='grok-receipt'&&n.peer?.id===record.id&&n.peer.sender?.provider===record.sender.provider&&n.peer.sender.nativeId===record.sender.nativeId&&n.generation===record.recipient.generation);
   if(receipt?.at&&receipt.hookName){
    const t=Date.parse(receipt.at),after=dest.filter(n=>n.at!==null&&Date.parse(n.at)>=t&&n!==receipt);
-   let hook:StructureItem|undefined;
+   // Grok also records what the hook handed over (hook_annotation), with this request's id in seamless's envelope line.
+   let hook:StructureItem|undefined,note:StructureItem|undefined;
    for(const n of after){if(n.type==='user')break;if(n.type==='hook_stop'){if(n.hooks?.includes(receipt.hookName))hook=n;break;}}
-   if(hook){mark('reached',[receipt.id,hook.id],hook.at);
+   if(hook)for(const n of after){if(Date.parse(n.at!)<Date.parse(hook.at!))continue;if(n.type==='user')break;if(n.type==='hook_note'){if(n.peer?.id===record.id&&n.peer.sender?.provider===record.sender.provider&&n.peer.sender.nativeId===record.sender.nativeId)note=n;break;}}
+   if(hook&&note){mark('reached',[receipt.id,hook.id,note.id],hook.at);
     const proof=after.find(n=>(n.type==='assistant'||n.type==='tool')&&Date.parse(n.at!)>Date.parse(hook!.at!));
     if(proof)mark('processing',[hook.id,proof.id],proof.at);}
   }

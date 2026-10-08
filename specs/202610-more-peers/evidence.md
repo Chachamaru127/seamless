@@ -152,3 +152,14 @@
 1. C: seamless のリポジトリで Grok を開き `/hooks-untrust` で信頼を外す。
 2. H6（本線への取り込み、push なし）: `git -C ~/LocalWork/Code/seamless merge --ff-only claude/seamless-claude-codex-c2a20e`。本線 4fa898e からの早送り（54 コミット）。Claude、Codex、Grok の seamless の MCP は本線の `src/cli.ts` を起動するので、新しく開いた会話から今回のコードで動く。開いたままの会話の MCP は古いコードのまま。
 3. H1: `.local/grok-t02/h1-seamless-hook.json` を `~/.grok/hooks/seamless.json` に写す。中身は Stop hook 1 本（`node <本線>/src/grok-hook.ts`、時間切れ 10 秒）。戻すときはこのファイルを消す。
+
+### T1-10a 実会話: Claude → Grok CLI（2026-10-08 19:09〜19:15 JST）
+
+- 製品の版: Claude Code 2.1.288（このリーダーの会話 `claude:3263fdb8-…`、世代 `10433@1791431783385`）、Grok CLI 1.0.46。seamless は本線 f9b2dc4（H6 の取り込み、push なし）、Grok の全体の hook は `~/.grok/hooks/seamless.json`（H1）。
+- 手順: この作業場所で Grok の画面を擬似端末で開き（会話 `grok:01a11afd-4b64-7b91-8370-34a397751a19`、世代 `8140@2026-10-08T10:09:31.072340Z`）、待機中のうちにこの会話から `node src/cli.ts send` で依頼 `t110a-190942` を送った。依頼の本文は「seamless の sessions で ticket を取り、send で replyTo つきに『受け取りました（Grok）』と返す」。その後 Grok に「はい」とだけ答える 1 手を打たせた。
+- 段（UTC）: 受理 10:09:43.451（送った直後の inbox は pending、他の 3 段は未確認）、配信確認 10:09:49.589（受領記録、`global/seamless:stop[0].hooks[0]` の success、hook_annotation の封筒の行の 3 つ）、処理開始 10:09:55.023（Grok が依頼について書き始めた）、返答完了 10:15:10.520（この会話に replyTo つきの封筒 `t110a-190942-reply` が届いた）。世代は送る前と返信の送り手で同じ `8140@…`。
+- 待機中の扱い: 送った直後は「受理・未配信」で、Grok が 1 手を終えた 10:09:49 に届いた（D5 の (a) と (b) のとおり）。
+- 呼び手: Grok から Claude への返信は、Grok の seamless の MCP（本線のコード）を通り、呼び手が Grok の会話（`grok:01a11afd-…`、世代 `8140@…`）として特定された（T1-7 の実会話での初めての通過。T1-10c の正式な記録は別に行う）。
+- 問題 1（承認の取り違え）: Grok は seamless__sessions を呼ぶ前に道具の使用許可を求め、297.764 秒待った（events.jsonl の permission_requested 10:10:02.035、permission_resolved allow 10:14:59.801）。この allow は、観測の台本が時間切れで `/exit` と Enter を打った時刻と同じで、台本の打鍵が許可の確認に答えた形になった。直後の seamless__send は待ち 0 ミリ秒で通った。使われた道具は seamless の一覧と送信で、宛先は立花さんのこの会話（契約の事前承認の「本人の別の会話へ送る依頼と返信」の範囲）。本来は立花さんが Grok の画面で決める承認を、私の台本が代わりにした。以後の実会話の台本は、許可の確認が出たら止まり、打鍵しない。
+- 問題 2（照合の取りこぼし）: Grok は MCP の道具を `use_tool`（rawInput の `tool_name: "seamless__send"`、`tool_input: {...}`）で呼ぶ。readGrokSentIds がこの包みを読まず、Grok からの依頼の送り主が「未確認」になっていた → 包みを読む形に直し、この会話の記録で `t110a-190942-reply` が照合できることを確かめ、試験を足した。`bash scripts/verify.sh` exit 0（node 453 件、帯 96 件）。
+- 分かったこと: Grok は seamless の道具を使うたびに（少なくとも会話の最初の 1 回は）使用許可を求める。立花さんが Grok の画面で許可しないと、Grok からの返信は止まる。

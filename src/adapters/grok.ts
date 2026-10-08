@@ -144,8 +144,7 @@ export async function grokReceived(target:Registration,options:GrokOptions={}){
  return (await inbox.receipts(home,target.nativeId)).filter(r=>r.generation===target.generation).map(r=>({id:r.envelope.id,sender:r.envelope.sender,recipient:r.envelope.recipient,at:new Date(r.hookAt).toISOString()}));
 }
 // Ids of seamless sends this conversation made to a recipient, from its own record of tool calls. Only the requested ids
-// leave this function. The seamless send tool is recognised by Grok's tool metadata naming the seamless server; the exact
-// naming is confirmed in the real conversation of T1-10c (until then a sender may stay "declared").
+// leave this function.
 export async function readGrokSentIds(target:Registration,ids:string[],recipient:Pick<Registration,'provider'|'nativeId'>,options:GrokOptions={}):Promise<string[]>{
  const home=options.home??homedir(),dir=await findGrokSessionDir(target.nativeId,home,target.workspace);if(!dir)return [];
  const raw=await readOwned(join(dir,'updates.jsonl'),MAX_UPDATES_BYTES);if(!('text' in raw))return [];
@@ -153,9 +152,12 @@ export async function readGrokSentIds(target:Registration,ids:string[],recipient
  for(const line of raw.text.split('\n')){
   if(!line.includes('"tool_call"'))continue;let j;try{j=JSON.parse(line);}catch{continue;}
   const u=j?.params?.update;if(j?.params?.sessionId!==target.nativeId||u?.sessionUpdate!=='tool_call')continue;
-  const tool=u._meta?.['x.ai/tool']??{},named=[tool.name,tool.namespace,u.title].filter(x=>typeof x==='string').join(' ');
-  if(!/seamless/.test(named)||!/send/.test(named))continue;
-  const input=u.rawInput;if(input&&typeof input.id==='string'&&ids.includes(input.id)&&sentTo(input,recipient))found.add(input.id);
+  // Grok calls an MCP tool through its own use_tool wrapper: rawInput {tool_name: "seamless__send", tool_input: {...}}
+  // (measured 2026-10-08 in T1-10a). A direct call names the tool in its metadata and title instead.
+  const tool=u._meta?.['x.ai/tool']??{},raw=u.rawInput;
+  const wrapped=raw&&typeof raw==='object'&&typeof raw.tool_name==='string'?{named:raw.tool_name,input:raw.tool_input}:{named:[tool.name,tool.namespace,u.title].filter(x=>typeof x==='string').join(' '),input:raw};
+  if(!/seamless/.test(wrapped.named)||!/send/.test(wrapped.named))continue;
+  const input=wrapped.input;if(input&&typeof input.id==='string'&&ids.includes(input.id)&&sentTo(input,recipient))found.add(input.id);
  }
  return [...found];
 }

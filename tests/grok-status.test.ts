@@ -77,3 +77,16 @@ test('ten minutes after a Grok reply arrives (test clock), seamless has made no 
  for(const method of ['band','sessions'])await automatic(method,{});
  assert.equal(await count(),before);assert.equal(sends,1);
 });
+test('a seamless send Grok made through its use_tool wrapper is found by id and recipient; other tools and other recipients are not',async t=>{
+ const f=await grokHome(t);const {readGrokSentIds}=await import('../src/adapters/grok.ts');
+ const ticket=issueTicket({provider:'claude',nativeId:'claude-a',generation:'41@100',cwd:f.work,branch:null});
+ const call=(at:number,rawInput:object)=>JSON.stringify({timestamp:Math.floor(at/1000),method:'session/update',params:{sessionId:ids.live,update:{sessionUpdate:'tool_call',toolCallId:'c'+at,title:'use_tool',rawInput},_meta:{eventId:`${ids.live}-${at}`,agentTimestampMs:at}}});
+ await writeFile(join(f.home,'.grok','sessions',encodeURIComponent(f.work),ids.live,'updates.jsonl'),[
+  call(T,{tool_name:'seamless__send',tool_input:{ticket,id:'g1',text:'受け取りました',replyTo:'q1'}}),
+  call(T+1,{tool_name:'other__send',tool_input:{ticket,id:'g2',text:'x'}}),
+  call(T+2,{tool_name:'seamless__sessions',tool_input:{operation:'send',target:'claude:claude-a'}}),
+ ].join('\n')+'\n');
+ const target={id:'grok:'+ids.live,provider:'grok' as const,nativeId:ids.live,generation:GEN,host:'local',displayName:'g',workspace:f.work,operations:['read' as const],grants:[]};
+ assert.deepEqual(await readGrokSentIds(target,['g1','g2','g3'],{provider:'claude',nativeId:'claude-a'},{home:f.home}),['g1']);
+ assert.deepEqual(await readGrokSentIds(target,['g1'],{provider:'codex',nativeId:'other'},{home:f.home}),[]);
+});

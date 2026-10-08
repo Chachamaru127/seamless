@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>seamless の相手を増やす計画 承認 1 回目</title>
+<style>
+:root{--bg:#faf9f6;--card:#fff;--line:#e4e1d9;--text:#1e1d1a;--sub:#6b685f;--ok:#2f8f5b;--attn:#d9752b;--fail:#d64545;--blue:#3b6fd1}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--card:#1d1d1b;--line:#2e2e2b;--text:#e9e7e2;--sub:#9b988f}}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.8 -apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;padding:32px 20px 80px}
+main{max-width:760px;margin:0 auto}
+h1{font-size:22px;line-height:1.4;margin:0 0 6px}
+.lead{font-size:17px;color:var(--sub);margin:0 0 28px}
+h2{font-size:17px;margin:36px 0 10px;padding-left:10px;border-left:4px solid var(--blue)}
+p{margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:0 0 12px}
+.card h3{font-size:15px;margin:0 0 8px}
+.k{display:inline-block;background:#eef3fb;color:#2b56a8;border-radius:6px;padding:1px 8px;font-size:13px;margin-right:6px}
+@media (prefers-color-scheme:dark){.k{background:#243049;color:#9fbcf5}}
+table{border-collapse:collapse;width:100%;margin:8px 0 14px;font-size:15px}
+th,td{text-align:left;vertical-align:top;padding:9px 10px;border-top:1px solid var(--line)}
+th{color:var(--sub);font-weight:500;background:transparent}
+.before{color:var(--sub)}.after{font-weight:600}
+.step{display:grid;grid-template-columns:28px 1fr;gap:8px;margin:6px 0}
+.step b{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;font-size:13px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.ok{background:var(--ok)}.attn{background:var(--attn)}.fail{background:var(--fail)}.todo{border:2px solid var(--sub);box-sizing:border-box}
+.decide{border-left:4px solid var(--attn)}
+.decide h3{color:var(--attn)}
+.rec{background:#fff6ec;border-radius:8px;padding:8px 12px;margin:8px 0}
+@media (prefers-color-scheme:dark){.rec{background:#2d2419}}
+.note{color:var(--sub);font-size:14px}
+.answer{background:var(--card);border:2px dashed var(--line);border-radius:12px;padding:14px 18px;margin-top:20px}
+code{background:rgba(127,127,127,.15);border-radius:4px;padding:1px 5px;font-size:14px}
+</style></head><body><main>
+
+<h1>seamless の相手を増やす計画 ── 承認 1 回目の判断材料</h1>
+<p class="lead">今日の判断は 1 つだけです。「計画の土台（spec）をこの内容で進めてよいか」。実装はまだ始まりません。</p>
+
+<h2>ひとことで</h2>
+<p>いま seamless は「同じ Mac の Claude と Codex の会話」だけをつなぎます。この計画は、相手を <b>Grok CLI</b>（ターミナルで動く Grok）、<b>Grok Bot</b>（クラウドで動く Bot）、<b>ChatGPT Dot</b> にも広げます。</p>
+
+<h2>実際にはどういうこと</h2>
+<div class="card">
+<p>今できていること: Claude の会話から Codex の会話へ「この件、確認して」と送ると、相手に届き、相手が読み、返事が戻る。その 4 段（受け付けた、届いた、読んだ、返事が来た）を seamless が見張っています。</p>
+<p>この計画の後: 同じことを Grok CLI と Grok Bot（後で Dot）にもできるようにします。ただし相手ごとに事情が違うので、できる範囲が違います。</p>
+</div>
+
+<table>
+<tr><th>相手</th><th>正体</th><th>できること</th><th>できないこと（今の時点）</th></tr>
+<tr><td>Grok CLI</td><td>この Mac のターミナルで動く Grok</td><td>一覧に出す、読む、送る、返事を受ける</td><td>相手が<b>何もしていない間</b>は届かない。相手が 1 手終えた瞬間にしか文を足せない（Grok 自身にそういう口しか無い）</td></tr>
+<tr><td>Grok Bot</td><td>クラウドで動く Bot。この Mac にはいない</td><td>送る（受け付けた、だけ分かる）、Bot からの返事を受ける</td><td>一覧と本文を読むことは無理。「届いた」「読んだ」は Bot 側の仕組みでは分からない</td></tr>
+<tr><td>ChatGPT Dot</td><td>調査中</td><td>未定（資料待ち）</td><td>未定</td></tr>
+</table>
+
+<h2>いちばん大事な変更（本質）</h2>
+<div class="card">
+<p>seamless には「製品の約束」が 8 つあります。そのうち <b>8 番</b>「相手は同じ Mac の Claude と Codex だけ。登録なしで自動で見つける」を書き換えます。</p>
+<table>
+<tr><th>前</th><th>後</th></tr>
+<tr><td class="before">相手は同じ Mac の Claude と Codex。自動で見つける</td><td class="after">Mac 内の会話（Claude、Codex、Grok CLI）は今までどおり自動で見つける。<br>外の相手（Grok Bot、Dot）は、立花さんが<b>名簿に登録</b>し、<b>鍵</b>で本人確認したときだけ相手にする</td></tr>
+</table>
+<p class="note">「鍵」は、Bot が本物だと確かめるための秘密の文字列です。立花さんが Mac の環境変数（=アプリに渡す設定の値）に置き、seamless は読むだけ。記録にも会話にも書きません。</p>
+</div>
+
+<h2>変わらないこと（守りの線）</h2>
+<div class="card">
+<div class="step"><b>1</b><span>名乗りだけで相手を信用しない（「私は Bot です」と言っても鍵が無ければ拒否）</span></div>
+<div class="step"><b>2</b><span>届いた文は、立花さんの承認の代わりにならない（届いた文で送信、削除、課金、マージはしない）</span></div>
+<div class="step"><b>3</b><span>送れたか分からないとき、勝手に送り直さない</span></div>
+<div class="step"><b>4</b><span>同じ会話を別のプロセスで開き直して「届いた」ことにしない</span></div>
+<div class="step"><b>5</b><span>外からの入口（公開 URL、待受サーバー）が要る設計になったら止まって聞く</span></div>
+</div>
+
+<h2>具体例（Grok CLI に送るとき）</h2>
+<div class="card">
+<p>Claude の会話から Grok CLI の会話「seamless · main」へ「lsof の回数を数えて」と送ります。</p>
+<p><span class="dot ok"></span>受け付けた 11:40 → <span class="dot attn"></span>届いた（Grok が次の 1 手を終えたとき）→ <span class="dot todo"></span>読んだ → <span class="dot todo"></span>返事</p>
+<p>Grok が待機中（立花さんが何も打っていない）なら「届いた」で止まります。そのとき帯に「Grok は待機中。届くのは次の 1 手の後」と出す案を勧めています。</p>
+</div>
+
+<h2>なぜこの形か</h2>
+<div class="card">
+<p>Grok 自身に聞いた結果、動いている会話へ外から文を入れる正式な口が<b>無い</b>と分かりました（確信度 高）。唯一の道が「1 手の終わりに文脈へ足す」仕組みです。別のプロセスで同じ会話を開けば入れられますが、それは「同じ会話に届いた」ことになりません（約束 2 番に反する）。</p>
+<p>Grok Bot は、外からの入口が webhook（=決まった住所に文を送ると Bot が起きる仕組み）しか無く、「受け付けた」までしか分かりません。だから「届いた」「読んだ」は<b>未確認のまま</b>表示します。分からないことを分かったふりにしない、が seamless の約束 4 番です。</p>
+</div>
+
+<h2>承認するとどうなるか</h2>
+<div class="card">
+<div class="step"><b>1</b><span>私が製品の約束 8 番を書き換え、承認の記録を残します。</span></div>
+<div class="step"><b>2</b><span>次に「どう作るか」（Plans.md）と「1 回の作業の単位」（tasks.md）を書きます。</span></div>
+<div class="step"><b>3</b><span>図面検査（別の AI が食い違いを探す）と敵対（別の AI が穴を探す）を通します。</span></div>
+<div class="step"><b>4</b><span>その後に承認 2 回目をお願いし、そこで初めて実装に入ります。</span></div>
+<p class="note">後戻り: 8 番を元に戻すだけで戻せます。実装前なので、コードは何も変わっていません。</p>
+</div>
+
+<h2>今日決めること（3 つ）</h2>
+
+<div class="card decide">
+<h3>A. この計画の土台（spec）を承認するか</h3>
+<div class="rec">推奨: 承認する</div>
+<p>許可すると: 上の「承認するとどうなるか」の 1〜4 に進みます。実装はまだです。</p>
+<p>今回はしないこと: コードの変更、Grok Bot 側の設定、鍵の作成。</p>
+<p>後から戻せるか: 戻せます（約束 8 番を元に戻す）。</p>
+</div>
+
+<div class="card decide">
+<h3>B. Grok CLI への届け方</h3>
+<div class="rec">推奨: 「1 手の終わりに足す」+「待機中なら帯で知らせる」</div>
+<p>許可すると: 相手が動いているときは次の 1 手の後に届き、待機中なら立花さんに「届いていない」と知らせます。</p>
+<p>今回はしないこと: 別のプロセスで会話を開き直して届ける（約束 2 番に反するため）。</p>
+<p>後から戻せるか: 戻せます。届け方は部品 1 つの差し替えです。</p>
+</div>
+
+<div class="card decide">
+<h3>C. Grok Bot 側の受け口をどの Bot にするか</h3>
+<div class="rec">推奨: 「seamless」という名前の Bot（今朝作られた空の Bot）</div>
+<p>許可すると: Codex や Claude からの文は、その Bot に届きます。茶々丸の会話は汚れません。</p>
+<p>今回はしないこと: Bot 側の設定作業（茶々丸か seamless Bot が行い、立花さんに確認カードが出ます）。</p>
+<p>後から戻せるか: 戻せます。名簿の登録先を変えるだけです。</p>
+</div>
+
+<h2>後回しでよいこと（推奨どおりなら返事は不要）</h2>
+<table>
+<tr><th>項目</th><th>推奨</th><th>理由</th></tr>
+<tr><td>鍵の置き場所</td><td>Mac の環境変数</td><td>立花さんだけが置ける。seamless は読むだけ</td></tr>
+<tr><td>止まっている Grok CLI の会話も相手にするか</td><td>初版は動いている会話だけ</td><td>Codex のように「起こす」操作があるか未確認</td></tr>
+<tr><td>Dot をこの計画に含めるか</td><td>含める。資料が来るまで条件は置かない</td><td>MCP Events の資料を読んでから条件を書く</td></tr>
+</table>
+
+<div class="answer">
+<p><b>返事の例</b></p>
+<p>「承認。B と C は推奨で」── これだけで次に進めます。</p>
+<p>直したいところがあれば「〇〇の表の△△を□□にして」のように場所を指定してください。</p>
+<p class="note">Dot の資料（MCP Events）は、まだこちらに届いていません。リンクか本文を貼ってもらえれば、Dot の節を具体化します。</p>
+</div>
+
+</main></body></html>

@@ -61,7 +61,7 @@ Grok Bot（茶々丸の確認、seamless 側で検証できたものに印）
 
 ChatGPT Dot（Codex の調査、立花さんが 2026-10-08 に貼り付け。全文は `.local/grok-consult/dot-research-2026-10-08.md`）
 - Dot（ChatGPT の個人用の常駐エージェント）へは、ChatGPT の Tunnel（クラウドから Mac の MCP サーバーへ stdio を運ぶ仕組み）に seamless の MCP を載せると、起動とツール一覧までは通る（隔離試験で確認）。
-- しかし Dot が自分から動き出す（seamless からの送信で応答を始める）には、MCP Events（MCP の新しい仕様 2026-07-28 にあるイベントの発見・購読・callback の仕組み）への対応が要る。今の seamless は 2025-06-18 の仕様で、`events/list` は unknown_method。購読の保持、ChatGPT の callback の安全な保持、署名つきのイベント配送、ローカルの送信をイベントへ変える入口、のすべてが未実装。
+- しかし Dot が自分から動き出す（seamless からの送信で応答を始める）には、MCP Events（イベントの発見・購読・callback の仕組み）への対応が要る。訂正（2026-10-08、T0-5 の一次資料）: Events は 2026-07-28 版の本体仕様には無く、その版を土台にする拡張の草稿 SEP-3415（Draft、2026-10-05 起票、レビュー前）にある。ChatGPT の実装ガイドは「MCP 2.0（2026-07-28）が要る」と書き、webhook の配送だけに対応する。今の seamless は 2025-06-18 の仕様で、`events/list` は unknown_method。購読の保持、ChatGPT の callback の安全な保持、署名つきのイベント配送、ローカルの送信をイベントへ変える入口、のすべてが未実装。
 - 逆向き（Dot → Mac の会話）には、Dot を表す宛先と、Tunnel 越しの呼び手の認証が要る。今の呼び手の特定（ローカルの祖先プロセス）では Tunnel の遠隔の呼び手は `caller_unobserved` になる。→ 新 8 の「外の実行主体を名簿と鍵で確かめる」に乗せる（署名の secret が鍵に当たる）。
 - 未確認: Tunnel の実際の接続状態、Dot 側の購読とイベント受信、MCP Events の一次仕様（発見、購読、callback、署名の正確な形）。
 
@@ -81,7 +81,10 @@ ChatGPT Dot（Codex の調査、立花さんが 2026-10-08 に貼り付け。全
 | AC8 | 登録と鍵が通っても、範囲が未設定（Grok CLI では台帳の作業場所が読めない）、設定が壊れている、範囲外の会話を名指し、のどれでも一覧、読む、送るを拒否する。届いた文は受信側の承認設定や sandbox を変えない | 3 条件の拒否の自動試験。受信後に承認設定と sandbox の設定が変わっていない比較 |
 | AC9 | Grok CLI の会話の可視の発話を読める（Claude、Codex と同じ操作）。Grok Bot は一覧と本文の読み取りに非対応で、その旨を操作の可否として示す | Grok CLI の読み取りの実測 1 回。Grok Bot の登録で read が不可と表示される |
 | AC10 | 既存の Claude⇄Codex の往復と全自動試験が壊れない | 既存の検証一式が exit 0、実往復 1 回 |
-| AC11 | ChatGPT Dot は、MCP Events の一次仕様を読んで AC（イベントの購読、署名つき配送、Dot の宛先と呼び手の鍵）をこの spec に追記し、別途の承認を得るまで実装しない。seamless の MCP の仕様の版の引き上げ（2025-06-18 → 2026-07-28）が Claude と Codex の接続を壊さないことを AC10 で守る | この spec の改訂と承認の記録。版の引き上げ後も AC10 が exit 0 |
+| AC11a（Dot、別途の承認待ち。T3-1 で追記） | 購読の保持: Dot（ChatGPT）が Tunnel 越しに seamless の Dot 用の MCP の入口へ `events/subscribe`（webhook）で購読すると、seamless は購読（名簿の登録名、callback の住所、イベント名、引数、期限 `refreshBefore`）を `~/.seamless` の本人だけが読める場所に保ち、再起動をまたいでも期限の内は保つ。期限切れの購読、名簿に無い登録からの購読、`https` 以外の住所、受ける意思の確認（verification の challenge）が済んでいない住所には配送しない。配送は redirect を追わない | 自動試験: 購読 → 再起動 → 配送が 1 回届く。期限切れ、未登録、http の住所、確認前の住所、redirect の 5 つはそれぞれ配送 0 回 |
+| AC11b（同上） | 署名つき配送: Mac の会話から Dot へ送ると、seamless はイベント 1 件（EventOccurrence。eventId は依頼 ID）を callback の住所へ 1 回 POST し、Standard Webhooks の形（`webhook-id`、`webhook-timestamp`、`webhook-signature` の `v1,`、`X-MCP-Subscription-Id`）で、購読のときに ChatGPT が渡した secret で署名する。2xx は受理、それ以外は不受理、切断は成否不明。seamless は自動で再送しない（不変条件 6。受け手の重複排除は webhook-id で効く）。配信確認と処理開始は未確認のまま、返答完了は Dot が replyTo つきで返したときに埋まる。secret は会話、記録、リポジトリに書かない | 自動試験: 署名が secret で検証できる、2xx、非 2xx、切断のそれぞれで POST は 1 回、記録とリポジトリに secret が無い（grep）。実送信 2 方向（Claude → Dot、Codex → Dot）で受理と未確認の 3 段 |
+| AC11c（同上） | Dot の宛先と呼び手の鍵: Dot は名簿の登録（製品 `chatgpt-dot`、登録名、鍵の版）で宛先になる。Dot から Mac の会話へ送るとき（Tunnel 越しの `send`）、呼び手は Tunnel の接続を名簿の登録に結び付ける鍵で確かめ、名乗り（道具の引数や `_meta` の自己申告）では通さない。購読の secret（ChatGPT が作り、seamless → ChatGPT の署名に使う）は向きが逆なので呼び手の鍵に使わない。結び付けの具体の方法は Q5 | 自動試験: 鍵なし、別の登録の鍵、失効、名乗りだけ、購読の secret を呼び手の鍵として出した場合、の 5 つが拒否される。実送信 2 方向（Dot → Claude、Dot → Codex） |
+| AC11 | ChatGPT Dot は、MCP Events の一次仕様を読んで AC（イベントの購読、署名つき配送、Dot の宛先と呼び手の鍵）をこの spec に追記し（AC11a〜c）、別途の承認を得るまで実装しない。Events は草稿（SEP-3415）なので、形は ChatGPT の実装ガイドが読む形に合わせ、能力の宣言は top-level の `events` と `extensions["io.modelcontextprotocol/events"]` の両方に置く。Events と仕様の版 2026-07-28 は Dot 用の入口（例: `mcp --dot`。Tunnel の設定からだけ起動する）にだけ出し、Claude と Codex が使う既存の入口は 2025-06-18 のまま変えない。seamless の MCP の仕様の版の引き上げ（2025-06-18 → 2026-07-28）が Claude と Codex の接続を壊さないことを AC10 で守る | この spec の改訂と承認の記録。版の引き上げ後も AC10 が exit 0 |
 
 ## Evidence of done
 
@@ -116,7 +119,8 @@ ChatGPT Dot（Codex の調査、立花さんが 2026-10-08 に貼り付け。全
 - Q1 済み（2026-10-08）: 正式な口は無い。Stop hook の additionalContext が唯一の「動いている会話の実行主体に文を入れる」道。D5 で届け方を決める。
 - Q2 Grok CLI の呼び手を実観測で特定する材料: active_sessions.json の pid と会話 ID の対応（TUI が登録する実例は未観測。TUI を 1 つ起動して登録と削除を見る）。実行ファイルの署名（xAI）の確認方法は未確認。
 - Q3 Grok Bot の webhook の上限、順序、再送、受理の応答の形。
-- Q4 ChatGPT Dot: MCP Events の一次仕様（2026-07-28 版の発見、購読、callback、署名）と、Tunnel の接続の実態。Codex の調査で「何が足りないか」は分かった（上の事実）。一次仕様を読んでから AC を書く（AC11）。
+- Q4 一部済み（2026-10-08、T0-5）: MCP Events の発見、購読、callback、署名の形は草稿 SEP-3415 と ChatGPT の実装ガイドで確かめた（evidence.md の T0-5）。最終形は未定（草稿、レビュー前）。Tunnel の接続の実態は未確認。
+- Q5 Dot から Mac への呼び手の鍵: Tunnel の接続に名簿の登録を結び付ける方法（Tunnel が起動する入口に本人が環境変数で鍵を渡す、Tunnel の接続ごとの認証された主体（principal）を使う、など）。ChatGPT の Tunnel の仕様を読んで決める。決まるまで AC11c は実装しない。
 
 ## 範囲外
 

@@ -49,3 +49,31 @@
 ### T0-4a と T0-6 茶々丸への質問（16:33 JST）
 
 - `.local/grok-consult/questions.md`（本線の checkout）に、webhook の 4 問（Q1 上限、Q2 応答の形、Q3 順序、Q4 再送）と、逆向きの経路の 1 問（Q5）を書いた。立花さんに「Grok に聞いて」と頼む（ハンドオフの手順）。答えは `.local/grok-consult/answers.md` に来る。
+
+### T0-5 MCP Events の一次仕様（2026-10-08 17:00 JST、調査役 Claude Sonnet、読み取りのみ）
+
+結論: Events は 2026-07-28 版の本体仕様に無い（changelog と `schema/2026-07-28/schema.ts` の grep が 0 件。確信度 high）。実体は拡張の草稿 SEP-3415「Events Extension」（Draft、2026-10-05 起票、PR #3415 は open でレビュー 0 件）。ChatGPT の実装ガイドは「MCP 2.0（2026-07-28）が要る」と書き、webhook の配送だけに対応する。以下は草稿の記述で、最終形の確信度は low。全文（引用 40 件、出典つき）は本線の checkout の `.local/grok-consult/mcp-events-research-2026-10-08.md`。
+
+| 項目 | 草稿の形 | 引用（SEP-3415） |
+|---|---|---|
+| 発見 | `server/discover` の `capabilities.extensions["io.modelcontextprotocol/events"]`（設定は `listChanged` だけ）と `events/list`。ChatGPT のガイドと前身の design sketch は top-level の `events` を使う（置き場所が 3 通りに割れている） | "A server advertises event support in the capabilities it returns from `server/discover`" |
+| 購読 | webhook は `events/subscribe`（`delivery: {mode: "webhook", url, secret}`、`ttlMs`）。鍵は（principal、url、name、arguments）。server が `refreshBefore` で期限を与え、client が期限の前に呼び直して延ばす。長い期限を与えた server は再起動をまたいで保つ（MUST）。購読の正本は client | "The client owns all subscription state, in all three delivery modes." |
+| callback | server が `delivery.url`（https 必須）へ EventOccurrence（eventId、name、timestamp、data、cursor）を POST。配送の前に宛先の受ける意思を確かめる（challenge など。MUST）。redirect は追わない | "The server POSTs events to the callback URL as they occur" |
+| 署名 | Standard Webhooks の profile。HMAC-SHA256 を `webhook-id.webhook-timestamp.本文` にかけ、base64 に `v1,` を前置。ヘッダは `webhook-id`、`webhook-timestamp`、`webhook-signature`、`X-MCP-Subscription-Id`。secret は client（ChatGPT）が `whsec_` で作って渡す。受け手は 5 分より古いものを拒否し、webhook-id で重複を除く | "The client supplies the HMAC signing secret, and the server never generates one." |
+
+出典: https://github.com/modelcontextprotocol/modelcontextprotocol/pull/3415 、本文（fork の commit 固定）https://github.com/pja-ant/modelcontextprotocol/blob/6859def4ba24ab41678d0e6799fe3f4c84228f9a/seps/0000-events-extension.md 、https://modelcontextprotocol.io/specification/2026-07-28/changelog 、補足 https://developers.openai.com/plugins/build/mcp-events 。
+未解決: 草稿が Accepted になる時期、公式 SDK の参照実装（草稿が「未着」と明記）、非対称署名の公開鍵の配布先、放棄されたイベントが client に信号なく失われる報告（incubation repo の issue #9、open）。
+
+### T3-1 Dot の受け入れ条件（2026-10-08）
+
+- spec に AC11a（購読の保持）、AC11b（署名つき配送）、AC11c（Dot の宛先と呼び手の鍵）を足し、Q5（Tunnel の接続を名簿の登録に結び付ける方法）を足した。
+- 計画の前提から変わった点: (1) Events は草稿なので、ChatGPT が読む形に合わせ、能力の宣言を 2 か所に置く。(2) 配送の向きは seamless → ChatGPT の callback（seamless が POST する側）で、署名の secret は ChatGPT が作る。Grok Bot の送信鍵（本人が置く）とは作り手が逆。(3) Events と版 2026-07-28 は Dot 用の入口にだけ出し、Claude と Codex の既存の入口は 2025-06-18 のまま（AC10 の守り。T3-4 の「版の引き上げ」は既存の入口には行わない形に変わる）。
+- 止まる条件 5（外からの入口）との関係: Dot 用の入口はクラウド（ChatGPT の Tunnel）から呼ばれる。Tunnel の設定は本人が行う操作で、実装の承認（T3-3）とは別に止まって聞く。
+
+### P1 の事前の実機確認（2026-10-08 16:43 JST。T1-10e の正式な記録ではない）
+
+この作業場所で Grok の画面（1.0.46）を擬似端末で起動し、「了解とだけ答えて」と打ってから、このリーダーの会話（Claude Code 2.1.288）の Bash で `node src/cli.ts sessions` と `read` を実行した。
+- 一覧: `grok:01a11a77-0e68-7ce1-a4c6-9e88420abdb5` が provider grok、host local、status online、世代 `66930@2026-10-08T07:42:53.061540Z`、versionStatus checking で出た。台帳の pid 66930 と一致。
+- 読み取り: status ok。利用者 1 件（打った文）と相手 1 件（「了解」）。omitted は thoughts、chat_history、tool_inputs、tool_results、hook_executions。世代は一覧と一致。
+- `/exit` の後、台帳は `[]` に戻った。
+- 正式な T1-10e は T1-9 の「可」の後に改めて行う。

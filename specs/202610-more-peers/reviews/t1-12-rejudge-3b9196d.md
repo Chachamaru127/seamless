@@ -1,0 +1,29 @@
+source: `harness_mem_resume_pack`（前回の範囲確認）。今回の判定根拠は、指定差分、対象版のファイル、依頼に記載された試験実結果です。
+
+**判定：PASS**  
+対象：`3b9196d857c4bc89b30094839983476ce50d33b7`。比較元：`20c41e3`。**確信度：high。**
+
+前回不成立の **1、6、12はYes**。前回Yesだった項目を壊す変更も認めません。
+
+`bash scripts/verify.sh`の終了コード0、node 464件、帯99件の通過と、修正を戻すと追加試験が落ちる結果は、依頼に記載された実結果を採用しました。再実行、書換え、送信はしていません。
+
+| 番号 | 判定 | 確認結果と証拠 |
+|---|---|---|
+| 1 | **Yes** | 稼働中と停止中を区別する[自動試験](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/tests/grok-scan.test.ts:16)あり。追加された[停止後の製品一覧の実測](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:276)で、2会話とも`offline`、`process_exited`、切符なし。前回の証拠不足を解消。 |
+| 2 | Yes | [Claude → Grok](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:162)と[Codex → Grok](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:200)の4段と世代一致を維持。[別世代を配信確認にしない試験](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/tests/grok-status.test.ts:29)も変更なし。 |
+| 3 | Yes | [Grok → Claude](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:181)と[Grok → Codexの再試行](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:215)の往復記録を維持。[名乗りだけを拒否する試験](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/tests/caller-scan.test.ts:271)あり。 |
+| 4 | Yes | [Grokの10分後の試験](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/tests/grok-status.test.ts:87)と[Claude⇄Codexの試験](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/tests/inbound.test.ts:79)を維持。実測も[Grokは1件のまま](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:282)、[Claude⇄Codexは37分後も2件](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:232)。 |
+| 5 | Yes | [書込み後に切断する試験](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/tests/grok-send.test.ts:30)で、同IDは`unknown`、別IDの同内容は`duplicate_of_unknown`。封筒1件を維持する経路に変更なし。 |
+| 6 | **Yes** | [`cwd`欠落を含む不正行があれば台帳全体を`null`にする修正](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/src/adapters/grok.ts:20)により、保存先から停止会話として戻る経路を遮断。[追加試験](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/tests/grok-scan.test.ts:111)もその条件を扱う。読取りと送信も台帳による宛先確認で拒否する。[既存の拒否試験と設定比較](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/tests/automatic.test.ts:542)を維持。 |
+| 7 | Yes | [T1-10e](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:173)に20:03:10 JST、可視発話2件、思考除外の実測。本文を読む処理に変更なし。 |
+| 8 | Yes | 指定版の検証終了コード0を採用。[TC-1](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:199)にClaude⇄Codexの4段の時刻あり。既存配送経路を変える差分なし。 |
+| 9 | Yes | [受信文を本人の承認にしない文言](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/src/grok-hook.ts:24)と、成否不明を再投入しない処理を維持。追加差分は拒否条件の強化と証拠の補足で、承認設定の緩和、再送、別プロセス起動、秘密値の記録を追加していない。 |
+| 10 | Yes | [承認待ちのTC-1](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:192)と[初回T1-10d](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:201)は返答完了を未確認と明記。再試行の成功と区別している。 |
+| 11 | Yes | [Plansの配送](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/Plans.md:40)、[T1-4](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/tasks.md:29)、[異常終了時の試験](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/tests/grok-hook.test.ts:49)が一致。実往復が変更前のhookの証拠であることも[明記](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:259)。 |
+| 12 | **Yes** | [ディレクトリの所有者、0700、symlink拒否](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/src/grok-inbox.ts:27)を、[hookが配達前に再確認](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/src/grok-hook.ts:52)。[追加試験](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/tests/grok-hook.test.ts:89)は権限変更とsymlink置換の双方で出力なし、封筒保持を確認。ファイルの0600と所有者検査、親pidと世代の照合、[署名照合と祖先探索の停止](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/src/caller.ts:109)、承認境界の文言も維持。 |
+
+**FAIL項目：なし。残件は次の3点です。**
+
+- **最終hookの実往復は未実測。** [記録済みの予定](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:259)どおり、本線への取り込み後のClaude → Grok確認が残る。
+- **別IDの同内容を止める境界は24時間。** [従来の境界を継続する記録](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:284)が追加された。期限なしの抑止を確認した判定ではない。
+- **末尾200項目の外に出た段は未確認へ戻る。** [Grokにも及ぶ既存制約](/Users/tachibanashuuta/LocalWork/Code/seamless/.claude/worktrees/seamless-claude-codex-c2a20e/specs/202610-more-peers/evidence.md:285)として記録されている。

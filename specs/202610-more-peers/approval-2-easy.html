@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>seamless の相手を増やす計画 承認 2 回目</title>
+<style>
+:root{--bg:#faf9f6;--card:#fff;--line:#e4e1d9;--text:#1e1d1a;--sub:#6b685f;--ok:#2f8f5b;--attn:#d9752b;--blue:#3b6fd1}
+@media (prefers-color-scheme:dark){:root{--bg:#141413;--card:#1d1d1b;--line:#2e2e2b;--text:#e9e7e2;--sub:#9b988f}}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.8 -apple-system,BlinkMacSystemFont,"Hiragino Sans",sans-serif;padding:32px 20px 80px}
+main{max-width:760px;margin:0 auto}
+h1{font-size:22px;line-height:1.4;margin:0 0 6px}
+.lead{font-size:17px;color:var(--sub);margin:0 0 28px}
+h2{font-size:17px;margin:36px 0 10px;padding-left:10px;border-left:4px solid var(--blue)}
+p{margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:0 0 12px}
+table{border-collapse:collapse;width:100%;margin:8px 0 14px;font-size:15px}
+th,td{text-align:left;vertical-align:top;padding:9px 10px;border-top:1px solid var(--line)}
+th{color:var(--sub);font-weight:500}
+.step{display:grid;grid-template-columns:28px 1fr;gap:8px;margin:6px 0}
+.step b{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--blue);color:#fff;font-size:13px}
+.decide{border-left:4px solid var(--attn)}.decide h3{color:var(--attn);font-size:15px;margin:0 0 8px}
+.rec{background:#fff6ec;border-radius:8px;padding:8px 12px;margin:8px 0}
+@media (prefers-color-scheme:dark){.rec{background:#2d2419}}
+.note{color:var(--sub);font-size:14px}
+.answer{background:var(--card);border:2px dashed var(--line);border-radius:12px;padding:14px 18px;margin-top:20px}
+code{background:rgba(127,127,127,.15);border-radius:4px;padding:1px 5px;font-size:14px}
+</style></head><body><main>
+
+<h1>seamless の相手を増やす計画 ── 承認 2 回目の判断材料</h1>
+<p class="lead">1 回目で「何を作るか」を承認してもらいました。今回は「どう作るか」と「作業の順番」です。承認すると実装に入ります。ただし、立花さんの手が要る場面（7 つ）はその都度止まって聞きます。</p>
+
+<h2>ひとことで</h2>
+<p>作る順番は 3 段です。<b>P0</b> 残りの事実確認 → <b>P1</b> Grok CLI と <b>P2</b> Grok Bot（並行してよい）→ <b>P3</b> Dot は仕様だけ書いて別に承認。</p>
+
+<h2>実際にはどういうこと</h2>
+<div class="card">
+<table>
+<tr><th>段</th><th>作ること</th><th>終わりの印</th></tr>
+<tr><td>P0 事実確認</td><td>Grok の TUI を 1 つ起動して名簿の動きを見る。Stop hook で文が本当に文脈に入るかを合言葉で試す。Grok の実行ファイルの署名を見る。茶々丸に webhook の 4 問と「Mac に入る経路」を聞く。MCP Events の仕様を読む</td><td>事実が evidence.md に時刻つきで載る</td></tr>
+<tr><td>P1 Grok CLI</td><td>一覧、読む、送る（受信箱 + Stop hook）、Grok からの送信（呼び手の特定）、帯の「未配信」表示</td><td>自動試験 + 実会話 4 方向 + 判定役 PASS</td></tr>
+<tr><td>P2 Grok Bot</td><td>名簿、送る（webhook）、受ける（署名の検証）、5 種の拒否、循環と再送の試験</td><td>自動試験 + 実送信 4 方向 + 判定役 PASS</td></tr>
+<tr><td>P3 Dot</td><td>MCP Events の仕様を読み、Dot の受け入れ条件を spec に書く。実装は別の承認の後</td><td>spec の改訂と承認</td></tr>
+</table>
+</div>
+
+<h2>いちばん大事な設計（本質）</h2>
+<div class="card">
+<p><b>Grok CLI へは「会話」ではなく「会話の世代」に宛てて届けます。</b> 世代 = その会話を動かしているプロセスの番号と開始時刻。別のプロセスが同じ会話を開き直しても、封筒は届きません。これが約束 2 番（同じ履歴の別プロセスを成功扱いにしない）を守る仕掛けです。</p>
+<p><b>Grok Bot からの文は「署名」で本人確認します。</b> 茶々丸は自分の側（VPS）で鍵を使って封筒に署名し、Mac の seamless は別に置いた鍵で検証するだけ。Mac の鍵で勝手に署名する入口は作りません。鍵も封筒もコマンドの引数には書かず、記録に残しません。</p>
+<p><b>「届いた」は 2 つの証拠がそろったときだけ。</b> hook が残す受領記録と、Grok 自身の記録にある hook の実行の行。片方だけでは立てません。分からないことは「未確認」のまま出します（約束 4 番）。</p>
+</div>
+
+<h2>立花さんの手が要る場面（7 つ）</h2>
+<div class="card">
+<table>
+<tr><th>#</th><th>何をしてもらうか</th><th>いつ</th></tr>
+<tr><td>H0</td><td>試験用のフォルダだけに hook を置くので、Grok の <code>/hooks-trust</code> でその場所を信頼する</td><td>P0 の試験の前</td></tr>
+<tr><td>H1</td><td>Grok の設定（<code>~/.grok/config.toml</code>）に Stop hook の行を足す。差分は私が出します</td><td>P1 の配送の試験の前</td></tr>
+<tr><td>H2</td><td>茶々丸が webhook のルーチンを作る。立花さんに確認カードが出るので承認する</td><td>P2 の送る試験の前</td></tr>
+<tr><td>H3</td><td>webhook の住所と 2 つの鍵（送る用、受ける用）を Mac の環境変数に置く</td><td>P2 の試験の前</td></tr>
+<tr><td>H4</td><td>名簿に茶々丸を登録する（環境変数の名前だけ。値は書かない）。雛形は私が出します</td><td>H3 の後</td></tr>
+<tr><td>H5</td><td>Grok CLI 用の seamless の MCP を wire.sh で配送する（<code>plan → apply</code>）</td><td>P1 の呼び手の試験の前</td></tr>
+<tr><td>H7</td><td>茶々丸への送信を「本人の別の会話への送信」の例外に含めるかを決める</td><td>P2 の実送信の前</td></tr>
+</table>
+<p class="note">H6（main への取り込みと push）は今までどおり、工程ごとの判定 PASS の後に立花さんが実行します。</p>
+</div>
+
+<h2>止まる約束（勝手に進まないこと）</h2>
+<div class="card">
+<div class="step"><b>1</b><span>茶々丸からの 4 問の答えが無いまま、webhook の送る経路を作らない。答えが「未公開」なら、頼らない保守的な既定（1 回に 1 封筒、8,000 字まで、2xx 以外は失敗、順序を仮定しない、再送しない）で作る。</span></div>
+<div class="step"><b>2</b><span>茶々丸が Mac に入る経路に新しい常駐処理や公開の口が要ると分かったら、受ける経路は作らずに止まる。</span></div>
+<div class="step"><b>3</b><span>Grok の署名が確かめられなければ、Grok からの送信（呼び手の特定）は作らずに止まる。</span></div>
+<div class="step"><b>4</b><span>H1〜H7 で「否」が出たら、その先の作業には入らない。</span></div>
+<div class="step"><b>5</b><span>Dot は仕様を書くところまで。版の引き上げを含む実装は、別の承認の後。</span></div>
+</div>
+
+<h2>点検の経緯</h2>
+<div class="card">
+<p>敵対（Astra、穴探し）2 回: 1 回目は spec に 10 件、2 回目は計画に 17 件。全部反映しました（例: 封筒を世代に宛てる、署名の対象と有効期限、Bot の署名場所、hook が止まったときの扱い）。</p>
+<p>図面検査（Haiku 5.5、食い違い探し）: 1 回目 FAIL（19 件）→ 2 回目 FAIL（細部 20 件）→ 反映済み。3 回目の結果を待って、PASS ならこの承認をお願いします。</p>
+</div>
+
+<h2>今日決めること（1 つ）</h2>
+<div class="card decide">
+<h3>Plans.md と tasks.md を承認するか</h3>
+<div class="rec">推奨: 承認する（図面検査 3 回目が PASS であることが条件）</div>
+<p>許可すると: P0 の事実確認から実装に入ります。立花さんの手が要る 7 つの場面では、その都度止まって聞きます。</p>
+<p>今回はしないこと: Dot の実装。茶々丸側の設定。鍵の作成。main への取り込み。</p>
+<p>後から戻せるか: 戻せます。工程ごとに「判定 PASS の 1 つ前のコミット」を記録しておき、そこへ戻します。設定の変更（hook、名簿、環境変数）は行を消せば戻ります。</p>
+</div>
+
+<div class="answer">
+<p><b>返事の例</b>: 「承認」。直すところがあれば場所を指定してください。</p>
+<p class="note">書類: specs/202610-more-peers/Plans.md（どう作るか）、tasks.md（1 ターンずつの作業と「着手してよい条件」）。</p>
+</div>
+
+</main></body></html>

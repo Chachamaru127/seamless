@@ -171,3 +171,14 @@
 - T1-10e: 20:03:10 JST、この会話から `node src/cli.ts read` で Grok の会話 `grok:01a11b2d-c64d-7ef0-9ad5-d6168af67934`（世代 `5249@2026-10-08T11:02:27.575027Z`）を読んだ。status ok、発話 2 件（利用者「「はい」とだけ答えてください。…」11:02:39Z、Grok「はい」11:02:43Z）、思考の行は無い（omitted に thoughts、chat_history、tool_inputs、tool_results、hook_executions）。道具の使用許可の確認は 0 件。
 - T1-10f: Grok の返信が届いた 19:15:10 JST から 46 分後の 20:01:54 JST に、この会話が送り手の依頼を数えて 1 件（`t110a-190942`）のまま。返信を受けた後に seamless が自動で依頼を増やしていない。
 - Codex Desktop の seamless の MCP（pid 85882、ChatGPT の下の codex、18:38 起動）は本線への取り込み（19:08）より前から動いていて古いコードのまま。T1-10b と TC-1 は Codex Desktop を開き直した後に行う。
+
+### T1-10c 実会話: Grok CLI → Claude（2026-10-08 22:34〜22:37 JST）
+
+- 前提: H6（本線 af9df0e）、H1（全体の hook）、立花さんの判断 a（`~/.grok/config.toml` に `[permission] allow = ["MCPTool(seamless__*)"]`。立花さんが追記）。製品の版: Claude Code 2.1.288、Grok CLI 1.0.46。
+- 手順: 試験用の Grok（会話 `grok:01a11bb8-f407-7e42-a12c-cb23c7281201`、世代 `57082@2026-10-08T13:34:28.808647Z`）を擬似端末で動かし続け、「seamless の sessions で claude:3263fdb8-… の ticket を取り、send で依頼 t110c-223447 を送る」と打たせた。台本は道具の使用許可の確認が出たら止まる形にした（今回は確認が 1 度も出なかった。許可の決まりが効いた）。
+- 呼び手の特定: Grok の seamless の MCP の sessions の結果で、caller は `provider grok`、`source grok-ancestor`、世代 `57082@…`。名乗りではなく、祖先の Grok の pid、台帳、作業場所、X.AI の署名で特定された（AC3）。
+- 受け手の側: この会話に依頼 `t110c-223447` が届き、seamless の sessions の inbound で送り主が `verified`（Grok の記録の use_tool の包みを読んで照合）。
+- 返信: この会話から `node src/cli.ts send`（ticket、id `t110c-223447-reply`、replyTo `t110c-223447`）で返した。submitted。Grok の次の 1 手の終わり（13:35:58Z）に hook が渡し、Grok の記録に hook_annotation「別の会話から返信が届きました」が残った。
+- Grok の側の段（Grok が seamless の send の track で確かめた結果、13:36Z 台）: 受理 13:35:23.984Z、届いた 13:35:24.528Z、読んだ 13:35:28.816Z、返信 13:35:58.861Z（Grok の受信箱の受領記録）。4 段すべて observed（T1-10c の Done）。
+- この会話の側から見た返信 `t110c-223447-reply` の段: 受理 13:35:34.865Z、届いた 13:35:58.985Z、読んだ 13:36:09.508Z。
+- 見つかった手間: Grok の最初の send は、追跡のときだけ使う `waitSeconds: 0` を付けて `invalid_params` で断られ、Grok は seamless のソースを 6 回読んで自分で直した。→ send の道具の入力の説明に「track と waitSeconds は追跡のときだけ」を足した（src/mcp.ts）。`bash scripts/verify.sh` exit 0（node 453 件、帯 98 件）。

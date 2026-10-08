@@ -110,3 +110,14 @@
 - 影響の確認（17:26 JST）: リポジトリの中で Grok が読む hook の置き場所（`.grok/hooks/*.json`、`.claude/settings.json` と `settings.local.json` の hooks、`.cursor/hooks.json`）のうち、中身があるのは試験用の `.local/grok-t02/.grok/hooks/seamless-t02.json` だけ。`.claude/settings.local.json` は permissions だけで hooks は無い。`.mcp.json`、AGENTS.md、`.claude/skills` はリポジトリの根元に無い。worktree の `.claude/settings*.json` にも hooks は無い。
 - 推奨（立花さんの判断）: T0-2 の後は、リポジトリの信頼を外す。H1 は信頼の要らない `~/.grok/hooks/*.json`（Grok の文書で常に信頼）か `~/.grok/config.toml` で入れるので、seamless のリポジトリの信頼は要らない。
 - T3-3: 立花さん「B、承認する」。Dot の受け入れ条件 AC11a〜c を承認。実装は Q5（Tunnel 越しの呼び手の鍵）が決まるまで始めない。
+
+### T0-2 Stop hook の合言葉（2026-10-08 17:28〜17:30 JST、Grok CLI 1.0.46）
+
+- 1 回目（17:26）: 不成立。試験用の hook を `.local/grok-t02/.grok/hooks/` に置いたが、Grok は git のリポジトリの根元（`GROK_WORKSPACE_ROOT` = `/Users/tachibanashuuta/LocalWork/Code/seamless/`）の `.grok/hooks/` だけを読むので、1 回も動かなかった。合言葉を聞かれた Grok は、全体の契約にある別の合言葉 `CJ-WIRE-OK-20260829` を答えた。
+- 2 回目（17:28）: 同じ hook をリポジトリの根元の `.grok/hooks/seamless-t02.json` に置き、hook の中で「会話の作業場所が試験用の場所のときだけ動く」に絞って実行。試験の後に根元の `.grok/` を消した（本線の `git status` は空）。
+- 結果: Yes。Grok の返事に `SEAMLESS-T02-OK` がそのまま含まれた。文を足した直後に Grok が同じ手の続きを 1 回走らせ（そのときの Stop の入力は `stopHookActive: true`）、その場で「合言葉を受け取りました」と書いた。2 手目に聞くと合言葉を答えた。
+- hook の標準入力の項目名: backgroundTasks、cwd、hookEventName、hook_event_name、lastAssistantMessage、permissionMode、permission_mode、promptId、reason、sessionCrons、sessionId、session_id、stopHookActive、timestamp、transcriptPath、transcript_path、workspaceRoot。会話 ID（sessionId）、作業場所（cwd）、Stop の理由（reason）は入っている。reason は 1 手の終わりで `end_turn`、会話の終わりで `shutdown`（このとき promptId は無い）。
+- hook から見た pid: hook のプロセスの親（`process.ppid`）が Grok の画面のプロセス（93955、ps の名前 `grok`）で、台帳の行の pid 93955 と一致した。間にシェルは挟まらない。環境変数は GROK_HOOK_EVENT=stop、GROK_HOOK_NAME=`project/seamless-t02:stop[0].hooks[0]`、GROK_SESSION_ID、GROK_WORKSPACE_ROOT。
+- updates.jsonl の hook_execution の行: `event_name: "stop"`、`runs[]` に hook ごとの `name`（例 `project/seamless-t02:stop[0].hooks[0]`）と `status.status`（`success` か `failed`）と `elapsed_ms`、`_meta` に `eventId` と `agentTimestampMs`（promptId は無い）。依頼 ID は入らない。hook の識別だけ入る（T1-6 の 7 場面目を足す）。続きの回でも同じ hook の行がもう 1 件できる。
+- 時刻の順: hook が書いた記録 08:29:01.653Z、その hook_execution の行の agentTimestampMs 08:29:01.748Z（hook の記録の後に行ができる）。
+- 計画への反映: 配信確認は「受領記録の時刻以降で、同じ会話の次の利用者の発話より前にある、seamless の hook の名前を含み status が success の hook_execution の行のうち最初の 1 件」で結ぶ（続きの回の行を数えない）。Plans.md の「(Stop、completed)」は実物の `stop` と `success` に直した。

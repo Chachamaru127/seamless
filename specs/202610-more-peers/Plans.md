@@ -19,7 +19,7 @@ seamless は「製品ごとの観測と配送の部品（アダプター）」�
 
 | 工程 | 何を | 完了の目安（AC） | 判定役 |
 |---|---|---|---|
-| P0 調査の残り | Grok CLI の名簿の実例（TUI を起動して登録と削除を見る）、Stop hook で文脈に足せることの実測、Grok CLI の実行ファイルの署名の確認方法、Grok Bot の webhook の事実（Q3）、MCP Events の一次仕様 | 事実が evidence.md に時刻つきで載る | 不要（事実の記録） |
+| P0 調査の残り | Grok CLI の台帳の実例（TUI を起動して登録と削除を見る）、Stop hook で文脈に足せることの実測、Grok CLI の実行ファイルの署名の確認方法、Grok Bot の webhook の事実（Q3）、茶々丸が Mac で CLI を実行する経路の事実（T0-6）、MCP Events の一次仕様 | 事実が evidence.md に時刻つきで載る | 不要（事実の記録） |
 | P1 Grok CLI を相手に | 一覧（AC1）、読む（AC9）、送る（AC2、D5 の形）、呼び手（AC3）、循環と再送と認可（AC6、AC7、AC8 の Grok の分） | AC1、AC2、AC3、AC6、AC7、AC8、AC9、AC10 | Codex Astra（読み取り専用） |
 | P2 Grok Bot を相手に | 名簿の登録と read 不可の表示（AC9）、送る（AC4）、受ける（AC5）、返信の対応と循環（AC6）、再送禁止（AC7）、認可の範囲（AC8） | AC4〜AC10 | Codex Astra（読み取り専用） |
 | P3 Dot の仕様化 | MCP Events の一次仕様を読み、spec に AC を追記して別途の承認 | AC11 | 敵対（Astra）で spec の穴探し |

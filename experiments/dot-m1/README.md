@@ -29,6 +29,14 @@ tunnel-client の `--mcp-command` には、この「実行ファイル、スク�
 
 tunnel-client に渡す `node` は絶対パスで書く（子プロセスの PATH に依存させない）。
 
+T3-14 では、立花さんが自分の端末で `bash experiments/dot-m1/run-m1.sh tools`（項目 1〜5）か `notools`（項目 6）を実行する。このスクリプトは次を守る。
+
+- 鍵と tunnel ID は Keychain（サービス名 `seamless-dot-m1`、項目 `runtime-key` と `tunnel-id`）から読む。読むのは環境を `env -i` で空にした後のシェルの中で、環境変数で tunnel-client にだけ渡す。鍵はどのコマンドの引数にも載らない。
+- 記録の置き場は本線の `.local/dot-m1/`（0700、本人、symlink でない）。検査してから中に作る。tunnel-client の設定の置き場は空の `.local/dot-m1/profiles` で、pro-review 用の `~/.config/tunnel-client` は読まない。
+- 同じ tunnel ID で 2 台動かさない（configuration.md の「Stdio deployment limits」）。置き場の `run.lock` を `lockf` で tunnel-client の終了まで持つので、どの作業フォルダから起動しても 2 本目は止まる。
+- tunnel-client は `/opt/homebrew/bin/tunnel-client` の 0.0.15 以上だけを使う。tunnel ID の形は本体の検査（`tunnel_` と 32 文字、または 4 文字の名前空間付き）に合わせる。
+- 健康の URL（`/readyz` など）は `.local/dot-m1/health-<tools|notools>.<pid>.url` に書かれる。
+
 ## 返すもの
 
 | method | 応答 |

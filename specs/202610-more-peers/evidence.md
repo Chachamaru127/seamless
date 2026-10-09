@@ -519,3 +519,15 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
   - 状態語: 確定後の同じ封筒、署名し直した同じ ID、24 時間内の別 ID の同じ内容は `duplicate`。結果不明は `duplicate_of_unknown`。予約の無い再提示と一覧の再提示は `nonce_replayed`。
 - 計画の字面から変えた所: 署名の並びの行頭の版の印、`duplicate` に `previous` を付けること、新しい状態語 12 個（`envelope_invalid`、`sender_mismatch`、`sender_unregistered`、`peers_unusable`、`key_unavailable`、`key_version_mismatch`、`signature_mismatch`、`timestamp_out_of_window`、`nonce_replayed`、`nonce_unavailable`、`scope_unset` ほか）。
 - 未確認: 実在の会話への実送信（T2-8c、T2-8d）。T2-2 が書く Mac → Bot の予約の記録の形（`recipient.id` が `grok-bot:<登録名>`）は施工役の想定で、T2-2 で合わせる。
+
+## T2-2 送る経路（2026-10-09、workflow `wf_4f3a2c10-9c1`、所要 98 分、コミット b8928f0）
+
+- 作ったもの: `src/webhook-send.ts`。一覧の external[] に切符を付け、Mac の会話は `send` にその切符を渡して、登録した Bot の webhook へ封筒の JSON を POST する。`Authorization: Bearer <送信鍵>`（環境変数の値の先頭の `Bearer ` は 1 つ外す）。2xx は受理、2xx 以外は不受理、接続や応答の途中の失敗は成否不明で、送り直さない。同じ ID は POST せず前の結果、同じ内容の別 ID は 24 時間 duplicate、8,001 字以上は text_too_long。
+- 役の顔ぶれ: 施工、照合、穴探し、直しの 4 役。4 役とも Claude の家系なので、逆の家系の判定は T2-9 で頼む。
+- 照合: PASS（medium 1、low 6、info 1）。Done when の 8 場面それぞれを、複製に入れた変異で殺せることを確かめた（66 件中 56 件が落ち、生き残りは上流の重複した守りと試験の穴）。外へのネットワークは 0 件（fetch と DNS と接続をフックして全試験を走らせ、宛先は 127.0.0.1 だけ）。
+- 穴探し: PASS（中 1、低 4、情報 1）。鍵と住所の漏れ、リダイレクト、二重 POST、名簿の再確認、https の検査、タイムアウト、Mac 側の観測は破れなかった。
+- 直したもの 5 件: 署名を経ない文で Bot 宛の返答完了が埋まる（予約からだけ埋めるようにした）。住所と鍵の不備で ID が焼ける（予約の前に止めた）。呼び手の再確認、制限が壊れたとき、Bot の切符の形の 3 つの試験の穴。
+- 私が走らせた `bash scripts/verify.sh`: exit 0。型検査 0、node 624 件すべて通過（T2-3〜T2-5 の 587 件から 37 件増）、帯 99 件、`peer-secrets: ok（登録なし）`。
+- 実測まで据え置く判断 5 点は Plans.md の「送る」に書いた（5xx と 3xx、接続できない失敗、タイムアウト、範囲外の登録の見せ方、limits.exclude）。
+- H7 の前に立花さんへ伝えること（直し役の指摘）: Bot へ送る JSON の `sender.generation` に、Mac の会話の世代（pid と開始時刻）が入る。住所と鍵の環境変数は、MCP を起動するアプリ（Claude、Codex、Grok）のプロセスから見える必要があり、端末で設定しただけでは足りないことがある。Bot 宛の依頼は帯とパネルに出ず、見る手段は `send` の track だけ。
+- 未確認: 実在の茶々丸への POST（T2-8a、T2-8b。H7 の後）。Node 22 系での `redirect: 'manual'` の挙動（24.19.0 では確認）。実会話の記録での返信の照合。

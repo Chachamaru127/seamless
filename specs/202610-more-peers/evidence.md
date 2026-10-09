@@ -318,3 +318,9 @@
 - 今、本線 d784be8 の hook は `pending` から `delivering/` への改名で封筒を取る。作業ツリー（20c41e3 以降）の送り手は、新しい会話の受信箱に `delivering/` を作らない（5 状態）。この組み合わせでは、本線の hook は改名に失敗して何も渡さず、封筒は pending に残り、帯は「受理・未配信」のまま。
 - 当たるのは「作業ツリーの `node src/cli.ts send` から、受信箱がまだ無い Grok の会話へ送る」ときだけ。既存の受信箱（`01a11afd`、`01a11bbd`）には古い `delivering/` があり、常用の MCP（Claude、Codex、Grok）は本線の古い送り手なので当たらない。取り込みの後は送り手も hook も新しい版になり、当たらない（古い送り手の MCP が作る `delivering/` は新しい hook が無視する）。
 - よって、取り込みまで作業ツリーの CLI から新しい Grok の会話へは送らない。取り込みの後の実会話のやり直しは、新しい Grok の会話を 1 つ開いて行う（5 状態の受信箱と新しい hook の経路を通す形）。余力があれば `--resume 01a11bbd` で、閉じた世代あての封筒に新しい hook が触らないことも確かめる。
+
+### 本線への取り込みが止まった（2026-10-09 00:20 JST）
+
+- 立花さんの `git -C ~/LocalWork/Code/seamless merge --ff-only claude/seamless-claude-codex-c2a20e` は「Plans.md の手元の変更が上書きされる」で止まった（本線は d784be8 のまま）。
+- 原因: 本線の作業ツリーに、別の会話の Dot の作業（2026-10-08 23:26、未コミット）がある。ルートの Plans.md に 2 行、ルートの spec.md、specs/202610-more-peers/spec.md の Q5、未追跡の `experiments/dot-events/` と `specs/202610-more-peers/dot-events-integration.md`。このブランチと重なるのは、TC-2 で足したルートの Plans.md の節だけ。
+- 対処: Dot の作業には触らない（隠さない、退避しない、消さない）。このブランチのルートの Plans.md を本線 d784be8 の版に戻し、取り込みが Plans.md を変えないようにした。TC-2 のうちルートの Plans.md の「最終更新」の行（3b9196d）は、Dot の作業が本線にコミットされた後に足す。GOD_Plans.md の行には 3b9196d を写してある。

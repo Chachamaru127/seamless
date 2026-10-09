@@ -22,9 +22,3 @@ P1の最新状態: 66試験PASS、verify実終了0。最終66試験版のHaiku /
 2026-10-02 製品接続の最新検収: [既存会話ペアの証拠](specs/202610-session-interop/product-evidence.md)。起動済みの双方の元会話でread/send/replyを観測。最終配送再判定と機械検証を実施中。過去の方式検証と、今回の製品実装の証拠を分けて記録する。
 
 最終更新: 既存ペアの5操作を実会話で検収完了。100試験PASS/実終了0、strict終了0、source hash前後一致。read APPROVE、配送Opus PASS（重大0/中0）、図面Haiku PASS。[製品検証](specs/202610-session-interop/product-evidence.md)が現行状態。常用MCP設定導入は未実施で今回範囲外。
-
-## Grok CLI、Grok Bot、ChatGPT Dot へ広げる
-
-[計画](specs/202610-more-peers/Plans.md)、[作業](specs/202610-more-peers/tasks.md)、[証拠](specs/202610-more-peers/evidence.md)。
-
-最終更新: P1（Grok CLI）判定 PASS（3b9196d、Codex Astra xhigh、2026-10-09）。P2 は茶々丸の答え待ち、P3 は Dot の設計判断待ち。

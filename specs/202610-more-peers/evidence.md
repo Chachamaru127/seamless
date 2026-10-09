@@ -324,3 +324,35 @@
 - 立花さんの `git -C ~/LocalWork/Code/seamless merge --ff-only claude/seamless-claude-codex-c2a20e` は「Plans.md の手元の変更が上書きされる」で止まった（本線は d784be8 のまま）。
 - 原因: 本線の作業ツリーに、別の会話の Dot の作業（2026-10-08 23:26、未コミット）がある。ルートの Plans.md に 2 行、ルートの spec.md、specs/202610-more-peers/spec.md の Q5、未追跡の `experiments/dot-events/` と `specs/202610-more-peers/dot-events-integration.md`。このブランチと重なるのは、TC-2 で足したルートの Plans.md の節だけ。
 - 対処: Dot の作業には触らない（隠さない、退避しない、消さない）。このブランチのルートの Plans.md を本線 d784be8 の版に戻し、取り込みが Plans.md を変えないようにした。TC-2 のうちルートの Plans.md の「最終更新」の行（3b9196d）は、Dot の作業が本線にコミットされた後に足す。GOD_Plans.md の行には 3b9196d を写してある。
+
+## Codex の会話（codex:01a11bd4）の Dot の作業の取り込み（2026-10-09 10:15〜10:55 JST）
+
+立花さんの依頼「このスレッドからやりとり把握し、Dot対応に生かして」。その会話を seamless の read で読み（発話 14 件、2026-10-08 23:04〜23:35 JST）、読み手 4、設計 2、反証 1、まとめ 1 の計 8 体で突き合わせた（読み取りだけ。workflow `wf_eeb0d679-6ed`、結果は会話の記録の作業フォルダ）。本線の作業ツリーにある Codex の未コミットの作業（ルートの Plans.md と spec.md、この機能の spec.md の Q5、`experiments/dot-events/`、`dot-events-integration.md`）には書き込んでいない。
+
+### その会話でしたこと（読み手の確認つき）
+
+- 立花さんの依頼は 2 つ。「記事（X の yoshio_nocode）を読んで Dot を MCP Events に対応させ、seamless に内包したい」と、後から「プラグインの仕組みで Codex 側にも画面を出したい」。
+- Codex は本体の src を変えていない。現行の MCP が Events に未対応であること（initialize は 2025-06-18、server/discover と events/* は未知のメソッド）を隔離して確かめ、本体に接続しない試作 `experiments/dot-events`（17 試験）を作り、内包案を書いた。試作と文書の整合は Claude Opus の判定と Haiku の図面検査で PASS。AC11a〜c の製品の合格ではない。
+- Codex の Q5 の推奨は、Dot 専用の HTTP 入口に OAuth 2.1 を付け、認証した ChatGPT の接続を名簿の登録に結ぶ形。会話の最後に「この方式で本体実装を進めてよいですか」と聞いており、立花さんの返事はまだ無い。
+- 試作の手直しが要る点（読み手が再現）: secret を購読の JSON に平文で置く、送信先が無いと予約だけ残り同じ依頼 ID が使えなくなる、同じ secret の再購読が確認に失敗すると有効な購読まで止まる。
+
+### 突き合わせて分かったこと
+
+- Codex の推奨（認可サーバーを Mac に置く OAuth）は採らないほうがよい。理由は 3 つ。待受サーバー、常駐処理、接続設定の変更、公開の口、鍵の保管の止まる条件に最も多く当たる。利用者が立花さん 1 人の認可サーバーでは subject がいつも本人になり、AC11c の「別のアカウントの接続は拒む」の試験が成り立たない。認証で示せるのは登録した ChatGPT の接続までで、Dot と通常の ChatGPT の会話を区別できる値が届くかは誰も観測していない。
+- 公式の説明（learn.chatgpt.com/docs/dots/computers-and-apps、2026-10-09 に私が取得）: 「自分のパソコン」の許可を入れると、Dot はローカルの Codex のタスクを作り、既存のタスクを続けられる（"continue existing local Codex tasks"）。スマホから話しかけても同じ。記事の構図はこの経路で、MCP と Tunnel と OAuth の経路ではない。この経路は seamless を通らず、seamless の認証では塞げない。
+- 設計 2 体の推奨は割れた。安全優先は「Dot 用の入口を開けず、購読も受けない。接続しない準備だけ進める」。本人の手間優先は「Dot 専用の tunnel と stdio の入口と宛先の許可リスト」。反証役は後者を崩した（AC11c の「_meta の自己申告では通さない」と、止まる条件の「鍵を送り手の登録に結び付けない設計」に当たる）。
+- 先に測るべき事実は 2 つ。Dot が自作の MCP を Tunnel 越しに呼べるか。Dot と通常の Chat で区別できる値が届くか。測定用のスタブ（M1）は、動いている tunnel-client が 0.0.9（2026-05-21 版）で MCP 2.0 の扱いが docs に無い点と、スタブが events を宣言しないと購読が来ない点を直してから行う。
+- Codex 内の状態パネル: 包み `codex-plugin/seamless-status`（b5f3352）は既にあり、導入の承認待ち（status-ui の C1b）。画面に出たことはまだ無い（2026-10-05 の実機でタブが出なかった）。AC11a〜c にパネルの要件は無いので、P3 には入れず status-ui の作業として扱うのを推す。
+- 別件の気づき: コミット 0b12976（2026-10-06）で `specs/202610-status-ui/evidence.md` の 90 行が消え、4 行に置き換わっている（C1b の準備の節など）。意図か誤りかは未確認。ここでは書き換えていない。
+
+### 立花さんの判断が要ること（案。2026-10-09 時点で未決）
+
+1. Q5 の姿勢: Codex の推奨は採らず、Dot 用の入口を開けず購読も受けない姿勢にとどまり、方式は M1 の結果で決める（推奨: 承認）。Codex の会話の「本体実装を進めてよいですか」への答えは「いいえ」になる。
+2. M1 の第 1 段（立花さんの約 3 分の画面の読み取り確認、スタブの作成と単体試験、tunnel-client の版の特定。ダウンロードと tunnel の作成と実行は第 2 段で別に go をもらう）（推奨: 承認）。
+3. Dot への配送を契約の事前承認に含めるか（Plans.md の H10。推奨: 含めない）。
+
+### 作業の分担（Codex の会話と）
+
+- 同じファイルを両方が書くと取り込みがぶつかる。Codex の会話が本線で Dot の作業をコミットするまで、このブランチはルートの Plans.md、ルートの spec.md、この機能の spec.md、dot-events-integration.md を書かない（ルートの Plans.md は 6bddcb1 で本線の版に戻した）。
+- このブランチが書くのは tasks.md の P3、evidence.md、Plans.md の H10、reviews/、experiments/dot-m1/。試作 `experiments/dot-events` の試験の追加（T3-8）は Codex の会話の担当にする案。
+- Codex の会話への連絡（seamless の send）は、判断 1 の後に送る。

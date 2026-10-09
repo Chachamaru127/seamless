@@ -5,6 +5,10 @@
 元のCodex会話とClaude会話を、共通のsessions/read/sendでつなぐ。
 共有SQLiteなし。agmsgのforkなし。既存の会話と実行体を維持する。
 
+2026-10-09 Dot の追加検証: 担当会話からは通知だけに絞る方針連絡を受領。HTTP＋OAuthの本体実装は進めず、`experiments/dot-events/` の購読更新、模擬DNS、10秒打切り、宛先なしの予約を検証した。試作21件、本体464件、帯99件はexit 0。別家系の試作判定と範囲検査はPASS。[内包案](specs/202610-more-peers/dot-events-integration.md)に連絡の原文IDと未確認事項を記録。実接続は行っていない。10月9日の本人指示でこの試作と文書をローカルコミットに保存する。
+
+2026-10-08 Dot の追加依頼: [記事を踏まえた内包案](specs/202610-more-peers/dot-events-integration.md)。記事全文、公式 Events/Tunnel/auth の資料と現行 MCP の隔離試験を確認。独立検討後に本体と分離した非接続試作を作り、17試験PASS/exit 0（AC11a〜cの製品合格には数えない）。AC11a〜c は承認済み。Q5 の候補は Dot 専用 HTTP 入口と OAuth の認可 grant を登録に結び付ける構成。Q5 を確定するまで Dot の本体実装と接続設定は始めない。Claude/Codex の stdio 入口は現行版を維持する。
+
 - [実装計画](specs/202610-session-interop/Plans.md)
 - [実測と合否](specs/202610-session-interop/evidence.md)
 - [作業単位と依存](specs/202610-session-interop/tasks.md)

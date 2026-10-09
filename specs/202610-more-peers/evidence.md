@@ -471,3 +471,20 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - 値は立花さんが持っている（「正しい値はこっちで持ってる」）。seamless の手元の設定（環境変数、H3）にだけ置き、リポジトリとチャットには書かない。
 - 計画の直し: 送る経路（T2-2）は、送信鍵による HMAC の署名ヘッダをやめ、`Authorization: Bearer <送信鍵>` で付ける。茶々丸は鍵を見ず、照合するのは Grok Bot の仕組みなので、HMAC を付けても確かめる側がいない。本文は JSON、大きさは保守的な決まり（8,000 字まで）のまま。Plans.md の「送る」の節と tasks.md の T2-2 を直した。
 - これで送る経路（T2-2）の入口の条件（T2-1、T0-4b）はそろい、鍵の付け方も決まった。受ける経路（T2-3）の実装が終わった後に続けて作る（同じファイルを触るので順番に行う）。
+
+## T3-12 と T3-13 Dot の測定の準備（2026-10-09 15:38〜16:00 JST、workflow `wf_a5b823f1-af3`）
+
+- T3-12: 測定用のスタブ `experiments/dot-m1/`（stub.ts、stub.test.ts、README.md）を作った。tunnel-client の --mcp-command（stdio）から起動される JSON-RPC のサーバーで、server/discover と initialize で版 2026-07-28 と events を宣言し、ping の道具を 1 つ出す（--no-tools で無し）。events/subscribe は記録してから既定ではエラーを返す（callback へ POST しないので受理したことにしない。--accept-subscribe で受理の応答だけを返す選択もある）。記録は明示した絶対パスの 0600 のファイル 1 つで、明示が無ければ起動しない。subject と session は実行ごとの乱数の salt の HMAC の先頭 8 桁、subscribe は callback のホスト名だけ。Authorization、secret、URL の全体、引数の値、本文は書かない。全ての記録の行を許可した欄だけに絞る。通信の部品（http、net、fetch）は読み込まない（私が grep で確認）。
+- 判定役（穴探し）の指摘 10 件のうち 9 件を直した。重いもの: 2026-07-28 の版で必須の `ttlMs` と `cacheScope` が discover と tools/list に無く、最初の往復で全部の測定が空振りしうる → 足した。深い入れ子の _meta で例外が出て子プロセスごと落ちる → 落ちないようにした。イベントの説明が「出さない」で、モデルが購読を断る材料になる → 直し、README に購読を引き出す頼み方を書いた。秘密を書かない要件の一部が試験で守られていなかった → 許可した欄だけを残す検査と試験を足した。
+- `node --test experiments/dot-m1/stub.test.ts`: 17 件すべて通過、exit 0。型検査（verify.sh と同じ旗の tsc）exit 0。私が走らせて確かめた。
+- 決めずに残した 1 点: ping に任意の引数 caller（dot、chat、unknown）を足すか。足すと Dot と Chat の呼び手の区別が強くなるが、「引数の値を書かない」の例外になる。今は足さず、呼んだ時刻を控えて記録の時刻と突き合わせる（1 分以上空けて Dot と Chat を 1 回ずつ）。
+- T3-13: MCP 2.0（2026-07-28）の自己完結の要求を stdio の --mcp-command で通すことが docs に初めて書かれたのは tunnel-client の v0.0.15（2026-09-25 公開。docs/configuration.md の「Automatic stdio initialization guard」に「2026-07-28 以降の版で params._meta に client capabilities を持つ自己完結の要求はこのガードを通る」）。v0.0.14 以前の docs には無い。実機の pro-review 用は 0.0.9+62b9b42 でこの記述が無い。
+
+| 項目 | v0.0.15（最初の版） | v0.0.16（最新、Homebrew の版） |
+|---|---|---|
+| ファイル名（macOS arm64） | tunnel-client-v0.0.15-darwin-arm64.zip | tunnel-client-v0.0.16-darwin-arm64.zip |
+| サイズ | 27,018,754 バイト | 27,041,422 バイト |
+| sha256（GitHub の digest） | b2cae3aa9df45b4c2fe9b1d700ebacce39f9feb6a6b46b86e6499f9a51bf72ff | a160820d45089b5253d8d671fe2a689bde0f73d78c135d1497a7b33f28a3ac62 |
+| 取得元 | github.com/openai/tunnel-client/releases/download/v0.0.15/… | 同 v0.0.16/…、Homebrew は `brew install openai/tools/tunnel-client`（persistent.oaistatic.com から、sha256 は GitHub と一致） |
+
+- GitHub から直接取った zip は notarize されておらず、Gatekeeper に止められる場合がある（README）。Homebrew の版を使うのが手前。どちらもダウンロードはしていない（ディスクに無い）。

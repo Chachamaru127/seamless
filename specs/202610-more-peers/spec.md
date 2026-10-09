@@ -120,7 +120,7 @@ ChatGPT Dot（Codex の調査、立花さんが 2026-10-08 に貼り付け。全
 - Q2 Grok CLI の呼び手を実観測で特定する材料: active_sessions.json の pid と会話 ID の対応（TUI が登録する実例は未観測。TUI を 1 つ起動して登録と削除を見る）。実行ファイルの署名（xAI）の確認方法は未確認。
 - Q3 Grok Bot の webhook の上限、順序、再送、受理の応答の形。
 - Q4 一部済み（2026-10-08、T0-5）: MCP Events の発見、購読、callback、署名の形は草稿 SEP-3415 と ChatGPT の実装ガイドで確かめた（evidence.md の T0-5）。最終形は未定（草稿、レビュー前）。Tunnel の接続の実態は未確認。
-- Q5 Dot から Mac への呼び手の鍵: Tunnel の接続に名簿の登録を結び付ける方法（Tunnel が起動する入口に本人が環境変数で鍵を渡す、Tunnel の接続ごとの認証された主体（principal）を使う、など）。ChatGPT の Tunnel の仕様を読んで決める。決まるまで AC11c は実装しない。
+- Q5 Dot から Mac への呼び手の鍵: Tunnel の接続に名簿の登録を結び付ける方法。決まるまで AC11a〜c の本体実装を始めない。[追加調査と非接続試作](dot-events-integration.md)で固定環境変数キーでは遠隔の呼び手を区別できないことを確認。Dot 専用 HTTP 入口と OAuth の認可 grant を登録に結び付ける案は本人の判断待ち。環境変数キー案を採用済みにせず、既存の停止条件を維持する。
 
 ## 範囲外
 

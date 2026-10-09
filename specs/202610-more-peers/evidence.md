@@ -489,7 +489,7 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 
 - GitHub から直接取った zip は notarize されておらず、Gatekeeper に止められる場合がある（README）。Homebrew の版を使うのが手前。どちらもダウンロードはしていない（ディスクに無い）。
 
-## T2-3〜T2-5 受ける経路（2026-10-09 14:55〜16:13 JST、workflow `wf_9c916078-482`、コミット 50e2985）
+## T2-3〜T2-5 受ける経路（2026-10-09 約 15:18〜16:36 JST。終了の時刻と所要 78 分から逆算、workflow `wf_9c916078-482`、コミット 50e2985）
 
 - 作ったもの: `send --as <登録名>` と `sessions --as <登録名>`。署名済みの封筒を標準入力で受け、形、名簿、失効、鍵の版、鍵、署名、時刻、名簿の認可、nonce、宛先、予約の順に確かめ、どれかで止まれば何も届けない。`read --as` は常に `operation_not_permitted`（`reason: external_read`）。新しい部品は `src/signed-envelope.ts`、`src/nonce-store.ts`、`src/external-inbound.ts`。
 - 役の顔ぶれ: 施工、照合（計画との突き合わせ）、穴探し（壊して確かめる）、直しの 4 役。4 役とも Claude の家系なので、逆の家系の判定は T2-9 で P2 全体として頼む。

@@ -152,6 +152,8 @@ export function createNativeRuntime(options:RuntimeOptions={}):{observer:Observe
  const home=options.home??homedir();const grok=async()=>import('./adapters/grok.ts');
  const inspect=async(r:Registration)=>r.provider==='claude'?(options.claudeIdentity??((id:string)=>findClaudeIdentity(id,home,options)))(r.nativeId):r.provider==='grok'?(options.grokIdentity??(async(id:string,generation?:string)=>(await grok()).grokIdentity(id,{...options,home},generation)))(r.nativeId,r.generation):(options.codexIdentity??((id:string)=>findCodexIdentity(id,home)))(r.nativeId);
  const checkCompatibility=async(r:Pick<Registration,'provider'|'nativeId'>,compatibility:CompatibilityOptions={})=>{
+  // A registered outside executor (grok-bot) has no local process whose version could be checked: never a native target.
+  if(r.provider==='grok-bot')return {status:'unsupported_version' as const,reason:'grok-bot',version:'unknown'};
   const version=r.provider==='codex'?await (options.desktopVersion??(await import('./adapters/codex.ts')).desktopVersion)():r.provider==='grok'?await (options.grokVersion??(async()=>(await grok()).grokVersion(home)))():await (options.claudeVersion??((id:string)=>claudeVersion(id,home)))(r.nativeId);
   return isVersionAllowed(productOf(r.provider),version,{...options,...compatibility})?null:{status:'unsupported_version' as const,reason:version??'unknown',version:version??'unknown'};
  };

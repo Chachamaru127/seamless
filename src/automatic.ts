@@ -1,5 +1,5 @@
 import {isVersionAllowed,versionStatus,productOf} from './compat.ts';
-import {requests,DAY} from './request-store.ts';
+import {requests,DAY,isLocalParty} from './request-store.ts';
 import {verifyInbound} from './inbound.ts';
 import {createStatus,type StatusClock} from './status.ts';
 import {observeGit} from './git-context.ts';
@@ -12,12 +12,15 @@ import {identifyCaller,type CallerOptions,type CallerResult,type Caller} from '.
 import {scanSessions,codexIdentity,wakeCodexThread,inScope,type SessionIdentity, type ScanOptions} from './sessions-scan.ts';
 import {createNativeRuntime,createCodexOwnerLookup,findClaudeIdentity,type NativeIdentity} from './native-runtime.ts';
 import {readLimits,writeLimits,clearLimits,unrestricted,validLimits,type Limits,type AutoScope} from './limits.ts';
-import {ContractError,object,type Registration,type Operation} from './protocol.ts';
+import {ContractError,object,isLocalRegistration,type Registration,type Operation} from './protocol.ts';
 import {Registry,loadRegistry} from './registry.ts';
 import {Delivery,type NativeAdapter} from './delivery.ts';
 import {readPeers,externalPeers,defaultPeersPath} from './peers.ts';
-export type CallContext={kind:'cli'|'mcp';meta?:unknown};
-export type AutomaticOptions={clock?:StatusClock;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;wake?:(nativeId:string)=>Promise<string|null>;adapter?:NativeAdapter;limitsPath?:string;peersPath?:string;reservationDir?:string};
+import {externalCall} from './external-inbound.ts';
+import {wasSigned} from './nonce-store.ts';
+// external: set only by `--as <registration>` on the command line (src/cli.ts): the call comes from a registered outside sender.
+export type CallContext={kind:'cli'|'mcp';meta?:unknown;external?:{name:string}};
+export type AutomaticOptions={clock?:StatusClock;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;wake?:(nativeId:string)=>Promise<string|null>;adapter?:NativeAdapter;limitsPath?:string;peersPath?:string;reservationDir?:string;env?:NodeJS.ProcessEnv;diagnose?:(line:string)=>void};
 export type Ticket={provider:'codex'|'claude'|'grok';nativeId:string;generation:string;cwd:string;branch?:string|null};
 const idOf=(n:Pick<Ticket,'provider'|'nativeId'>)=>`${n.provider}:${n.nativeId}`;
 export function issueTicket(n:Ticket):string{return Buffer.from(JSON.stringify({provider:n.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,branch:n.branch??null})).toString('base64url');}
@@ -80,6 +83,19 @@ export function createAutomatic(options:AutomaticOptions={}){
    if(!await inScope(n.cwd,c.cwd,s,scanOptions.git)||l.scope!==null&&!await inScope(n.cwd,c.cwd,l.scope,scanOptions.git))return 'scope_conflict';
    return null;
   };
+  const compatibilityFor=(n:Pick<SessionIdentity,'provider'>,limits:Limits)=>({...scanOptions,...(n.provider==='claude'?scanOptions.claude:{}),strictVersions:options.compatTest===true||limits.strictVersions===true});
+  const rejectedVersion=(n:Pick<SessionIdentity,'provider'|'version'>,limits:Limits)=>isVersionAllowed(productOf(n.provider),n.version,compatibilityFor(n,limits))?null:{status:'unsupported_version',reason:n.version??'unknown',version:n.version??'unknown'};
+  // A registered outside sender (`--as`): no process on this Mac to identify, so the signed envelope stands in for the caller
+  // (src/external-inbound.ts). It never reaches the caller identification below, and MCP cannot produce this context.
+  if(context.external){
+   if(context.kind!=='cli'||options.compatTest)return {status:'compat_check_read_only'};
+   const externalCompatibility=async(n:Pick<SessionIdentity,'provider'|'nativeId'|'version'>,limits:Limits)=>{
+    const compatibility=compatibilityFor(n,limits);
+    if(!options.adapter||!options.scan)return runtime.checkCompatibility(n,compatibility);
+    return compatibility.strictVersions?rejectedVersion(n,limits):null;
+   };
+   return externalCall({name:context.external.name,home,now:()=>options.clock?.now()??Date.now(),env:options.env??process.env,diagnose:options.diagnose??(line=>{process.stderr.write(line+'\n');}),peersPath,limitsPath,reservationDir:options.reservationDir??join(home,'.seamless','reservations'),keyPath:join(home,'.seamless','key'),nonceDir:join(home,'.seamless','nonces'),scan,inspect,adapter,git:scanOptions.git,excluded,rejectedVersion,compatibility:externalCompatibility},method,input);
+  }
   const observed=await caller(context);if(observed.status!=='ok')return observed;
   const c=observed.caller;
   if(options.compatTest&&!['sessions','read'].includes(method))return {status:'compat_check_read_only'};
@@ -94,8 +110,6 @@ export function createAutomatic(options:AutomaticOptions={}){
   if(loaded.status==='unusable')return {status:'limits_unusable'};
   if(options.compatTest&&(loaded.status!=='ok'||loaded.hash!==options.testLimitsHash))return {status:'compat_check_limits_changed'};
   const l=loaded.status==='ok'?loaded.value:unrestricted;
-  const compatibilityFor=(n:Pick<SessionIdentity,'provider'>,limits:Limits)=>({...scanOptions,...(n.provider==='claude'?scanOptions.claude:{}),strictVersions:options.compatTest===true||limits.strictVersions===true});
-  const rejectedVersion=(n:Pick<SessionIdentity,'provider'|'version'>,limits:Limits)=>isVersionAllowed(productOf(n.provider),n.version,compatibilityFor(n,limits))?null:{status:'unsupported_version',reason:n.version??'unknown',version:n.version??'unknown'};
   const bandIdentities=new Map<string,SessionIdentity>([[idOf(c),c]]);
   const targetCompatibility=async(n:Pick<SessionIdentity,'provider'|'nativeId'|'version'>,limits:Limits)=>{
    const compatibility=compatibilityFor(n,limits);
@@ -108,7 +122,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   };
   const callerVersion=rejectedVersion(c,l);if(callerVersion)return callerVersion;
   // Both sides of a request are read together, as the band already does; each read still re-observes the caller.
-  const status=createStatus({parallelReads:true,dir:options.reservationDir??join(home,'.seamless','reservations'),adapter,caller:{...c,id:idOf(c)},clock:options.clock,canRead:async n=>{const current=await caller(context);if(current.status!=='ok'||idOf(current.caller)!==idOf(c)||current.caller.generation!==c.generation)return false;const limits=await readLimits(limitsPath);if(limits.status==='unusable')return false;const currentLimits=limits.status==='ok'?limits.value:unrestricted;return !rejectedVersion(current.caller,currentLimits)&&!await policy(n,c,currentLimits,'read','any')&&!await targetCompatibility(n,currentLimits);}});
+  const status=createStatus({parallelReads:true,dir:options.reservationDir??join(home,'.seamless','reservations'),adapter,caller:{...c,id:idOf(c)},clock:options.clock,canRead:async n=>{if(!isLocalParty(n))return false;const current=await caller(context);if(current.status!=='ok'||idOf(current.caller)!==idOf(c)||current.caller.generation!==c.generation)return false;const limits=await readLimits(limitsPath);if(limits.status==='unusable')return false;const currentLimits=limits.status==='ok'?limits.value:unrestricted;return !rejectedVersion(current.caller,currentLimits)&&!await policy(n,c,currentLimits,'read','any')&&!await targetCompatibility(n,currentLimits);}});
   if(method==='send'&&input&&typeof input==='object'&&'track' in input){const p=object(input,['track','waitSeconds','scope']);scope(p.scope);return status.track(p.track,p.waitSeconds);}
   const keys=method==='sessions'?['operation','scope','target','includeOffline','peek']:method==='select'?['operation','scope','target']:method==='read'?['target','scope','cursor','limit']:method==='send'?['ticket','id','text','replyTo','scope']:method==='revalidate'?['ticket','operation','scope']:[];
   if(!keys.length&&method!=='band')throw new ContractError('unknown_method');
@@ -153,7 +167,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   const related=async():ReturnType<typeof scanSessions>=>{
    const peers=new Map<string,SessionIdentity>(),now=options.clock?.now()??Date.now();
    for(const r of await requests(options.reservationDir??join(home,'.seamless','reservations'))){
-    if(r.sender.provider===c.provider&&r.sender.nativeId===c.nativeId&&r.sender.generation===c.generation&&r.at<=now&&now-r.at<=DAY)peers.set(idOf(r.recipient),{...r.recipient,socket:''});
+    if(r.sender.provider===c.provider&&r.sender.nativeId===c.nativeId&&r.sender.generation===c.generation&&r.at<=now&&now-r.at<=DAY&&isLocalParty(r.recipient))peers.set(idOf(r.recipient),{...r.recipient,socket:''});
    }
    try{bandReceived=await adapter.received?.(registrations([c])[0])??[];}catch{}
    for(const r of bandReceived){
@@ -184,9 +198,9 @@ export function createAutomatic(options:AutomaticOptions={}){
    let inbound:Awaited<ReturnType<typeof verifyInbound>>=[];
    if(!options.compatTest&&l.operations?.read!==false&&adapter.received){
     try{const records=registrations([c,...found.sessions.filter(n=>idOf(n)!==idOf(c))]);
-     inbound=await verifyInbound({parallel:true,caller:records[0],received:method==='band'?bandReceived:await adapter.received(records[0]),targets:records.slice(1),now:options.clock?.now()??Date.now(),sentIds:adapter.sentIds,canRead:async target=>{
+     inbound=await verifyInbound({parallel:true,caller:records[0],received:method==='band'?bandReceived:await adapter.received(records[0]),targets:records.slice(1),now:options.clock?.now()??Date.now(),sentIds:adapter.sentIds,signed:r=>wasSigned(join(home,'.seamless','nonces'),options.reservationDir??join(home,'.seamless','reservations'),r),canRead:async target=>{
       const current=await caller(context),limits=await readLimits(limitsPath);
-      return current.status==='ok'&&idOf(current.caller)===idOf(c)&&current.caller.generation===c.generation&&limits.status!=='unusable'&&!await policy({provider:target.provider,nativeId:target.nativeId,generation:target.generation,cwd:target.workspace},c,limits.status==='ok'?limits.value:unrestricted,'read',s)&&!await targetCompatibility(target,limits.status==='ok'?limits.value:unrestricted);
+      return current.status==='ok'&&idOf(current.caller)===idOf(c)&&current.caller.generation===c.generation&&limits.status!=='unusable'&&isLocalRegistration(target)&&!await policy({provider:target.provider,nativeId:target.nativeId,generation:target.generation,cwd:target.workspace},c,limits.status==='ok'?limits.value:unrestricted,'read',s)&&!await targetCompatibility(target,limits.status==='ok'?limits.value:unrestricted);
      }});
     }catch{}
    }

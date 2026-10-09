@@ -1,11 +1,11 @@
 import {ContractError,type Registration} from './protocol.ts';
-import {requests,DAY,type RequestRecord,type RequestParty} from './request-store.ts';
+import {requests,DAY,isLocalParty,type RequestRecord,type RequestParty,type LocalParty} from './request-store.ts';
 import type {NativeAdapter} from './delivery.ts';
 export type StructureItem={id:string;type:string;at:string|null;payloadSha256?:string;turnId?:string;position?:number;parentUuid?:string|null;generation?:string;hookName?:string|null;hooks?:string[];peer?:{id:string;replyTo?:string;sender?:{provider:string;nativeId:string}}};
 export type Stage={stage:'accepted'|'reached'|'processing'|'replied'|'unknown';status:'observed'|'unobserved';evidence:string[];at:string|null};
 export type StatusClock={now:()=>number;sleep:(ms:number)=>Promise<void>};
 const clock:StatusClock={now:Date.now,sleep:ms=>new Promise(resolve=>setTimeout(resolve,ms))};
-const registration=(p:RequestParty):Registration=>({id:p.id,provider:p.provider,nativeId:p.nativeId,generation:p.generation,workspace:p.cwd,host:'local',displayName:p.id,operations:['read'],grants:[]});
+const registration=(p:LocalParty):Registration=>({id:p.id,provider:p.provider,nativeId:p.nativeId,generation:p.generation,workspace:p.cwd,host:'local',displayName:p.id,operations:['read'],grants:[]});
 export function stages(record:RequestRecord,destination:StructureItem[],source:StructureItem[],now:number):Stage[]{
  const observedAt=new Date(now).toISOString();
  const result:Stage[]=['accepted','reached','processing','replied','unknown'].map(stage=>({stage:stage as Stage['stage'],status:'unobserved',evidence:[],at:null}));
@@ -59,13 +59,13 @@ export function createStatus(options:{parallelReads?:boolean;dir:string;adapter:
  const time=options.clock??clock;
  const owned=(r:RequestRecord)=>r.sender.provider===options.caller.provider&&r.sender.nativeId===options.caller.nativeId&&r.sender.generation===options.caller.generation;
  const read=async(p:RequestParty):Promise<StructureItem[]>=>{
-  if(!await options.canRead(p))return [];
+  if(!isLocalParty(p)||!await options.canRead(p))return [];
   try{return options.adapter.structure?(await options.adapter.structure(registration(p))).slice(-200):[];}catch{return [];}
  };
  const once=async(id:string)=>{
   const record=(await requests(options.dir)).find(r=>r.id===id&&owned(r));if(!record)return {status:'not_found' as const};
   const [destination,source]=options.parallelReads?await Promise.all([read(record.recipient),read(record.sender)]):[await read(record.recipient),await read(record.sender)];
-  const inbox=record.recipient.provider==='grok'&&options.adapter.inboxState&&await options.canRead(record.recipient)?await options.adapter.inboxState(registration(record.recipient),record.id,{id:record.sender.id,nativeId:record.sender.nativeId}).catch(()=>null):undefined;
+  const inbox=isLocalParty(record.recipient)&&record.recipient.provider==='grok'&&options.adapter.inboxState&&await options.canRead(record.recipient)?await options.adapter.inboxState(registration(record.recipient),record.id,{id:record.sender.id,nativeId:record.sender.nativeId}).catch(()=>null):undefined;
   return statusResult(record,destination,source,time.now(),inbox);
  };
  return {

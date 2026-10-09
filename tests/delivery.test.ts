@@ -1,11 +1,12 @@
 import {spawn} from 'node:child_process';
-import {readdir,readFile,stat} from 'node:fs/promises';
+import {readdir,readFile,stat,writeFile} from 'node:fs/promises';
 import {mkdtempSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Delivery } from '../src/delivery.ts';
+import { claimRequest } from '../src/request-store.ts';
 import { Registry } from '../src/registry.ts';
 import type { Registration } from '../src/protocol.ts';
 function setup(reservationDir=mkdtempSync(join(tmpdir(),'cldx-delivery-'))){
@@ -61,4 +62,26 @@ test('receipts never carry the payload hash, including write-time rejection',asy
   const receipt=await delivery.send({target:'b',id:'hash-'+status,text:'hello'}) as Record<string,unknown>;
   assert.equal('payloadSha256' in receipt,false,status);assert.equal(receipt.status,status);
  }
+});
+
+// The claim a request leaves on its content: a settled request lets go unless the caller holds it (the signed outside-sender path).
+test('claimRequest: a submitted request releases its claim by default; asked to hold, it keeps it for the time given; a refused one never holds',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'cldx-claim-')),T=1_000_000,hash=(n:number)=>String(n).padStart(64,'0');
+ const party={id:'claude:x',provider:'claude',nativeId:'x',generation:'g',cwd:'/w'};
+ const settle=(n:number,id:string,status:string)=>writeFile(join(dir,hash(n)+'.json'),JSON.stringify({id,hash:hash(n),status,at:T,sender:party,recipient:{...party,id:'codex:y',provider:'codex',nativeId:'y'}}),{mode:0o600});
+ // Default: the same content under another id is free as soon as the first is submitted.
+ await claimRequest(dir,hash(1),'first',T);await settle(1,'first','submitted');
+ assert.equal((await claimRequest(dir,hash(1),'second',T+1000)).duplicate,undefined);
+ // Held for 10 seconds: a duplicate (and it says it was submitted) inside the time, free after.
+ await claimRequest(dir,hash(2),'first',T,{holdSubmittedMs:10_000});await settle(2,'first','submitted');
+ const inside=await claimRequest(dir,hash(2),'second',T+10_000,{holdSubmittedMs:10_000});
+ assert.equal(inside.duplicate,'first');assert.equal(inside.previous,'submitted');
+ assert.equal((await claimRequest(dir,hash(2),'second',T+10_001,{holdSubmittedMs:10_000})).duplicate,undefined);
+ // A request whose result is unknown holds for the day whatever the option says; one the native side refused never holds.
+ await claimRequest(dir,hash(3),'first',T,{holdSubmittedMs:10_000});await settle(3,'first','unknown');
+ assert.equal((await claimRequest(dir,hash(3),'second',T+3_600_000,{holdSubmittedMs:10_000})).duplicate,'first');
+ await claimRequest(dir,hash(4),'first',T,{holdSubmittedMs:10_000});await settle(4,'first','rejected');
+ assert.equal((await claimRequest(dir,hash(4),'second',T+1000,{holdSubmittedMs:10_000})).duplicate,undefined);
+ // The same id again is never its own duplicate.
+ assert.equal((await claimRequest(dir,hash(2),'second',T+10_002,{holdSubmittedMs:10_000})).duplicate,undefined);
 });

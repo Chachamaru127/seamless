@@ -11,12 +11,29 @@ import { createServe } from './serve.ts';
 import { createMcp } from './mcp.ts';
 import { runLines } from './io.ts';
 import { ContractError, object } from './protocol.ts';
-export async function runCli(argv:string[],automatic:Automatic=createAutomatic(),limitsPath?:string):Promise<void>{
+// The signed request of `--as` comes on standard input, whole. Neither it nor a key is ever an argument (arguments are recorded
+// in process listings and in the conversation that ran the command).
+const MAX_STDIN_BYTES=262144;
+async function readStdin():Promise<string>{
+ if(process.stdin.isTTY)throw new ContractError('invalid_arguments');
+ const chunks:Buffer[]=[];let size=0;
+ for await(const raw of process.stdin){const chunk=Buffer.isBuffer(raw)?raw:Buffer.from(raw);size+=chunk.length;if(size>MAX_STDIN_BYTES)throw new ContractError('invalid_arguments');chunks.push(chunk);}
+ return new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks));
+}
+export async function runCli(argv:string[],automatic:Automatic=createAutomatic(),limitsPath?:string,stdin:()=>Promise<string>=readStdin):Promise<void>{
  const [mode,...rawArgs]=argv;
  if(mode==='status'){if(!(rawArgs.length===1||rawArgs.length===3&&rawArgs[1]==='--wait'))throw new ContractError('invalid_arguments');const waitSeconds=rawArgs.length===3?Number(rawArgs[2]):0;if(!Number.isFinite(waitSeconds)||waitSeconds<0||waitSeconds>600)throw new ContractError('invalid_arguments');console.log(JSON.stringify(await automatic('send',{track:rawArgs[0],waitSeconds})));return;}
  if(mode==='compat-check'){const ok=rawArgs[0]==='--limits'&&(rawArgs.length===2||rawArgs.length===4&&rawArgs[2]==='--target'&&/^(claude|codex):[A-Za-z0-9-]{1,128}$/.test(rawArgs[3]));if(!ok)throw new ContractError('invalid_arguments');console.log(JSON.stringify(await compatibilityCheck(rawArgs[1],{},{kind:'cli'},rawArgs[3])));return;}
  if(mode==='compat-md'){if(rawArgs.length)throw new ContractError('invalid_arguments');await writeFile(new URL('../specs/202610-everyday-use/compat.md',import.meta.url),compatibilityMarkdown());return;}
  if(mode==='migrate'){if(rawArgs.length!==2&&rawArgs.length!==3||rawArgs[0]!=='--registry'||rawArgs.length===3&&rawArgs[2]!=='--write')throw new ContractError('invalid_arguments');console.log(JSON.stringify(await migrateRegistry(rawArgs[1],rawArgs[2]==='--write',limitsPath)));return;}
+ // `sessions|read|send --as <registration>`: a registered outside sender (Grok Bot) acts with an envelope it signed.
+ if(rawArgs.includes('--as')){
+  if(!['sessions','read','send'].includes(mode)||rawArgs.length!==2||rawArgs[0]!=='--as'||!/^[a-z0-9-]{1,63}$/.test(rawArgs[1]))throw new ContractError('invalid_arguments');
+  // Reading a Mac conversation is never offered to an outside sender, so `read` needs no request to refuse.
+  let input:unknown=null;
+  try{if(mode!=='read')input=JSON.parse(await stdin());}catch{console.log(JSON.stringify({status:'envelope_invalid',reason:'json'}));return;}
+  console.log(JSON.stringify(await automatic(mode,input,{kind:'cli',external:{name:rawArgs[1]}})));return;
+ }
  const native=rawArgs.includes('--native');const args=rawArgs.filter(a=>a!=='--native');
  if(rawArgs.filter(a=>a==='--native').length>1)throw new ContractError('invalid_arguments');
  if(mode==='context'&&!native&&args.length===1){console.log(JSON.stringify(await observeGit(args[0])));return;}

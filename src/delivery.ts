@@ -1,4 +1,4 @@
-import {requestHash,claimRequest,type RequestRecord} from './request-store.ts';
+import {requestHash,claimRequest,reservationFile,type RequestRecord} from './request-store.ts';
 import type {StructureItem} from './status.ts';
 import { mkdir, open, lstat, rename, unlink } from 'node:fs/promises';
 import { constants } from 'node:fs';
@@ -15,12 +15,12 @@ export type NativeAdapter={inboxState?:(target:Registration,id:string,sender:{id
 export class Delivery {
  private tracking?:{keyPath:string;now?:()=>number};
  private discovery:Discovery;
- private fixedTarget?:Registration;private validate?:()=>Promise<string|null>;
+ private fixedTarget?:Registration;private validate?:()=>Promise<string|null>;private holdSubmittedMs?:number;
  private inbound=new Map<string,Envelope>();
  private attempts=new Map<string,{hash:string;result:Promise<unknown>}>();
  private reservationDir:string;private refreshHook:()=>Promise<void>;
  private registry:Registry;private caller:string;private adapter:NativeAdapter;
- constructor(registry:Registry,caller:string,adapter:NativeAdapter,options:{tracking?:{keyPath:string;now?:()=>number};refresh?:()=>Promise<void>;reservationDir?:string;fixedTarget?:Registration;validate?:()=>Promise<string|null>}={}){this.tracking=options.tracking;this.fixedTarget=options.fixedTarget;this.validate=options.validate;this.refreshHook=options.refresh??(async()=>{});this.reservationDir=options.reservationDir??join(homedir(),'.seamless','reservations');this.registry=registry;this.caller=caller;this.adapter=adapter;this.discovery=new Discovery(registry,caller,options);}
+ constructor(registry:Registry,caller:string,adapter:NativeAdapter,options:{tracking?:{keyPath:string;now?:()=>number};refresh?:()=>Promise<void>;reservationDir?:string;fixedTarget?:Registration;validate?:()=>Promise<string|null>;holdSubmittedMs?:number}={}){this.tracking=options.tracking;this.holdSubmittedMs=options.holdSubmittedMs;this.fixedTarget=options.fixedTarget;this.validate=options.validate;this.refreshHook=options.refresh??(async()=>{});this.reservationDir=options.reservationDir??join(homedir(),'.seamless','reservations');this.registry=registry;this.caller=caller;this.adapter=adapter;this.discovery=new Discovery(registry,caller,options);}
  acceptInbound(envelope:Envelope):boolean {
   const caller=this.registry.get(this.caller),sender=this.registry.get(envelope.sender.id);
   if(!caller||!sender||!permitted(sender,caller,'send')||envelope.recipient.id!==caller.id||envelope.recipient.nativeId!==caller.nativeId||envelope.recipient.generation!==caller.generation||envelope.sender.nativeId!==sender.nativeId||envelope.sender.generation!==sender.generation)return false;
@@ -52,10 +52,10 @@ export class Delivery {
   let claim:Awaited<ReturnType<typeof claimRequest>>|undefined;
   try{
    const hash=await requestHash(this.tracking!.keyPath,[sender.provider,sender.nativeId,target.provider,target.nativeId,p.replyTo??null,p.text]);
-   claim=await claimRequest(this.reservationDir,hash,p.id as string,(this.tracking!.now??Date.now)());
-   if(claim.duplicate)return {status:'duplicate_of_unknown',requestId:claim.duplicate};
+   claim=await claimRequest(this.reservationDir,hash,p.id as string,(this.tracking!.now??Date.now)(),{holdSubmittedMs:this.holdSubmittedMs});
+   if(claim.duplicate)return claim.previous==='submitted'?{status:'duplicate',requestId:claim.duplicate,previous:'submitted'}:{status:'duplicate_of_unknown',requestId:claim.duplicate};
    const result=await this.performSend(p,hash) as {status:string};
-   if(result.status!=='unknown')await claim.release();
+   if(result.status!=='unknown'&&!(this.holdSubmittedMs!==undefined&&result.status==='submitted'))await claim.release();
    return result;
   }catch{return {status:'reservation_unavailable'};}
  }
@@ -73,7 +73,7 @@ export class Delivery {
   try{
    await mkdir(this.reservationDir,{recursive:true,mode:0o700});const dir=await lstat(this.reservationDir);
    if(!dir.isDirectory()||dir.isSymbolicLink()||(dir.mode&0o777)!==0o700||dir.uid!==process.getuid?.())return {status:'reservation_unavailable'};
-   const key=createHash('sha256').update(JSON.stringify([sender.provider,sender.host,sender.nativeId,p.id])).digest('hex');path=join(this.reservationDir,key+'.json');
+   path=join(this.reservationDir,reservationFile(sender.provider,sender.host,sender.nativeId,p.id as string));
    let file;
    try{file=await open(path,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await file.writeFile(JSON.stringify({hash,status:'pending',at:Date.now(),...metadata}));await file.sync();}
    catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST')return {status:'reservation_unavailable'};let existing;try{existing=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW);const stat=await existing.stat();if(!stat.isFile()||(stat.mode&0o777)!==0o600||stat.uid!==process.getuid?.()||stat.size>16384)return {status:'reservation_unavailable'};const record=JSON.parse(await existing.readFile('utf8'));if(record.hash!==hash)return {status:'id_conflict'};return {status:record.status==='submitted'?'submitted':record.status==='rejected'?'rejected':'unknown'};}catch{return {status:'unknown'};}finally{await existing?.close();}}

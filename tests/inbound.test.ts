@@ -95,3 +95,104 @@ test('ten minutes after a Codex reply arrives (test clock), seamless has made no
  for(const method of ['band','sessions'])await automatic(method,{});
  assert.equal(await count(),1);assert.equal(sends,1);
 });
+
+// specs/202610-more-peers T2-5 (AC6, the Grok Bot side): a reply from a registered outside sender is tied to the request it answers,
+// and receiving it makes no new request.
+const claudeB=(work:string)=>({provider:'claude' as const,nativeId:'claude-b',generation:'42@100',cwd:work});
+test('a Bot reply names the request it answers: an unknown replyTo, another registration\'s request, another conversation, a reply to a reply and a restarted requester are all invalid_reply',async t=>{
+ const {externalFixture,requestToBot,peerRecord,secondRecord}=await import('./support/signed-fixture.ts');
+ const f=await externalFixture(t);await f.writePeers(peerRecord({scope:[f.work]}),secondRecord({scope:[f.work]}));
+ const from=claudeB(f.work);
+ await requestToBot(f.reservations,{id:'ask-1',from});
+ await requestToBot(f.reservations,{id:'ask-for-second',from,bot:'second'});
+ await requestToBot(f.reservations,{id:'a-reply',from,replyTo:'ask-1'});
+ await requestToBot(f.reservations,{id:'ask-old',from:{...from,generation:'42@99'}});
+ await requestToBot(f.reservations,{id:'ask-codex',from:{provider:'codex',nativeId:'codex-c',generation:'owner-1',cwd:f.work}});
+ const reservedBefore=await f.reserved();
+ const reply=(replyTo:string,over:Record<string,unknown>={})=>f.call('send',f.envelope({replyTo,id:`reply-to-${replyTo}`,...over}));
+ assert.equal((await reply('no-such-request')).status,'invalid_reply');
+ assert.equal((await reply('ask-for-second')).status,'invalid_reply');           // the request was addressed to another registration
+ assert.equal((await reply('a-reply')).status,'invalid_reply');                 // it is itself a reply
+ assert.equal((await reply('ask-old')).status,'invalid_reply');                 // the requester has been restarted since (another generation)
+ assert.equal((await reply('ask-codex')).status,'invalid_reply');               // the request came from another conversation than the one addressed
+ assert.equal((await reply('ask-1',{recipient:'codex:codex-c:owner-1'})).status,'invalid_reply');
+ assert.equal(f.writes(),0);assert.equal(await f.reserved(),reservedBefore,'a refused reply reserves nothing');
+ // The second registration cannot answer the first one's request either, even with its own good key.
+ assert.equal((await f.call('send',f.envelope({sender:'second',key:f.keys.secondRecv,replyTo:'ask-1',id:'x'}),'second')).status,'invalid_reply');
+ // The one real reply passes, and says which request it answers.
+ const ok=await reply('ask-1');
+ assert.equal(ok.status,'submitted',JSON.stringify(ok));assert.equal(f.sent[0].replyTo,'ask-1');assert.equal(f.sent[0].sender.id,'grok-bot:chachamaru');
+});
+test('the same reply sent again by id is a duplicate and is not written again; a different id with the same content waits on the unknown result',async t=>{
+ const {externalFixture,requestToBot}=await import('./support/signed-fixture.ts');
+ const f=await externalFixture(t,{outcome:'unknown'});await requestToBot(f.reservations,{id:'ask-1',from:claudeB(f.work)});
+ assert.equal((await f.call('send',f.envelope({replyTo:'ask-1',id:'answer-1',text:'結果です'}))).status,'unknown');
+ assert.equal((await f.call('send',f.envelope({replyTo:'ask-1',id:'answer-1',text:'結果です'}))).status,'duplicate_of_unknown');
+ assert.equal((await f.call('send',f.envelope({replyTo:'ask-1',id:'answer-2',text:'結果です'}))).status,'duplicate_of_unknown');
+ f.setOutcome('submitted');
+ // Once a reply is confirmed delivered, sending the same id again is a duplicate of a finished request.
+ assert.equal((await f.call('send',f.envelope({replyTo:'ask-1',id:'answer-3',text:'別の結果'}))).status,'submitted');
+ const again=await f.call('send',f.envelope({replyTo:'ask-1',id:'answer-3',text:'別の結果'}));
+ assert.equal(again.status,'duplicate');assert.equal(again.previous,'submitted');
+ assert.equal(f.writes(),2);
+});
+test('an envelope without replyTo is accepted as a new request, and seamless sends nothing back on its own',async t=>{
+ const {externalFixture}=await import('./support/signed-fixture.ts');
+ const f=await externalFixture(t);
+ const requestsBefore=await f.reserved();
+ const r=await f.call('send',f.envelope({id:'forwarded-1',text:'転送されて返信先が落ちた文'}));
+ assert.equal(r.status,'submitted');assert.equal(f.sent[0].replyTo,undefined);
+ // Exactly one write (the delivery itself) and one reservation (its own); no request to the Bot, no reply.
+ assert.equal(f.writes(),1);assert.equal(await f.reserved(),requestsBefore+1);
+ const {requests}=await import('../src/request-store.ts');
+ const all=await requests(f.reservations);
+ assert.equal(all.length,1);assert.equal(all[0].sender.id,'grok-bot:chachamaru');assert.equal(all.filter(x=>x.recipient.provider==='grok-bot').length,0);
+ // Time passing changes nothing.
+ f.advance(10*60_000);
+ assert.equal(f.writes(),1);assert.equal((await requests(f.reservations)).length,1);
+});
+test('ten minutes after a Bot reply arrives (test clock), seamless has made no new request, from the Bot\'s side or the conversation\'s',async t=>{
+ const {externalFixture,requestToBot}=await import('./support/signed-fixture.ts');const {requests}=await import('../src/request-store.ts');
+ const f=await externalFixture(t);const from=claudeB(f.work);
+ await requestToBot(f.reservations,{id:'ask-1',from});
+ assert.equal((await f.call('send',f.envelope({replyTo:'ask-1',id:'answer-1'}))).status,'submitted');
+ const delivered=f.sent[0];
+ const asReceived={id:delivered.id,sender:delivered.sender,recipient:delivered.recipient,replyTo:'ask-1',at:new Date(f.now()).toISOString()};
+ const claude={provider:'claude' as const,nativeId:'claude-b',generation:'42@100',cwd:f.work,socket:'unused',source:'claude-ancestor' as const};
+ const mac=f.make({caller:async()=>({status:'ok',caller:claude}),adapter:{...f.adapter,received:async()=>[asReceived]}});
+ const snapshot=async()=>JSON.stringify([f.writes(),(await requests(f.reservations)).map(r=>[r.id,r.sender.id,r.recipient.id,r.status]).sort(),await f.noncesWritten()]);
+ const before=await snapshot();
+ for(const method of ['band','sessions'])await mac(method,{});
+ f.advance(10*60_000);
+ for(const method of ['band','sessions'])await mac(method,{});
+ // The Bot asking again for the list does not make a request either.
+ await f.call('sessions',f.envelope({recipient:'*',text:'',id:'list-after'}));
+ const after=JSON.parse(await snapshot()),was=JSON.parse(before);
+ assert.deepEqual(after[0],was[0]);assert.deepEqual(after[1],was[1]);
+ assert.equal(f.writes(),1);
+ // And the reply shows up for the conversation as the Bot's, verified.
+ const seen=(await mac('sessions',{peek:true})).inbound;
+ assert.deepEqual(seen.map((i:any)=>[i.id,i.from.id,i.sender]),[['answer-1','grok-bot:chachamaru','verified']]);
+});
+test('a Bot reply to a request made before its key was rotated is still its reply (the registration is the same; only the key version moved)',async t=>{
+ const {externalFixture,requestToBot,peerRecord}=await import('./support/signed-fixture.ts');
+ const f=await externalFixture(t);await f.writePeers(peerRecord({scope:[f.work],keyVersion:2}));
+ await requestToBot(f.reservations,{id:'ask-before-rotation',from:claudeB(f.work),botKeyVersion:1});
+ const r=await f.call('send',f.envelope({keyVersion:2,replyTo:'ask-before-rotation',id:'answer-after-rotation'}));
+ assert.equal(r.status,'submitted',JSON.stringify(r));assert.equal(f.sent[0].sender.generation,'2');assert.equal(f.sent[0].replyTo,'ask-before-rotation');
+ // The old key version no longer signs anything.
+ assert.equal((await f.call('send',f.envelope({keyVersion:1,replyTo:'ask-before-rotation',id:'old-key'}))).status,'key_version_mismatch');
+});
+test('a request the native side refused never reached the Bot, so it cannot be replied to; one pending or of unknown result may have, and can',async t=>{
+ const {externalFixture,requestToBot}=await import('./support/signed-fixture.ts');
+ const f=await externalFixture(t);const from=claudeB(f.work);
+ await requestToBot(f.reservations,{id:'ask-rejected',from,status:'rejected'});
+ await requestToBot(f.reservations,{id:'ask-pending',from,status:'pending'});
+ await requestToBot(f.reservations,{id:'ask-unknown',from,status:'unknown'});
+ await requestToBot(f.reservations,{id:'ask-submitted',from,status:'submitted'});
+ const reply=(replyTo:string)=>f.call('send',f.envelope({replyTo,id:`reply-to-${replyTo}`}));
+ const refused=await reply('ask-rejected');
+ assert.equal(refused.status,'invalid_reply',JSON.stringify(refused));assert.equal(f.writes(),0);
+ for(const id of ['ask-pending','ask-unknown','ask-submitted'])assert.equal((await reply(id)).status,'submitted',id);
+ assert.equal(f.writes(),3);
+});

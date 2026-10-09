@@ -35,6 +35,8 @@ T3-14 では、立花さんが自分の端末で `bash experiments/dot-m1/run-m1
 - 記録の置き場は本線の `.local/dot-m1/`（0700、本人、symlink でない）。検査してから中に作る。tunnel-client の設定の置き場は空の `.local/dot-m1/profiles` で、pro-review 用の `~/.config/tunnel-client` は読まない。
 - 同じ tunnel ID で 2 台動かさない（configuration.md の「Stdio deployment limits」）。置き場の `run.lock` を `lockf` で tunnel-client の終了まで持つので、どの作業フォルダから起動しても 2 本目は止まる。
 - tunnel-client は `/opt/homebrew/bin/tunnel-client` の 0.0.15 以上だけを使う。tunnel ID の形は本体の検査（`tunnel_` と 32 文字、または 4 文字の名前空間付き）に合わせる。
+- 鍵は `bash experiments/dot-m1/save-key.sh` で入れる。`security … -w` の入力欄は 128 文字を超えた分を黙って切り捨てる（2026-10-09 に実測。保存された鍵が 128 文字で、OpenAI は 401 invalid_api_key を返した）。このスクリプトは、実行後 2 分以内に新しくコピーされた `sk-` で始まる文字列を保存し、クリップボードを空にする。鍵は `security` の引数に一瞬だけ載る（同じ利用者のプロセスからだけ見える）。
+- つながったかは `/metrics` の `commands_poll_last_successful_timestamp_seconds` が 0 より大きいかで見る。`/readyz` は、鍵が断られていても `ready` を返した（2026-10-09 に実測）。
 - 健康の URL（`/readyz` など）は `.local/dot-m1/health-<tools|notools>.<pid>.url` に書かれる。
 
 ## 返すもの

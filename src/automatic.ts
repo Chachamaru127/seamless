@@ -15,8 +15,9 @@ import {readLimits,writeLimits,clearLimits,unrestricted,validLimits,type Limits,
 import {ContractError,object,type Registration,type Operation} from './protocol.ts';
 import {Registry,loadRegistry} from './registry.ts';
 import {Delivery,type NativeAdapter} from './delivery.ts';
+import {readPeers,externalPeers,defaultPeersPath} from './peers.ts';
 export type CallContext={kind:'cli'|'mcp';meta?:unknown};
-export type AutomaticOptions={clock?:StatusClock;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;wake?:(nativeId:string)=>Promise<string|null>;adapter?:NativeAdapter;limitsPath?:string;reservationDir?:string};
+export type AutomaticOptions={clock?:StatusClock;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;wake?:(nativeId:string)=>Promise<string|null>;adapter?:NativeAdapter;limitsPath?:string;peersPath?:string;reservationDir?:string};
 export type Ticket={provider:'codex'|'claude'|'grok';nativeId:string;generation:string;cwd:string;branch?:string|null};
 const idOf=(n:Pick<Ticket,'provider'|'nativeId'>)=>`${n.provider}:${n.nativeId}`;
 export function issueTicket(n:Ticket):string{return Buffer.from(JSON.stringify({provider:n.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,branch:n.branch??null})).toString('base64url');}
@@ -39,7 +40,7 @@ function registrations(sessions:SessionIdentity[]):Registration[]{
 }
 export function createAutomatic(options:AutomaticOptions={}){
  const home=options.home??homedir();
- const limitsPath=options.limitsPath??join(home,'.seamless','limits.json');
+ const limitsPath=options.limitsPath??join(home,'.seamless','limits.json'),peersPath=options.peersPath??defaultPeersPath(home);
  return async(method:string,input:unknown,context:CallContext={kind:'cli'}):Promise<any>=>{
   const loaded=await readLimits(limitsPath);
   // limits reads and writes only seamless's own file, so strict never locks an updated caller out of turning strict off.
@@ -193,9 +194,11 @@ export function createAutomatic(options:AutomaticOptions={}){
    if(method!=='band')await inboundPromise;
    const candidates=await Promise.all(visible.map(async n=>({id:idOf(n),provider:n.provider,host:'local',nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,version:n.version||null,versionStatus:versionStatus(productOf(n.provider),n.version,compatibilityFor(n,l)),...(p.peek===true||method==='band'?{change:'unknown'}:seen.changes.get(idOf(n))),status:n.status??(seen.changes.get(idOf(n))?.change==='generation_changed'?'unknown':'online'),reason:n.reason??(seen.changes.get(idOf(n))?.change==='generation_changed'?'generation_changed':null),requests:options.compatTest?[]:await status.recent({...n,id:idOf(n)}),operations:{read:l.operations?.read??true,send:l.operations?.send??true},ticket:method==='band'?null:n.status&&n.status!=='online'?null:await ticketFor(n)})));
    const inbound=await inboundPromise;
+   // Registered outside executors (the roster is read afresh each call) sit apart from candidates; the band never carries them.
+   const external=method==='sessions'&&!options.compatTest?await externalPeers(await readPeers(peersPath),c.cwd,p.target as string|undefined,l.operations?.send??true):{};
    // Hide only sessions the scan saw as not running; a changed generation is still reachable.
    const listed=method==='band'||p.includeOffline===true?candidates:candidates.filter((_,i)=>(visible[i].status??'online')==='online');
-   return {status:'ok',inbound,caller:{provider:c.provider,nativeId:c.nativeId,generation:c.generation,cwd:c.cwd,source:c.source,version:c.version||null,versionStatus:versionStatus(productOf(c.provider),c.version,compatibilityFor(c,l))},codexWorkspace:found.codexWorkspace,...(found.codexTruncated?{codexTruncated:found.codexTruncated}:{}),excludeExpired,offlineHidden:candidates.length-listed.length,candidates:listed};
+   return {status:'ok',inbound,caller:{provider:c.provider,nativeId:c.nativeId,generation:c.generation,cwd:c.cwd,source:c.source,version:c.version||null,versionStatus:versionStatus(productOf(c.provider),c.version,compatibilityFor(c,l))},codexWorkspace:found.codexWorkspace,...(found.codexTruncated?{codexTruncated:found.codexTruncated}:{}),excludeExpired,offlineHidden:candidates.length-listed.length,candidates:listed,...external};
   }
   if(visible.length!==1)return {status:visible.length?'ambiguous':'target_unavailable'};
   const n=visible[0];

@@ -488,3 +488,34 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 | 取得元 | github.com/openai/tunnel-client/releases/download/v0.0.15/… | 同 v0.0.16/…、Homebrew は `brew install openai/tools/tunnel-client`（persistent.oaistatic.com から、sha256 は GitHub と一致） |
 
 - GitHub から直接取った zip は notarize されておらず、Gatekeeper に止められる場合がある（README）。Homebrew の版を使うのが手前。どちらもダウンロードはしていない（ディスクに無い）。
+
+## T2-3〜T2-5 受ける経路（2026-10-09 14:55〜16:13 JST、workflow `wf_9c916078-482`、コミット 50e2985）
+
+- 作ったもの: `send --as <登録名>` と `sessions --as <登録名>`。署名済みの封筒を標準入力で受け、形、名簿、失効、鍵の版、鍵、署名、時刻、名簿の認可、nonce、宛先、予約の順に確かめ、どれかで止まれば何も届けない。`read --as` は常に `operation_not_permitted`（`reason: external_read`）。新しい部品は `src/signed-envelope.ts`、`src/nonce-store.ts`、`src/external-inbound.ts`。
+- 役の顔ぶれ: 施工、照合（計画との突き合わせ）、穴探し（壊して確かめる）、直しの 4 役。4 役とも Claude の家系なので、逆の家系の判定は T2-9 で P2 全体として頼む。
+- 照合と穴探しの指摘 11 件（重複 1 件を含む）の扱い:
+
+| # | 指摘 | 扱い |
+|---|---|---|
+| 1、9 | 確定した配送の後、別 ID で同じ内容が 2 回目の配送として通る（Plans.md の「別 ID でも duplicate」と違う） | 直した。grok-bot の経路だけ、受理の後も内容の hash を 24 時間保持して `duplicate`（`previous: submitted`）にする |
+| 2 | 確定後の同じバイト列の再提示が `nonce_replayed` になり、最初の結果を Bot に伝えない | 直した。同じ内容の予約があれば `duplicate`（`previous` 付き）、結果不明なら `duplicate_of_unknown`。予約が無いときだけ `nonce_replayed` |
+| 3 | 範囲外の会話が一覧では拒否の語でなく、候補から外れるだけ | 文書で固定した（Plans.md の認可の項）。固定する試験も足した |
+| 4、8 | 鍵の等値の検査が、送信鍵の値を読んで Bot に 1 ビットを返す。別の登録の鍵の値と同じでも通る | 直した。名簿の全ての鍵の値と比べ、同じなら拒否。Bot には `key_unavailable` だけを返し、理由は変数の名前だけを Mac の標準エラーへ |
+| 5 | Bot に届かなかった依頼（`rejected`）への返信も受け入れる | 直した。`rejected` は返信先に数えない。`pending` と `unknown` は届いた可能性があるので数える |
+| 6 | 孤立サロゲートと U+FFFD が同じ署名になり、本文を差し替えられる | 直した。署名に入る文字列（text、id、replyTo、recipient）に孤立サロゲートがあれば `envelope_invalid` |
+| 7 | nonce の全件走査で、2000 件のとき請求 1 回 895 ms、受け手の一覧が 1 秒を超える | 直した。索引で 2 ファイル読みにし、期限切れの掃除は 1 時間に 1 回。5100 件で請求、確認、一覧が各 1.5 秒未満の試験を足した |
+| 10 | 記録が消えるか時計が跳ぶと、一覧の再提示が窓内で通る | 限界として Plans.md に書いた。送信は予約が 2 つ目の鍵になり止まる（試験で固定） |
+| 11 | 試験の無い箇所（制限なしでの入れ子と `scope: all`、書込み直前の鍵の版、`workspace_changed`） | 試験を 3 つ足した |
+
+- 直しの確認: 新しい試験を古い実装に当てて #1、#6、#7、#8 が落ちることを確かめてから直した。直した部分を 14 通りに壊す変異試験は 14 通りとも試験で落ちた（直し役の報告）。
+- 私が走らせた `bash scripts/verify.sh`: exit 0。型検査 0、node 587 件すべて通過（前の 532 件から 55 件増）、帯 99 件通過、`peer-secrets: ok（登録なし）`。
+- 推奨どおりに決めたこと（2026-10-08 の「今日決めることは推奨で実行」による）:
+  - 別 ID の同じ内容を止める期間は 24 時間。代償は、同じ会話へ同じ本文（同じ replyTo）を 24 時間に 2 回送ると 2 回目が `duplicate` になること。縮めるなら `src/external-inbound.ts` の定数 1 つ。
+  - 鍵の等値の検査は残す。代償は、受ける瞬間に名簿の他の鍵の環境変数も読むこと（比べるだけで保存も出力もしない）。
+- 茶々丸に渡す契約（T2-7 で手順と一緒に渡す）:
+  - 署名する文字列: `seamless-inbound-v1`、登録名、鍵の版、宛先、依頼 ID、replyTo（無ければ空行）、本文の UTF-8 の SHA-256（小文字の hex）、署名時刻、nonce の 9 行を `\n` でつなぐ（末尾に改行なし）。署名はその HMAC-SHA256（小文字の hex）。
+  - 署名時刻は `YYYY-MM-DDTHH:MM:SSZ` ちょうど。nonce は `[A-Za-z0-9_-]{16,128}`。宛先は `claude|codex|grok:<会話 ID>:<世代>`、一覧は `*`。
+  - 既知解（鍵 `test-key-not-a-secret`、登録名 `chachamaru`、鍵の版 1、宛先 `claude:11111111-1111-4111-8111-111111111111:42@100`、ID `req-1`、replyTo なし、本文 `hello`、時刻 `2026-10-09T12:00:00Z`、nonce `A` を 22 個）→ `02a0fb553a6108cdc4245e93a0fad8adfd06b2b511dd6ea541e60ad704e59ab6`（施工役が python3 と openssl で一致を確認）。
+  - 状態語: 確定後の同じ封筒、署名し直した同じ ID、24 時間内の別 ID の同じ内容は `duplicate`。結果不明は `duplicate_of_unknown`。予約の無い再提示と一覧の再提示は `nonce_replayed`。
+- 計画の字面から変えた所: 署名の並びの行頭の版の印、`duplicate` に `previous` を付けること、新しい状態語 12 個（`envelope_invalid`、`sender_mismatch`、`sender_unregistered`、`peers_unusable`、`key_unavailable`、`key_version_mismatch`、`signature_mismatch`、`timestamp_out_of_window`、`nonce_replayed`、`nonce_unavailable`、`scope_unset` ほか）。
+- 未確認: 実在の会話への実送信（T2-8c、T2-8d）。T2-2 が書く Mac → Bot の予約の記録の形（`recipient.id` が `grok-bot:<登録名>`）は施工役の想定で、T2-2 で合わせる。

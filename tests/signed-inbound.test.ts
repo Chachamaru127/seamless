@@ -513,6 +513,9 @@ test('a key value that equals another key anywhere in the roster is not used to 
   ['the second registration\'s receive key holds the first one\'s send key',()=>{f.env.SECOND_RECV_KEY=f.keys.send;},'second',()=>f.keys.send,'chachamaru sendKeyEnv'],
   ['the second registration\'s send key holds the first one\'s receive key',()=>{f.env.SECOND_SEND_KEY=f.keys.recv;},'chachamaru',()=>f.keys.recv,'second sendKeyEnv'],
   ['the first registration\'s send key holds its own receive key',()=>{f.env.CHACHAMARU_SEND_KEY=f.keys.recv;},'chachamaru',()=>f.keys.recv,'chachamaru sendKeyEnv'],
+  // The send key is sent with one "Bearer " taken off, so "Bearer K" is the key K (2026-10-09 判定役の指摘 1).
+  ['the first registration\'s send key holds "Bearer " and its own receive key',()=>{f.env.CHACHAMARU_SEND_KEY='Bearer '+f.keys.recv;},'chachamaru',()=>f.keys.recv,'chachamaru sendKeyEnv'],
+  ['the second registration\'s send key holds "Bearer " and the first one\'s receive key',()=>{f.env.SECOND_SEND_KEY='Bearer '+f.keys.recv;},'chachamaru',()=>f.keys.recv,'second sendKeyEnv'],
  ];
  const writesBefore=f.writes();
  for(const [name,setup,signer,value,twin] of cases){

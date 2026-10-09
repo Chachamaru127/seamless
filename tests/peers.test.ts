@@ -320,6 +320,13 @@ for(const name of KEY_ENV)for(const how of ['unset','empty'])test(`peer-secrets:
  // An undefined value in spawn's env is dropped, which is exactly "unset".
  const r=f.run({[name]:how==='empty'?'':undefined});fails(r,ROLE[name]);assert.match(r.out,/未設定または空/);
 });
+// A send key copied as "Bearer <key>" is sent as <key>, so <key> alone in a record is a leak too (2026-10-09 判定役の指摘 3).
+test('peer-secrets: a send key set as "Bearer <key>" is caught when only <key> was stored',async t=>{
+ const f=await leak(t);await f.writeRoster();const k=f.values.LEAKTEST_SEND;
+ let r=f.run({LEAKTEST_SEND:'Bearer '+k});assert.equal(r.status,0,r.out);
+ await writeFile(join(f.repo,'sent.log'),`authorization sent with ${k} once\n`);
+ r=f.run({LEAKTEST_SEND:'Bearer '+k});fails(r,'sendKeyEnv');assert.ok(!r.out.includes(k),'the key itself is never printed');
+});
 test('peer-secrets: a value with a newline cannot be checked line by line, so it fails by registration and role',async t=>{
  const f=await leak(t);await f.writeRoster();const r=f.run({LEAKTEST_SEND:'first-line\n\nthird-line'});
  fails(r,'sendKeyEnv');assert.match(r.out,/改行/);

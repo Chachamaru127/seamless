@@ -43,11 +43,16 @@ scan() { command grep -rSqaF -f - "$@" 2>/dev/null; }
 # The value of the environment variable named by $1, then the same value as a JSON encoder writes it inside a string
 # (JSON.stringify, serde_json: \ " tab and CR escaped). Each added spelling costs a full pass over every stored session, so
 # the spellings of rarer encoders (\/ and \u0026 for / & < >, \uXXXX for non-ASCII) are left out and the pass says so.
+# A value copied from the Bot's field as "Bearer <key>" is sent as <key> (src/peers.ts keyOf), so <key> alone is looked for too.
 emit() {
-  local v="${!1:-}" bs='\' q='"' j
-  printf '%s\n' "$v"
-  j=${v//"$bs"/"$bs$bs"}; j=${j//"$q"/"$bs$q"}; j=${j//$'\t'/"${bs}t"}; j=${j//$'\r'/"${bs}r"}
-  if [ "$j" != "$v" ]; then printf '%s\n' "$j"; fi
+  local v="${!1:-}" bs='\' q='"' j k
+  local -a forms=("$v")
+  case "$v" in "Bearer "?*) forms+=("${v#Bearer }") ;; esac
+  for k in "${forms[@]}"; do
+    printf '%s\n' "$k"
+    j=${k//"$bs"/"$bs$bs"}; j=${j//"$q"/"$bs$q"}; j=${j//$'\t'/"${bs}t"}; j=${j//$'\r'/"${bs}r"}
+    if [ "$j" != "$k" ]; then printf '%s\n' "$j"; fi
+  done
 }
 checked=() slotlabels=() unchecked=0
 i=0

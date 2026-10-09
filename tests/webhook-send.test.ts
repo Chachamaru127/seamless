@@ -107,6 +107,8 @@ const unknownCases:Array<[string,Handler,number?]>=[
  ['the connection is cut after the request is read',(_h,req)=>{req.socket.destroy();}],
  ['the answer is cut in the middle (status line sent, body unfinished)',(_h,req,res)=>{res.writeHead(200,{'content-length':'100'});res.write('partial');setTimeout(()=>req.socket.destroy(),20);}],
  ['no answer comes before the time limit',()=>new Promise(()=>{}),250],
+ // A long body is read to its end too: one cut past 64 KiB is as unknown as one cut at 7 bytes (2026-10-09 判定役の指摘 2).
+ ['a long 2xx answer is cut after 70,000 bytes',(_h,req,res)=>{res.writeHead(200,{'content-length':'200000'});res.write('x'.repeat(70_000));setTimeout(()=>req.socket.destroy(),20);}],
 ];
 for(const [label,handler,timeoutMs] of unknownCases)test(`scene 3: ${label}: unknown, one POST, and nothing is sent again`,{timeout:20_000},async t=>{
  const s=await setup(t,handler,timeoutMs);
@@ -120,6 +122,11 @@ for(const [label,handler,timeoutMs] of unknownCases)test(`scene 3: ${label}: unk
  const other=await s.send('s3-2','成否不明になる依頼');
  assert.equal(other.status,'duplicate_of_unknown',JSON.stringify(other));assert.equal(other.requestId,'s3-1');
  assert.equal(s.bot.hits.length,1,'one POST per request, however often it is asked for again');
+});
+test('a long 2xx answer that ends whole is accepted: its length alone decides nothing',async t=>{
+ const s=await setup(t,(_h,_q,res)=>{res.writeHead(200,{'content-length':'200000'});res.end('y'.repeat(200_000));});
+ const r=await s.send('long-whole');
+ assert.equal(r.status,'submitted',JSON.stringify(r));assert.equal(s.bot.hits.length,1);
 });
 test('scene 3: a connection that cannot be made at all is unknown too, and is not retried',async t=>{
  const s=await setup(t);await s.bot.close();

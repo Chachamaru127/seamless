@@ -1,4 +1,4 @@
-import {readPeers,peerStatus,peerOperations,type Peer} from './peers.ts';
+import {readPeers,peerStatus,peerOperations,keyOf,type Peer} from './peers.ts';
 import {readLimits,unrestricted,type Limits} from './limits.ts';
 import {inRange,SAME_CONTENT_HOLD_MS} from './external-inbound.ts';
 import {Delivery,type Envelope,type NativeAdapter,type Receipt} from './delivery.ts';
@@ -16,8 +16,6 @@ import type {ScanOptions,SessionIdentity} from './sessions-scan.ts';
 // nothing is ever sent again.
 export const MAX_BOT_TEXT=8000;
 export const WEBHOOK_TIMEOUT_MS=15_000;
-// Of a 2xx answer only enough is read to know it ended whole; the body is never kept or looked at.
-const MAX_ANSWER_BYTES=65_536;
 const BEARER='Bearer ';
 // Visible ASCII without a space: a token that can stand in a header and cannot add a second one.
 const KEY=/^[\x21-\x7e]+$/;
@@ -33,10 +31,9 @@ export function endpointOf(env:NodeJS.ProcessEnv,names:Pick<Peer,'addressEnv'|'s
  let url:URL;try{url=new URL(address);}catch{return {reason:'address_invalid'};}
  if(url.username||url.password||!url.hostname)return {reason:'address_invalid'};
  if(url.protocol!=='https:'&&!(loopbackHttp&&url.protocol==='http:'&&url.hostname==='127.0.0.1'))return {reason:url.protocol==='http:'?'address_not_https':'address_invalid'};
- let key=env[names.sendKeyEnv];
- if(typeof key!=='string'||key==='')return {reason:'key_unavailable'};
- // The app's field shows "Bearer <key>"; a value copied whole is accepted with that one prefix taken off.
- if(key.startsWith(BEARER))key=key.slice(BEARER.length);
+ const raw=env[names.sendKeyEnv];
+ if(typeof raw!=='string'||raw==='')return {reason:'key_unavailable'};
+ const key=keyOf(raw);
  return KEY.test(key)?{url,key}:{reason:'key_unavailable'};
 }
 // What the Bot's AI reads first: the same statement the Grok CLI hook gives (src/grok-hook.ts), that this is another
@@ -55,7 +52,8 @@ async function post(endpoint:{url:URL;key:string},body:string,timeoutMs:number):
  try{res=await fetch(endpoint.url,{method:'POST',headers:{'content-type':'application/json',authorization:BEARER+endpoint.key},body,redirect:'manual',signal:AbortSignal.timeout(timeoutMs)});}
  catch{return {status:'unknown',reason:'no_answer'};}
  if(res.status<200||res.status>299){await res.body?.cancel().catch(()=>{});return {status:'rejected',reason:`http_${res.status}`};}
- try{let size=0;if(res.body)for await(const chunk of res.body){size+=chunk.length;if(size>MAX_ANSWER_BYTES)break;}}
+ // A 2xx answer is read to its end, so a cut one is told from a whole one; the time limit above bounds it. Nothing is kept.
+ try{if(res.body)for await(const _ of res.body){}}
  catch{return {status:'unknown',reason:'answer_cut'};}
  return {status:'submitted'};
 }

@@ -1,4 +1,4 @@
-import {readPeers,peerStatus,peerOperations,scopeAllows,type Peer,type Peers} from './peers.ts';
+import {readPeers,peerStatus,peerOperations,scopeAllows,keyOf,type Peer,type Peers} from './peers.ts';
 import {readLimits,unrestricted,type Limits,type AutoScope} from './limits.ts';
 import {parseSignedEnvelope,parseRecipient,verifySignature,withinWindow,signatureDigest,LIST_RECIPIENT,type SignedEnvelope} from './signed-envelope.ts';
 import {claimNonce} from './nonce-store.ts';
@@ -49,7 +49,9 @@ export async function inRange(git:NonNullable<ScanOptions['git']>,peer:Peer,limi
 function keyTwin(roster:Peers,env:NodeJS.ProcessEnv,self:Peer,key:string):string|null{
  for(const p of roster.peers)for(const slot of ['sendKeyEnv','receiveKeyEnv'] as const){
   if(p.name===self.name&&slot==='receiveKeyEnv')continue;
-  if(env[p[slot]]===key)return `${p.name} ${slot}`;
+  const v=env[p[slot]];
+  // Compared as the keys they stand for: "Bearer K" in a send key variable is the key K.
+  if(typeof v==='string'&&v!==''&&keyOf(v)===keyOf(key))return `${p.name} ${slot}`;
  }
  return null;
 }

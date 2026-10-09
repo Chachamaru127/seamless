@@ -49,6 +49,9 @@ export function validPeers(value:unknown):value is Peers{
 }
 // Read afresh on every call, through the same private-file check as limits.json (lstat, O_NOFOLLOW, same inode, mode 0600, owner).
 export function readPeers(path=defaultPeersPath()):Promise<PeersRead>{return readPrivateJson(path,validPeers);}
+// The key a key variable stands for: the app's field shows "Bearer <key>", and a value copied whole is that key with the one prefix
+// taken off (specs/202610-more-peers Plans.md, 送る). Sending uses it, and so does every comparison of two key values.
+export const keyOf=(value:string):string=>value.startsWith('Bearer ')?value.slice('Bearer '.length):value;
 export const peerId=(p:Pick<Peer,'product'|'name'>):string=>`${p.product}:${p.name}`;
 export function peerStatus(p:Peer):PeerStatus{return p.revoked?'revoked':p.scope===undefined?'scope_unset':'registered';}
 export function peerUse(p:Peer):PeerUse{const s=peerStatus(p);return s==='registered'?{usable:true}:{usable:false,reason:s};}

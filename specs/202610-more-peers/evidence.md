@@ -359,3 +359,14 @@
 - 同じファイルを両方が書くと取り込みがぶつかる。Codex の会話が本線で Dot の作業をコミットするまで、このブランチはルートの Plans.md、ルートの spec.md、この機能の spec.md、dot-events-integration.md を書かない（ルートの Plans.md は 6bddcb1 で本線の版に戻した）。
 - このブランチが書くのは tasks.md の P3、evidence.md、Plans.md の H10、reviews/、experiments/dot-m1/。試作 `experiments/dot-events` の試験の追加（T3-8）は Codex の会話の担当にする案。
 - Codex の会話へ、分担の事実だけを seamless で送った（依頼 `dot-coord-20261009`、2026-10-09 10:58 JST、submitted）。中身は上の 2 点と、Q5 は立花さんの判断待ちで判断が出たら改めて送ること。Q5 の推奨は入れていない。
+
+## 本線への取り込みの後の実会話（直した hook、2026-10-09 11:11〜11:17 JST）
+
+- 立花さんの `merge --ff-only` で本線は e03ab4e になった（d784be8 から）。Grok が呼ぶ hook（本線の `src/grok-hook.ts`）は、受信箱から delivering を外し、読む前に受信箱のディレクトリを確かめ直す版になった。status-ui の復元（8ff9ba3、e520f98）とこの記録は、この取り込みより後のコミット。
+- 新しい会話で確かめた（「取り込みまでの版ずれ」の節のとおり）。Grok の画面を擬似端末で開き（会話 `grok:01a11e6e-6bb4-76c2-ae6d-f04359fbea1f`、世代 `70806@2026-10-09T02:11:57.284730Z`、作業場所はこのブランチの作業ツリー）、この会話から作業ツリーの CLI で依頼 `t1r-111428` を送った。送る前は受信箱が無く、送った後は pending、handed、delivered、failed、unknown の 5 つのディレクトリで作られた（delivering は無い）。
+- 段（UTC）: 受理 02:14:28.961、配信確認 02:14:44.147（Grok が 1 手を終えたとき）、処理開始 02:14:47.546、返答完了 02:15:00.855。Grok は replyTo `t1r-111428` で「受け取りました（Grok、直した hook）」をこの会話へ返した。送り主は Grok の会話と世代 70806 で、送る前と同じ世代。
+- 受信箱: delivered に 1 件（名前は送り手と依頼 ID の組の SHA-256）。受領記録は会話、世代 70806、Stop の理由 end_turn、hook の名前 `global/seamless:stop[0].hooks[0]`、hook の pid 86077。pending、handed、failed、unknown は空。
+- 別の世代に触らないこと: 会話 `grok:01a11bbd-…` を `--resume` で開き直した（新しい世代 `88549@2026-10-09T02:15:40.492892Z`）。受信箱の pending には、閉じた世代 85429 あての返信 `t110d-225322-reply` が残っている。1 手の終わりに seamless の hook は success で動いたが、Grok が渡された文を記録する行（hook_annotation）は出ず、pending は 1 件のまま、delivered は 2 件のまま。製品の判定は今も orphaned。古い送り手が作った delivering のディレクトリがあるこの受信箱でも、直した hook は普通に動いた。
+- 試験用の 2 つの Grok は台本の `exit` で閉じた（台帳には立花さんの Grok pid 77155 だけ）。許可の確認は出ず、台本は何も承認していない。
+- 気づいたこと: Grok は返信の依頼 ID に、宛先の会話の名前（`claude:3263fdb8-…`）をそのまま使った。依頼 ID は送り手が決める自由な文字列で、予約は送り手と ID の組で名前を付けるので、ほかの依頼とはぶつからない。
+- 判定役の残件「直した hook の実往復は未実測」は、これで済み。

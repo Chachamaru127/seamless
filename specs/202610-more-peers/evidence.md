@@ -398,3 +398,26 @@
 
 - T0-4b の Done when（4 問それぞれに答えか未公開と、採る値）と、T0-6 の Done when（「既存の経路」）は満たした。
 - Q6 を確かめる 2 つの方法は、どちらも立花さんの手が要る。試しの POST は外部送信で、Grok Bot 側のルーチン（H2）と、住所と鍵の環境変数（H3）と、外部送信の判断（H7）が先に要る。画面の説明を見るほうが手前でできる。
+
+## T3-7 試作から本体へ取り込む前に決める 7 項目（案、2026-10-09）
+
+AC11a の「受ける意思の確認」は、callback の URL が challenge の値をそのまま返すこと（ChatGPT 側の受け口の確認）で、人の承認ではない。人の承認と取り違えると、購読を「保留」で受ける形になり、MCP Events の手順（購読を受ける前に callback を確かめ、id と refreshBefore を返す）と合わなくなる。
+
+| # | 項目 | 案 | 理由 | 承認 |
+|---|---|---|---|---|
+| 1 | secret の保管場所 | 採る: secret の本体は macOS の Keychain（OS が管理する秘密の保管場所）に置き、購読の記録には secret の版と Keychain の参照だけを書く | AC11a は記録に secret の版を、AC11b は記録に secret を書かないことを求める。試作は購読の JSON に平文で置いていた | 立花さんの承認が要る（新しい秘密の置き場。Keychain への登録と読み取りは実装の段階で別に確かめる） |
+| 2 | 送信先が無いときの予約 | 採る: 送信先（有効な購読）を確かめてから予約を作る。無ければ予約を作らず no_destination で拒否する | 試作は予約を先に作り、同じ依頼 ID が後で使えなくなっていた。本体の既存の方針（書き込む前の拒否では予約を使わない）と同じにする。Codex の会話が T3-8 で同じ受け入れの条件を引き受けた | 不要 |
+| 3 | 同じ secret の再購読が確認に失敗したとき | 採る: 有効だった購読は配送を続ける。新しい確認が通るまで、新しい状態は別に持つ | AC11a の「同じ鍵の再購読は期限を延ばすだけ」の失敗側。試作は有効な購読まで止めていた（読み手が再現）。Codex の会話が T3-8 で引き受けた | 不要 |
+| 4 | 購読 ID に grant を含めるか | 採らない: 購読 ID の材料は AC11a の文言どおり（登録名、callback、イベント名、引数）にする | Dot から Mac の流れを持たない判断（2026-10-09 の判断 1）で、Mac 側の grant の考え方が要らなくなった。「誰が購読してよいか」の確かめ方が決まったら、その主体を材料に入れるかを決め直す | 不要（AC の文面どおり） |
+| 5 | webhook-id と message.id の文字の検査 | 採る: 依頼 ID と同じ範囲（1〜256 字、制御文字と空白なし）に限る | Standard Webhooks の webhook-id は署名の対象に入るので、区切りの文字が混ざると別の封筒と同じ署名の対象になりうる | 不要 |
+| 6 | 通信の打ち切り | 採る: callback の確認と配送は 10 秒で AbortSignal により通信を打ち切る | 試作は時計を比べるだけで、通信は続いていた。Codex の会話が T3-8 で引き受けた | 不要 |
+| 7 | 予約の後の親のディレクトリの fsync | 採る: 予約のファイルを作った後に親のディレクトリも fsync する | ファイルの中身は書き切っても、ディレクトリの記録が残らないと、電源が落ちたときに予約が消え、二重に送る余地が残る。本体の今の予約（request-store、delivery）もファイルの sync だけで、親のディレクトリの fsync は無い（2026-10-09 に確認）。本体の分は Dot と別に直すかを決める | 不要 |
+
+## T3-10 Dot から Mac に届く 2 つの経路（2026-10-09）
+
+| 経路 | 通るもの | seamless で守れるか |
+|---|---|---|
+| seamless を通る | Mac から Dot への通知（MCP Events。seamless が callback へ署名つきで POST する）。2026-10-09 の判断 1 で、seamless が受け持つのはこの向きだけ | 守れる。購読してよい相手の確かめ方（縮んだ Q5）が決まるまで、Dot 用の入口は開けない |
+| seamless を通らない | 「自分のパソコン」の許可を入れた Dot が、ローカルの Codex のタスクを作り、既存のタスクを続ける | seamless の認証では塞げない。許可を入れるかは立花さんが別に決める。Dot が作った Codex のタスクを seamless が普通の Codex の会話として扱えるかは未確認 |
+
+- 出典（公式）: learn.chatgpt.com/docs/dots/computers-and-apps（2026-10-09 に私が取得。"Your dot can create local Work or Codex tasks and continue existing local Codex tasks"、"Access to your computer applies wherever you message the same dot, including from your phone"、"Your dot can use supported plugins installed and enabled for your account"）。developers.openai.com/plugins/build/mcp-events（Events の通知は callback の URL への HTTPS の POST で届き、購読を受ける前に callback を確かめる。2026-10-09 の読み手の取得）。

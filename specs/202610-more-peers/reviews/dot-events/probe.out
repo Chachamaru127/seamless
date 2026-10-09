@@ -1,0 +1,7 @@
+server/discover: unknown_method
+events/list: unknown_method
+events/subscribe: unknown_method
+events/unsubscribe: unknown_method
+legacy tools preserved; Dot event protocol unavailable; isolated probe: PASS
+
+command_exit=0

@@ -1,0 +1,51 @@
+**判定: FAIL（F1〜F3 の 3 件）。判定不能 5 件あり。** 読み取りのみで、ファイルは変更していません。Plan mode が有効なため計画ファイルは作らず、この報告を成果物にしました。
+
+| 確認 | 判定 | 根拠 |
+|---|---|---|
+| 1. 差分の収まり | FAIL（F2） | 差分 6 ファイルは統合仕様 `dot-events-integration.md:68` の列挙と一致。`src/`、`scripts/`、CLI、常用設定は含まない。ただし工程 4 の文言が不変条件 8 と衝突しうる。 |
+| 2. 試作を製品合格に数えない、Q5 待ち | FAIL（F3） | 数えない旨は `experiments/dot-events/README.md:13` と統合仕様 `:66` にある。Q5 待ちの範囲は spec 内で食い違う。 |
+| 3. stdio、受信権限、本体不変条件 | PASS | 差分に `src/` が無い。`src/mcp.ts:34` は `2025-06-18` のまま。root `spec.md` の変更は `:12` の追記 1 行のみで、不変条件は動かない。 |
+| 4. 現状説明と差分の一致 | FAIL（F1）、判定不能あり | `probe.out:1-4` と `src/mcp.ts:41,43,51` の観測は一致。版の固定が AC11 の要求を満たさない。 |
+
+## FAIL
+
+**F1（確認 4、AC11 の版固定）**
+- 条件: AC11 は「参照した版は固定する（SEP-3415 は fork の commit 6859def4、ChatGPT の実装ガイドは 2026-10-08 に取得した版）」を求める（`specs/202610-more-peers/spec.md:87`）。
+- 証拠: 内包案の出典は「2026-10-08取得」のみで commit を示さない（`dot-events-integration.md:87`）。試作 README も形を「2026-10-08の公式ガイドから取り」とだけ書く（`experiments/dot-events/README.md:11`）。commit 6859def4 は `specs/202610-more-peers/evidence.md:66` にしか無い。
+- 修正: 内包案の出典と README:11 に commit と取得版を追記する。
+
+**F2（確認 1、不変条件 8 との衝突）**
+- 条件: 不変条件 8 は外の実行主体を「本人が名簿に登録」し、「名乗りだけでは送り手にも宛先にもしない」と定める（`spec.md:23`、`specs/202610-more-peers/spec.md:23`）。停止条件 `spec.md`（more-peers）:97 も同じ。
+- 証拠: 内包案の工程 4 は「外の登録を自動発見と配送核へ追加」（`dot-events-integration.md:75`）。「自動発見」が名簿登録の代わりを指すなら衝突する。
+- 修正: 「本人が名簿に登録した Dot の登録を配送核へ追加」へ書き換える。
+
+**F3（確認 2、Q5 待ちの範囲）**
+- 条件: 「Q5 を確定するまで Dot の本体実装と接続設定は始めない」（root `Plans.md:9`）。「実装は Q5 が決まるまで始めない」は AC11a〜c 全部を指す（`specs/202610-more-peers/spec.md:3`）。
+- 証拠: `specs/202610-more-peers/spec.md:123` は「決まるまで AC11c は実装しない」とだけ書く。独立相談も同じ食い違いを指摘し、`:123` の修正を求めていた（`.local/dot-events/architecture-review.out:44`）。内包案はこれを直していない。
+- 修正: `:123` を AC11a〜c へそろえる。
+
+## 残件（番号なし）
+
+- Q5 推奨の認可経路が未確認のまま。Tunnel が authorize と token の口を公開 URL 無しで中継するかは、`architecture-review.out:31` の (d-2) のまま。内包案は `dot-events-integration.md:60` と `:97` で開示している。
+- 推奨の loopback HTTP 入口と Tunnel 設定は、停止条件 `specs/202610-more-peers/spec.md:104`（待受サーバー、接続設定の変更）に当たりうる。内包案は `:97` で「既存の停止条件に従う」と参照するだけ。Q5 確定時に本人の承認対象として明示する。
+- AC11 の入口例 `mcp --dot`（Tunnel 設定からのみ起動、`spec.md:87`）と内包案の HTTP 推奨は形が違う。Q5 確定時に AC11 の例を改訂する。
+- 判断待ち一覧に「Dot 個体の認証」が無い（`dot-events-integration.md:60`）。接続分離で代替されているので、明記を推奨する。
+- root `Plans.md:9` は「17試験PASS/exit 0」と AC11 承認を同じ文で書き、製品合格に数えない旨を書いていない。
+- `experiments/dot-events/events.ts:62` は、同じ鍵の再購読の確認が失敗すると既存の有効な購読を `pending` にする。AC11a の「期限を延ばすだけ」の失敗側は試験されていない。
+- `specs/202610-more-peers/evidence.md` に試作の試験結果と独立相談の記録が無い。記録は `.local/dot-events/` のみ。
+- T3-1 の「止まる条件 5」（`evidence.md:73`）と spec の停止条件の並びが合わない。`:104` は 8 番目。
+
+## 判定不能
+
+- 固定ベクトル `v1,bhUnGT5...`（`events.test.ts` 相当の `diff.patch:179`）の Python 計算。計算スクリプトも出力も repo に無く、独立性を読みでは確認できない。
+- `node --test` の終了コード 0。`prototype-tests.out:18-21` は pass 17、fail 0 を示すが、終了コードの行が無い。
+- 「af9df0e 時点の作業ツリーは clean」（統合仕様 `:21`）。読み取りでは過去状態を確認できない。
+- 外部資料（OpenAI の Events、Tunnel、auth、X の記事、commit 固定の GitHub 参照）の内容。この検査では Web を取得していない。
+- 独立相談が試作より前に行われたか。ファイルの更新時刻を読めない。
+
+## 立花さんの判断
+
+- Q5 の (d-2)（認可経路）と停止条件 `:104` の扱い。推奨を出す前に決める必要がある。
+- F1 から F3 は文書だけの修正で解消できる。修正してよいか、指示を待つ。
+
+確信度: F1 と F3 は high（ファイルの文言で確定）。F2 は文言の解釈を含むので medium。

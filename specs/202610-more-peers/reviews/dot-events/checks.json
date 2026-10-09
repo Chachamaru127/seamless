@@ -1,0 +1,76 @@
+{
+  "head": "d784be843153737d6edd47aa9771dc79b5e10bb7",
+  "before": {
+    "experiments/dot-events/events.ts": "901b2e991b21a4c7df2236409c3624db67e64560c9deac22a607d10712967309",
+    "experiments/dot-events/events.test.ts": "287003360a093b1fdfa632f3b33f84be7f1515cad097448fef232a870451bf50"
+  },
+  "after": {
+    "experiments/dot-events/events.ts": "901b2e991b21a4c7df2236409c3624db67e64560c9deac22a607d10712967309",
+    "experiments/dot-events/events.test.ts": "287003360a093b1fdfa632f3b33f84be7f1515cad097448fef232a870451bf50"
+  },
+  "commands": [
+    {
+      "name": "prototype-tests",
+      "command": [
+        "node",
+        "--test",
+        "experiments/dot-events/events.test.ts"
+      ],
+      "exit_code": 0,
+      "started_at": "2026-10-08T14:26:23.717238+00:00",
+      "output_sha256": "c5677b7a21d3416ace56ef1dec8be050c5e3bbc084d4f2a1a72ccf3be5c9ede2"
+    },
+    {
+      "name": "prototype-typecheck",
+      "command": [
+        "tsc",
+        "--noEmit",
+        "--strict",
+        "--allowImportingTsExtensions",
+        "--target",
+        "es2022",
+        "--module",
+        "nodenext",
+        "--moduleResolution",
+        "nodenext",
+        "--types",
+        "node",
+        "experiments/dot-events/events.ts",
+        "experiments/dot-events/events.test.ts"
+      ],
+      "exit_code": 0,
+      "started_at": "2026-10-08T14:26:24.118685+00:00",
+      "output_sha256": "0254a6436717737f81a0520e8f3a6613b9a130c54a035d3fc365f6b53d37fa15"
+    },
+    {
+      "name": "vector",
+      "command": [
+        "python3",
+        ".local/dot-events/vector.py"
+      ],
+      "exit_code": 0,
+      "started_at": "2026-10-08T14:26:24.993814+00:00",
+      "output_sha256": "9ccfc41d2f0154029f28c154a0e2455941c0b4fefd2e269e5d8fd25a598fdee2"
+    },
+    {
+      "name": "probe",
+      "command": [
+        "node",
+        ".local/dot-events/probe.mjs"
+      ],
+      "exit_code": 0,
+      "started_at": "2026-10-08T14:26:25.018147+00:00",
+      "output_sha256": "05b141d7043d039cd52ba2b54333ad60e1cd6c8aa8e2bc467cca310b7be2fb4e"
+    },
+    {
+      "name": "legacy-verify",
+      "command": [
+        "bash",
+        "scripts/verify.sh"
+      ],
+      "exit_code": 0,
+      "started_at": "2026-10-08T14:26:25.103718+00:00",
+      "output_sha256": "15c4557f0aeeee67d90429a72b9ba8866e30d71b1d0658f9b3a2088927a3b6f2"
+    }
+  ]
+}

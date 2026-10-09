@@ -1,0 +1,27 @@
+✔ signature agrees with a frozen Python hmac/hashlib vector (0.756417ms)
+✔ discovery is a Dot-only shape and does not modify the legacy server (1.765583ms)
+✔ no verified principal: list/subscribe/unsubscribe/send reject without a POST (1.970333ms)
+✔ a registration name does not let another grant subscribe as its owner (2.052583ms)
+✔ a callback outside the fixture whitelist is refused before challenge delivery (0.532667ms)
+✔ subscribe verifies the signed challenge, persists privately and refreshes one identity (22.3615ms)
+✔ wrong challenge and redirect responses cannot activate a subscription (16.477ms)
+✔ verification that takes ten seconds is not activated (5.06825ms)
+✔ a verified subscription survives restart and sends exactly the signed body (19.820833ms)
+✔ HTTP 200 is accepted; retry and concurrent duplicate never POST again (17.150417ms)
+✔ HTTP 404 is rejected; retry and concurrent duplicate never POST again (16.750917ms)
+✔ HTTP 500 is unknown; retry and concurrent duplicate never POST again (18.056125ms)
+✔ disconnect leaves an unknown durable reservation; a restart cannot resend (18.164375ms)
+✔ reservation is already synced when the transport is entered (17.494042ms)
+✔ exact expiry, revoked owner, wrong grant and unsubscribe all stop delivery (47.195041ms)
+✔ failed secret rotation disables the previous verified subscription (26.227625ms)
+✔ oversized event is refused before a reservation or POST (9.846458ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 300.95075
+
+command_exit=0

@@ -36,11 +36,12 @@ const botId=(name:string)=>`grok-bot:${name}`;
 // The registration's scope AND the owner's limits. Limits scope is relative to a caller's folder, and a registration has no
 // caller folder, so each listed folder of the registration stands in for it; a registration for every folder cannot satisfy a
 // narrower limits scope (nothing to measure it against), and an absent limits file does not widen a registration.
-async function inRange(d:ExternalDeps,peer:Peer,limits:Limits,cwd:string):Promise<boolean>{
+// cwd is the Mac conversation's folder, in both directions: the Bot asking to reach it, and it sending to the Bot (src/webhook-send.ts).
+export async function inRange(git:NonNullable<ScanOptions['git']>,peer:Peer,limits:Limits,cwd:string):Promise<boolean>{
  if(!await scopeAllows(peer,cwd))return false;
  if(limits.scope===null||limits.scope==='any')return true;
  if(!Array.isArray(peer.scope))return false;
- for(const root of peer.scope)if(await inScope(cwd,root,limits.scope,d.git))return true;
+ for(const root of peer.scope)if(await inScope(cwd,root,limits.scope,git))return true;
  return false;
 }
 // Two key variables holding one value cannot tell which holder signed: the receive key of this registration must differ from every
@@ -125,7 +126,7 @@ async function replay(d:ExternalDeps,env:SignedEnvelope,identical:boolean):Promi
 async function list(d:ExternalDeps,peer:Peer,limits:Limits):Promise<unknown>{
  const found=await d.scan(d.home,'any'),candidates=[];
  for(const n of found.sessions){
-  if((n.status??'online')!=='online'||!n.generation||d.rejectedVersion(n,limits)||await d.excluded(n,limits)||!await inRange(d,peer,limits,n.cwd))continue;
+  if((n.status??'online')!=='online'||!n.generation||d.rejectedVersion(n,limits)||await d.excluded(n,limits)||!await inRange(d.git,peer,limits,n.cwd))continue;
   candidates.push({id:`${n.provider}:${n.nativeId}`,provider:n.provider,nativeId:n.nativeId,generation:n.generation,recipient:`${n.provider}:${n.nativeId}:${n.generation}`,cwd:n.cwd,version:n.version||null});
  }
  return {status:'ok',sender:{id:botId(peer.name),keyVersion:peer.keyVersion},candidates};
@@ -140,7 +141,7 @@ async function deliver(d:ExternalDeps,signer:Peer,env:SignedEnvelope,to:NonNulla
   const n=await d.inspect(named);if(!n)return {reason:'target_offline'};
   if(n.nativeId!==to.nativeId||n.generation!==to.generation)return {reason:'generation_mismatch'};
   if(await d.excluded({provider:to.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd},a.limits))return {reason:'target_excluded'};
-  if(!await inRange(d,a.peer,a.limits,n.cwd))return {reason:'scope_conflict'};
+  if(!await inRange(d.git,a.peer,a.limits,n.cwd))return {reason:'scope_conflict'};
   const unsupported=await d.compatibility({provider:to.provider,nativeId:n.nativeId,version:n.version},a.limits);
   return unsupported?{reason:unsupported.status}:{n};
  };

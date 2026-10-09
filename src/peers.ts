@@ -14,7 +14,7 @@ export type PeersRead=
  | {status:'unusable'};
 export type PeerStatus='registered'|'revoked'|'scope_unset';
 export type PeerUse={usable:true}|{usable:false;reason:Exclude<PeerStatus,'registered'>};
-export type ExternalPeer={id:string;product:'grok-bot';host:'external';displayName:string;keyVersion:number;operations:{read:false;send:boolean};status:PeerStatus};
+export type ExternalPeer={id:string;product:'grok-bot';host:'external';displayName:string;keyVersion:number;operations:{read:false;send:boolean};status:PeerStatus;ticket:string|null};
 export type ExternalList={external:ExternalPeer[];externalStatus?:'unusable'};
 
 const NAME=/^[a-z0-9-]{1,63}$/,ENV=/^[A-Z_][A-Z0-9_]{0,127}$/,ISO=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
@@ -67,14 +67,17 @@ export async function scopeAllows(p:Peer,cwd:string):Promise<boolean>{
 // What sessions shows for registered outside executors. A registration whose scope is unset is never listed (AC8); a revoked
 // one in scope is listed as revoked with send false. send is the registration's value AND the owner's limits operations.send
 // (sendAllowed; an absent limits file imposes nothing, but never turns a registration's false into true).
-// Nothing but names and numbers leaves here: no address, no key.
-export async function externalPeers(read:PeersRead,cwd:string,target?:string,sendAllowed=true):Promise<ExternalList>{
+// ticket is what send takes to reach the registration, like a conversation's: present only when send is true and issue (which knows
+// the owner's limits) agrees for this caller's folder. It names the registration and its key version, never an address or a key.
+// Nothing but names, numbers and that ticket leaves here: no address, no key.
+export async function externalPeers(read:PeersRead,cwd:string,target?:string,sendAllowed=true,issue?:(p:Peer)=>Promise<string|null>):Promise<ExternalList>{
  if(read.status==='absent')return {external:[]};
  if(read.status==='unusable')return {external:[],externalStatus:'unusable'};
  const external:ExternalPeer[]=[];
  for(const p of read.value.peers){
   if(target!==undefined&&target!==peerId(p)||!await scopeAllows(p,cwd))continue;
-  external.push({id:peerId(p),product:p.product,host:'external',displayName:p.displayName,keyVersion:p.keyVersion,operations:{read:false,send:peerOperations(p).send&&sendAllowed},status:peerStatus(p)});
+  const send=peerOperations(p).send&&sendAllowed;
+  external.push({id:peerId(p),product:p.product,host:'external',displayName:p.displayName,keyVersion:p.keyVersion,operations:{read:false,send},status:peerStatus(p),ticket:send&&issue?await issue(p):null});
  }
  return {external};
 }

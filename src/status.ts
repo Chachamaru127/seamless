@@ -10,6 +10,9 @@ export function stages(record:RequestRecord,destination:StructureItem[],source:S
  const observedAt=new Date(now).toISOString();
  const result:Stage[]=['accepted','reached','processing','replied','unknown'].map(stage=>({stage:stage as Stage['stage'],status:'unobserved',evidence:[],at:null}));
  const mark=(stage:Stage['stage'],evidence:string[],at:string|null=observedAt)=>{Object.assign(result.find(s=>s.stage===stage)!,{status:'observed',evidence,at:at??observedAt});};
+ // A registered outside executor (grok-bot) has no conversation here to look into: delivery and processing can never be observed, only
+ // the HTTP answer (accepted) and its own reply (replied). Both stay unobserved, and this says it is not a matter of waiting.
+ if(record.recipient.provider==='grok-bot')for(const s of result)if(s.stage==='reached'||s.stage==='processing')s.evidence=['external_executor'];
  if(record.status==='submitted')mark('accepted',['reservation:submitted'],new Date(record.at).toISOString());
  if(['unknown','pending'].includes(record.status))mark('unknown',['reservation:'+record.status]);
  const dest=destination.slice(-200),src=source.slice(-200);
@@ -62,9 +65,15 @@ export function createStatus(options:{parallelReads?:boolean;dir:string;adapter:
   if(!isLocalParty(p)||!await options.canRead(p))return [];
   try{return options.adapter.structure?(await options.adapter.structure(registration(p))).slice(-200):[];}catch{return [];}
  };
+ // A registered outside executor answers through the signed receiving path (src/external-inbound.ts), which leaves the reservation of
+ // its envelope: that, not a line in the sender's own conversation that merely says so, is what shows it replied. Only an answer the
+ // Mac accepted counts (not one refused, pending or of unknown result), from this executor, aimed at the conversation that asked.
+ const botReplies=(record:RequestRecord,all:RequestRecord[]):StructureItem[]=>all.filter(r=>r.status==='submitted'&&r.replyTo===record.id&&r.sender.provider==='grok-bot'&&r.sender.nativeId===record.recipient.nativeId&&r.recipient.provider===record.sender.provider&&r.recipient.nativeId===record.sender.nativeId&&r.recipient.generation===record.sender.generation)
+  .map(r=>({id:r.id,type:'reply',at:new Date(r.at).toISOString(),peer:{id:r.id,replyTo:record.id,sender:{provider:'grok-bot',nativeId:r.sender.nativeId}}}));
  const once=async(id:string)=>{
-  const record=(await requests(options.dir)).find(r=>r.id===id&&owned(r));if(!record)return {status:'not_found' as const};
-  const [destination,source]=options.parallelReads?await Promise.all([read(record.recipient),read(record.sender)]):[await read(record.recipient),await read(record.sender)];
+  const all=await requests(options.dir),record=all.find(r=>r.id===id&&owned(r));if(!record)return {status:'not_found' as const};
+  const own=()=>record.recipient.provider==='grok-bot'?Promise.resolve(botReplies(record,all)):read(record.sender);
+  const [destination,source]=options.parallelReads?await Promise.all([read(record.recipient),own()]):[await read(record.recipient),await own()];
   const inbox=isLocalParty(record.recipient)&&record.recipient.provider==='grok'&&options.adapter.inboxState&&await options.canRead(record.recipient)?await options.adapter.inboxState(registration(record.recipient),record.id,{id:record.sender.id,nativeId:record.sender.nativeId}).catch(()=>null):undefined;
   return statusResult(record,destination,source,time.now(),inbox);
  };

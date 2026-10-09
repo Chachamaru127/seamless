@@ -8,7 +8,7 @@ import {spawnSync,execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {randomUUID,randomBytes} from 'node:crypto';
 import {readPeers,validPeers,peerStatus,peerUse,peerOperations,peerId,scopeAllows,externalPeers,peerEnvSlots,type Peer} from '../src/peers.ts';
-import {createAutomatic} from '../src/automatic.ts';
+import {createAutomatic,issueTicket} from '../src/automatic.ts';
 import {createMcp} from '../src/mcp.ts';
 import {writeLimits,unrestricted} from '../src/limits.ts';
 import type {Caller} from '../src/caller.ts';
@@ -164,15 +164,15 @@ test('sessions lists registered outside executors apart from candidates, with re
  const r=await f.automatic('sessions',{});
  assert.equal(r.status,'ok');assert.deepEqual(r.candidates.map((c:any)=>c.id),['claude:b']);assert.equal(Object.hasOwn(r,'externalStatus'),false);
  assert.deepEqual(r.external,[
-  {id:'grok-bot:chachamaru',product:'grok-bot',host:'external',displayName:'茶々丸',keyVersion:1,operations:{read:false,send:true},status:'registered'},
-  {id:'grok-bot:quiet-bot',product:'grok-bot',host:'external',displayName:'静かな Bot',keyVersion:3,operations:{read:false,send:false},status:'registered'},
+  {id:'grok-bot:chachamaru',product:'grok-bot',host:'external',displayName:'茶々丸',keyVersion:1,operations:{read:false,send:true},status:'registered',ticket:issueTicket({provider:'grok-bot',nativeId:'chachamaru',generation:'1',cwd:'',branch:null})},
+  {id:'grok-bot:quiet-bot',product:'grok-bot',host:'external',displayName:'静かな Bot',keyVersion:3,operations:{read:false,send:false},status:'registered',ticket:null},
  ]);
  for(const e of r.external)assert.equal(e.operations.read,false);
 });
 test('a revoked registration in scope is listed as revoked with send false, even when the owner wrote send true',async t=>{
  const f=await autoFixture(t);
  await f.write(roster(secretPeer({operations:{send:true},revoked:{at:'2026-10-01T00:00:00Z'}})));
- assert.deepEqual((await f.automatic('sessions',{})).external,[{id:'grok-bot:chachamaru',product:'grok-bot',host:'external',displayName:'茶々丸',keyVersion:1,operations:{read:false,send:false},status:'revoked'}]);
+ assert.deepEqual((await f.automatic('sessions',{})).external,[{id:'grok-bot:chachamaru',product:'grok-bot',host:'external',displayName:'茶々丸',keyVersion:1,operations:{read:false,send:false},status:'revoked',ticket:null}]);
 });
 test('a workspace outside the registration scope does not see it; "all" is shown to anyone; an unset scope is never listed',async t=>{
  const f=await autoFixture(t),nested=join(f.home,'sub','deep');await mkdir(nested,{recursive:true});
@@ -268,7 +268,8 @@ test('peerEnvSlots lists every registration, role and name, names only',()=>{
 });
 test('externalPeers hides everything but names and numbers',async()=>{
  const read={status:'ok' as const,hash:'h',value:{version:1 as const,peers:[secretPeer({operations:{send:true}}) as unknown as Peer]}};
- const r=await externalPeers(read,'/anywhere');assert.deepEqual(Object.keys(r.external[0]).sort(),['displayName','host','id','keyVersion','operations','product','status']);
+ const r=await externalPeers(read,'/anywhere');assert.deepEqual(Object.keys(r.external[0]).sort(),['displayName','host','id','keyVersion','operations','product','status','ticket']);
+ assert.equal(r.external[0].ticket,null,'no ticket without someone who knows the limits to issue it');
 });
 
 // T2-6: scripts/peer-secrets.sh, called from scripts/verify.sh.

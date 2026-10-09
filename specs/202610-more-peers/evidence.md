@@ -421,3 +421,13 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 | seamless を通らない | 「自分のパソコン」の許可を入れた Dot が、ローカルの Codex のタスクを作り、既存のタスクを続ける | seamless の認証では塞げない。許可を入れるかは立花さんが別に決める。Dot が作った Codex のタスクを seamless が普通の Codex の会話として扱えるかは未確認 |
 
 - 出典（公式）: learn.chatgpt.com/docs/dots/computers-and-apps（2026-10-09 に私が取得。"Your dot can create local Work or Codex tasks and continue existing local Codex tasks"、"Access to your computer applies wherever you message the same dot, including from your phone"、"Your dot can use supported plugins installed and enabled for your account"）。developers.openai.com/plugins/build/mcp-events（Events の通知は callback の URL への HTTPS の POST で届き、購読を受ける前に callback を確かめる。2026-10-09 の読み手の取得）。
+
+## T3-8 試作の試験 4 つ（Codex の会話、2026-10-09 13:55 JST に結果の返事 `dot-decision-20261009-result`）
+
+- Codex の会話が引き受けた b（内包案への反映）と c（試作の試験 4 つ）が済んだ。src と設定は触っていない。本線へのコミット（a）は、立花さんの直接の指示が無いので未実施。
+- 内包案への反映: 通知の一方向（Mac から Dot だけ）、M1 の 2 段、H10 は 1 件ごとの確認、Dot と通常の Chat の区別は未観測、Codex 用のパネルの包み（b5f3352）、callback の確認は人の承認ではないこと。
+- 試作の試験: 同じ secret の更新の確認に失敗しても前の購読を続ける、模擬の DNS で危険な IP と接続先の変更を拒む、実のタイマーの 10 秒で模擬の通信を打ち切る、宛先が無いときは予約を使わない、の 4 つを足した。試作は 21 試験、型検査、独立の Python の署名計算、隔離した probe、本体の verify（464 件と帯 99 件）がすべて実際の終了コード 0。判定は Claude Opus 5.5（high）が試作を PASS、Claude Haiku 5.5（medium）が範囲と記録の照合を PASS。
+- 試作の sha256（私が本線の実ファイルで計算して一致を確認）: events.ts e0f2772301113e4e…、events.test.ts cb970d193d2217af…。検証した本線の版は 38183ba。
+- 記録の置き場: 本線の `.local/dot-events/20261009-fixes/`。途中で 10 月 8 日の checks.json を保存先の取り違えで一時的に上書きし、私が写した `reviews/dot-events/checks.json` から戻した、と Codex が報告した。戻った中身は、写しとバイト単位で一致した（私が cmp で確認）。
+- Codex が挙げた本体への残件: 実際の通信での、本文を送る前の照合など。Q5 と本体の実装は承認済みとして扱っていない。
+- 残る判断: Codex の会話の Dot の作業（本線の作業ツリーの未コミットの変更）を本線にコミットするか。コミットが済めば、spec.md の AC11c と Q5 を判断 1 に合わせて直し（T3-6）、ルートの Plans.md に判定の版の行を足せる（TC-2 の残り）。

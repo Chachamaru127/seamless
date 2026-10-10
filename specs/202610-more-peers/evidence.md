@@ -543,3 +543,38 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - 直し（919d343）: 鍵の値を比べるときも送るときも `src/peers.ts` の `keyOf`（先頭の `Bearer ` を 1 つ外す）を使う。2xx の応答は最後まで読み、途中で切れたら長さに関係なく成否不明（読む時間は 15 秒の上限で止まる）。漏れの確認は `Bearer <鍵>` の値について `<鍵>` だけの形も探す。足した試験は 5 件で、そのうち 4 件は直す前の版で落ち、直した版で通ることを私が確かめた。残る 1 件（長い応答が最後まで届けば受理）は、直す前の版でも通る正常系の試験。コミットの文の「5 件とも直す前に落ちた」は不正確で、再判定で指摘された。
 - 私が走らせた `bash scripts/verify.sh`: exit 0。型検査 0、node 627 件すべて通過、帯 99 件、`peer-secrets: ok（登録なし）`。
 - 2 回目（版 919d343）: PASS、確信度 high。原文は `reviews/p2-interim-rejudge-919d343.md`。4 項目とも Yes。判定役は全体の試験を再実行せず、私の verify の結果を採用した。
+
+## T3-14 と T3-15 測定 M1（2026-10-10 18:26〜18:52 JST、道具あり。項目 1〜5）
+
+- 準備で起きたこと（2026-10-09〜10）:
+  - `security … -w` の入力欄は、128 文字を超えた分を黙って切り捨てる。最初に保存した鍵は 128 文字で、OpenAI は `401 invalid_api_key` を返した（57 回、すべて失敗）。`experiments/dot-m1/save-key.sh`（コピーを待って保存する）で入れ直した（164 文字）。
+  - 最初に入った値は、立花さんがこの測定のために作った鍵ではなかった（立花さんは「API キーは作ってない」と答えた）。手元の別の `sk-proj-` の鍵の先頭 128 文字だったとみられ、送り先は OpenAI だけで、切れていたので認証に通っていない。今は上書きされている。
+  - `/readyz` は、鍵が断られていても `ready` を返した。つながったかは `/metrics` の `commands_poll_last_successful_timestamp_seconds` で見る（18:26:39 に成功、失敗 0）。
+  - tunnel-client 0.0.16 は、起動すると子プロセスとして `codex app-server` を立ち上げる（管理画面の補助）。測定には関係しない。
+- 操作: ChatGPT アプリ（バンドル ID `com.openai.codex`）を、立花さんの依頼でコンピューター操作（裏から）で動かした。Dot は「あなたのdot」の会話、通常の Chat は ChatGPT 表示の Chat モードの新しい会話。
+- 記録: 本線の `.local/dot-m1/m1-tools.jsonl` の run `50f6b5c5`（10 行、0600）。
+
+| 時刻 | 誰が | 頼んだこと | スタブに届いたもの | ChatGPT の返事 |
+|---|---|---|---|---|
+| 18:33:50 | 登録 | カスタム MCP の作成（トンネル、認証なし） | `server/discover`、`tools/list`、`events/list`（初期化 `initialize` は無し。版 2026-07-28 の自己完結の要求） | 作成できた |
+| 18:38:06 | Dot | ping を 1 回 | 18:38:14 `tools/call ping` | 「1回だけ呼びました。結果は『pong』」 |
+| 18:40:37 | 通常の Chat | ping を 1 回 | 18:40:39 `tools/call ping` | 「1回だけ呼び出しました。結果: pong（成功）」 |
+| 18:46:29 | Dot | m1.probe.created を監視 | 18:46:55 `events/subscribe`（エラー -32602 を返した）→ 18:46:56 `events/unsubscribe` → 18:47:12 `events/subscribe`（同）→ 18:47:12 `events/unsubscribe` | 「監視対応イベントとして確認できたが、登録がサービス側のエラーで失敗し、再試行しても同じ。監視開始は確認できていない」 |
+| 18:51:03 | 通常の Chat | m1.probe.created を監視 | 何も来なかった（90 秒見た） | 「イベント購読・監視の対応ツールが公開されていない。監視状態: 未開始」 |
+
+6 項目のうち 1〜5:
+
+| # | 項目 | 結果 |
+|---|---|---|
+| 1 | Dot が呼べたか | 呼べた（18:38:14 の `tools/call ping`、結果を返した） |
+| 2 | 呼び手の指紋が Dot と Chat で同じか違うか | `subject` は同じ（同じ利用者）。`session` は違う（別の会話なので当然）。`openai/organization` は同じ。`client` は両方 `openai-mcp` 1.0.0。client の capabilities が違う（Dot は `elicitation` と `extensions/openai/elicitation`、Chat は `extensions/io.modelcontextprotocol/ui`） |
+| 3 | `_meta` に Dot 専用の項目があるか | ある。Dot だけ: `callId`、`itemId`、`sessionId`、`windowId`、`traceparent`、`openai/request_id`、名前を伏せたキー 1 個（認証らしい語を含む名前。指紋 `60bc36ff`）。Chat だけ: `openai/locale`、`openai/userAgent`、`timezone`、`timezone_offset_minutes` |
+| 4 | `events/subscribe` が来たか | Dot から来た（頼んでから 26 秒後）。通常の Chat からは来なかった（Chat は監視に対応しないと答えた）。断ると Dot は直後に `events/unsubscribe` で片付け、1 回だけ再試行して止まった |
+| 5 | callback の宛先のホスト名 | `connectors.api.openai.com`（2 回とも）。`delivery_mode` は webhook、secret あり |
+
+読むときの注意:
+- `events/subscribe` の `_meta` には、MCP の標準の 3 つ（`clientCapabilities`、`clientInfo`、`protocolVersion`）しか無かった。`openai/subject`、`openai/session` も Dot 専用の項目も無い。つまり、購読の要求そのものからは、どの利用者のどの会話（Dot か）の購読かを読めない。読めるのは callback の宛先と secret だけ。
+- 通常の Chat の `tools/call` に `openai/userAgent` があり、Dot には無い。Dot の呼び出しは利用者の画面ではなく ChatGPT のサービス側から来ているとみられる（未確認）。
+- 名前を伏せたキーの元の名前は記録していない（スタブの決まり）。Dot の呼び手を確かめる材料になりうるが、中身は見ていない。
+- HTTP のヘッダはスタブに届かない（stdio の構造）。ヘッダに Dot の印があるかは、この測定では分からない。
+- 項目 6（認証なし、道具なしの入口でも subscribe が来るか）はまだ。Work chat での監視の依頼も、まだ試していない。

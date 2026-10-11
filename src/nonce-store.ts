@@ -13,14 +13,16 @@ import {DAY,privateJson,publish,reservationOf} from './request-store.ts';
 // is one file; and the store is swept for expired records at most once an hour.
 export const NONCE_RETENTION_MS=DAY;
 export const SWEEP_EVERY_MS=3600_000;
-export type NonceRecord={peer:string;keyVersion:number;nonce:string;op:'send'|'sessions';id:string;recipient:string;signatureSha256:string;at:number};
+// signedBy:'mac' marks a record whose signature this Mac made itself (`bot-send|bot-sessions`, src/bot-sign.ts), not the Bot: what it
+// vouches for is only that the signature fits the key, so a recipient is not told "verified" on its strength (wasSigned).
+export type NonceRecord={peer:string;keyVersion:number;nonce:string;op:'send'|'sessions';id:string;recipient:string;signatureSha256:string;at:number;signedBy?:'mac'};
 export type NonceClaim={status:'claimed'}|{status:'seen';record:NonceRecord|null};
 const FILE=/^[0-9a-f]{64}\.json$/,BY_REQUEST=/^[0-9a-f]{64}\.req$/,MARKER='last-sweep.mark';
 const sha=(parts:unknown[])=>createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 const fileOf=(peer:string,nonce:string)=>sha([peer,nonce])+'.json';
 const byRequest=(peer:string,keyVersion:number,id:string,recipient:string)=>sha(['request',peer,keyVersion,id,recipient])+'.req';
 function validRecord(r:any):r is NonceRecord{
- return !!r&&typeof r==='object'&&typeof r.peer==='string'&&Number.isSafeInteger(r.keyVersion)&&typeof r.nonce==='string'&&['send','sessions'].includes(r.op)&&typeof r.id==='string'&&typeof r.recipient==='string'&&typeof r.signatureSha256==='string'&&Number.isFinite(r.at);
+ return !!r&&typeof r==='object'&&typeof r.peer==='string'&&Number.isSafeInteger(r.keyVersion)&&typeof r.nonce==='string'&&['send','sessions'].includes(r.op)&&typeof r.id==='string'&&typeof r.recipient==='string'&&typeof r.signatureSha256==='string'&&Number.isFinite(r.at)&&(r.signedBy===undefined||r.signedBy==='mac');
 }
 async function ensureDir(dir:string){
  await mkdir(dir,{recursive:true,mode:0o700});
@@ -60,14 +62,14 @@ export async function claimNonce(dir:string,record:NonceRecord,now:number):Promi
 // the write. Two records say so, and both must be there: the nonce record (the signature passed and the nonce was spent) and the
 // reservation the delivery made before writing (nothing but the outside-sender path creates one whose sender is "grok-bot:<name>").
 // A request refused after the signature check (offline, out of scope, a generation that moved) leaves a nonce but no reservation.
-// A reservation the native side refused ('rejected') proves nothing was delivered. Both name the same registration, key version,
+// A record this Mac signed itself (signedBy 'mac') proves nothing about the Bot, so it never makes a message verified. A reservation the native side refused ('rejected') proves nothing was delivered. Both name the same registration, key version,
 // request id and destination as the envelope the recipient holds. Each is one file, found by name.
 export async function wasSigned(nonceDir:string,reservationDir:string,envelope:{id:string;sender:{id:string;nativeId:string;generation:string};recipient:{id:string;nativeId:string;generation:string}}):Promise<boolean>{
  if(envelope.sender.id!=='grok-bot:'+envelope.sender.nativeId)return false;
  const keyVersion=Number(envelope.sender.generation),recipient=envelope.recipient.id+':'+envelope.recipient.generation;
  if(!Number.isSafeInteger(keyVersion))return false;
  const r=await privateJson(join(nonceDir,byRequest(envelope.sender.nativeId,keyVersion,envelope.id,recipient)));
- if(!validRecord(r)||!(r.op==='send'&&r.peer===envelope.sender.nativeId&&String(r.keyVersion)===envelope.sender.generation&&r.id===envelope.id&&r.recipient===recipient))return false;
+ if(!validRecord(r)||r.signedBy==='mac'||!(r.op==='send'&&r.peer===envelope.sender.nativeId&&String(r.keyVersion)===envelope.sender.generation&&r.id===envelope.id&&r.recipient===recipient))return false;
  const q=await reservationOf(reservationDir,'grok-bot','external',envelope.sender.nativeId,envelope.id);
  return !!q&&q.sender.id===envelope.sender.id&&q.sender.nativeId===envelope.sender.nativeId&&q.recipient.id===envelope.recipient.id&&q.recipient.generation===envelope.recipient.generation&&q.status!=='rejected';
 }

@@ -11,6 +11,7 @@ import { createServe } from './serve.ts';
 import { createMcp } from './mcp.ts';
 import { runLines } from './io.ts';
 import { ContractError, object } from './protocol.ts';
+import {securityKeychain} from './secrets.ts';
 // The signed request of `--as` comes on standard input, whole. Neither it nor a key is ever an argument (arguments are recorded
 // in process listings and in the conversation that ran the command).
 const MAX_STDIN_BYTES=262144;
@@ -20,12 +21,22 @@ async function readStdin():Promise<string>{
  for await(const raw of process.stdin){const chunk=Buffer.isBuffer(raw)?raw:Buffer.from(raw);size+=chunk.length;if(size>MAX_STDIN_BYTES)throw new ContractError('invalid_arguments');chunks.push(chunk);}
  return new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks));
 }
-export async function runCli(argv:string[],automatic:Automatic=createAutomatic(),limitsPath?:string,stdin:()=>Promise<string>=readStdin):Promise<void>{
+// The command line is the one entry that reads the real Keychain (src/secrets.ts); every other way of building an automatic is given a reader or none.
+export async function runCli(argv:string[],automatic:Automatic=createAutomatic({keychain:securityKeychain()}),limitsPath?:string,stdin:()=>Promise<string>=readStdin):Promise<void>{
  const [mode,...rawArgs]=argv;
  if(mode==='status'){if(!(rawArgs.length===1||rawArgs.length===3&&rawArgs[1]==='--wait'))throw new ContractError('invalid_arguments');const waitSeconds=rawArgs.length===3?Number(rawArgs[2]):0;if(!Number.isFinite(waitSeconds)||waitSeconds<0||waitSeconds>600)throw new ContractError('invalid_arguments');console.log(JSON.stringify(await automatic('send',{track:rawArgs[0],waitSeconds})));return;}
  if(mode==='compat-check'){const ok=rawArgs[0]==='--limits'&&(rawArgs.length===2||rawArgs.length===4&&rawArgs[2]==='--target'&&/^(claude|codex):[A-Za-z0-9-]{1,128}$/.test(rawArgs[3]));if(!ok)throw new ContractError('invalid_arguments');console.log(JSON.stringify(await compatibilityCheck(rawArgs[1],{},{kind:'cli'},rawArgs[3])));return;}
  if(mode==='compat-md'){if(rawArgs.length)throw new ContractError('invalid_arguments');await writeFile(new URL('../specs/202610-everyday-use/compat.md',import.meta.url),compatibilityMarkdown());return;}
  if(mode==='migrate'){if(rawArgs.length!==2&&rawArgs.length!==3||rawArgs[0]!=='--registry'||rawArgs.length===3&&rawArgs[2]!=='--write')throw new ContractError('invalid_arguments');console.log(JSON.stringify(await migrateRegistry(rawArgs[1],rawArgs[2]==='--write',limitsPath)));return;}
+ // `bot-send|bot-sessions <registration>`: MVP stand-in for the Bot's own signing (src/bot-sign.ts). The unsigned request comes on
+ // standard input (send) and is signed on this Mac, then goes the way `send|sessions --as` goes. There is no bot-read: a Mac conversation is never read for an outside sender.
+ if(mode==='bot-send'||mode==='bot-sessions'){
+  if(rawArgs.length!==1||!/^[a-z0-9-]{1,63}$/.test(rawArgs[0]))throw new ContractError('invalid_arguments');
+  const method=mode==='bot-send'?'send':'sessions';
+  let input:unknown=null;
+  try{if(method==='send')input=JSON.parse(await stdin());}catch{console.log(JSON.stringify({status:'envelope_invalid',reason:'json'}));return;}
+  console.log(JSON.stringify(await automatic(method,input,{kind:'cli',external:{name:rawArgs[0],sign:true}})));return;
+ }
  // `sessions|read|send --as <registration>`: a registered outside sender (Grok Bot) acts with an envelope it signed.
  if(rawArgs.includes('--as')){
   if(!['sessions','read','send'].includes(mode)||rawArgs.length!==2||rawArgs[0]!=='--as'||!/^[a-z0-9-]{1,63}$/.test(rawArgs[1]))throw new ContractError('invalid_arguments');

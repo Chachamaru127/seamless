@@ -13,6 +13,7 @@ import {SEAMLESS_ENVELOPE_MARK} from '../src/adapters/grok.ts';
 import {SAME_CONTENT_HOLD_MS} from '../src/external-inbound.ts';
 import {endpointOf,WEBHOOK_TIMEOUT_MS,MAX_BOT_TEXT} from '../src/webhook-send.ts';
 import {externalFixture,peerRecord,secondRecord,T0} from './support/signed-fixture.ts';
+import {fakeKeychain} from './support/keychain-fixture.ts';
 import type {Caller,CallerResult} from '../src/caller.ts';
 
 // specs/202610-more-peers T2-2: a Mac conversation sends to a registered Grok Bot by POSTing the envelope to its webhook.
@@ -569,4 +570,56 @@ test('the reply from the Bot is the only thing that moves a request on; asking f
  for(let i=0;i<3;i++)await s.auto('send',{track:'quiet-1'});
  s.f.advance(10*60_000);await s.auto('send',{track:'quiet-1'});
  assert.equal(s.bot.hits.length,1);assert.equal((await s.records()).length,1);
+});
+
+// The Keychain (specs/202610-more-peers, MVP): the address and the send key are read from the environment, and when the environment has
+// no value, from the Keychain. The reader is injected here; no test reaches the real Keychain.
+const secretsOf=(s:Setup,key:string)=>[key,s.bot.url,new URL(s.bot.url).pathname.split('/').pop()!,'Bearer '+key];
+test('keychain: the address and the send key come from the Keychain when the environment has none; the POST is the same, listing reads nothing, and no value leaks',async t=>{
+ const s=await setup(t);const key=randomBytes(24).toString('hex');
+ const k=fakeKeychain({CHACHAMARU_WEBHOOK_URL:s.bot.url,CHACHAMARU_SEND_KEY:key});
+ delete s.f.env.CHACHAMARU_WEBHOOK_URL;delete s.f.env.CHACHAMARU_SEND_KEY;
+ const using=s.mac({keychain:k.read});
+ const tk=await s.ticket(using);assert.ok(tk,'listing offers a ticket without having read any value');assert.deepEqual(k.asked,[],'listing never reads a value');
+ const {value:r,output}=await silent(()=>using('send',{ticket:tk,id:'kc-1',text:'キーチェーンから'}));
+ assert.equal(r.status,'submitted',JSON.stringify(r));assert.equal(s.bot.hits.length,1);
+ assert.equal(s.bot.hits[0].headers.authorization,`Bearer ${key}`);assert.equal(s.bot.hits[0].json.id,'kc-1');
+ assert.deepEqual([...new Set(k.asked)].sort(),['CHACHAMARU_SEND_KEY','CHACHAMARU_WEBHOOK_URL'],'only the address and the send key are looked up, never the receive key');
+ const where=[JSON.stringify(r),output,await treeText(s.f.home),s.f.diagnostics.join('\n'),JSON.stringify(await using('sessions',{peek:true}))];
+ for(const text of where)for(const secret of secretsOf(s,key))assert.ok(!text.includes(secret),'a value reached an output or a record');
+});
+test('keychain: a value in the environment wins and the Keychain is not asked; an empty one falls through to it',async t=>{
+ const s=await setup(t);const k=fakeKeychain({CHACHAMARU_WEBHOOK_URL:'https://keychain.invalid/h',CHACHAMARU_SEND_KEY:'keychain-key'});
+ const using=s.mac({keychain:k.read});
+ assert.equal((await s.send('kc-env',"環境変数",{},using)).status,'submitted');
+ assert.equal(s.bot.hits[0].headers.authorization,`Bearer ${s.f.keys.send}`);assert.deepEqual(k.asked,[]);
+ s.f.env.CHACHAMARU_SEND_KEY='';
+ assert.equal((await s.send('kc-empty','空の値',{},using)).status,'submitted');
+ assert.equal(s.bot.hits[1].headers.authorization,'Bearer keychain-key');assert.deepEqual(k.asked,['CHACHAMARU_SEND_KEY']);
+});
+test('keychain: a key stored as "Bearer <key>" is sent as that key, like one set in the environment',async t=>{
+ const s=await setup(t);const key=randomBytes(24).toString('hex');
+ const k=fakeKeychain({CHACHAMARU_SEND_KEY:`Bearer ${key}`});delete s.f.env.CHACHAMARU_SEND_KEY;
+ assert.equal((await s.send('kc-bearer','Bearer 付き',{},s.mac({keychain:k.read}))).status,'submitted');
+ assert.equal(s.bot.hits[0].headers.authorization,`Bearer ${key}`);
+});
+test('keychain: nothing in either place, or a Keychain that fails, is the same refusal as before; nothing is posted and the id stays free',async t=>{
+ const s=await setup(t);const url=s.f.env.CHACHAMARU_WEBHOOK_URL!;
+ delete s.f.env.CHACHAMARU_WEBHOOK_URL;delete s.f.env.CHACHAMARU_SEND_KEY;
+ const empty=fakeKeychain();const broken=s.mac({keychain:async()=>{throw new Error('locked sv-secret-text');}});
+ const tk=await s.ticket();assert.ok(tk);
+ for(const using of [s.mac({keychain:empty.read}),broken,s.auto]){
+  const r=await using('send',{ticket:tk,id:'kc-none',text:'どこにも無い'});
+  assert.equal(r.status,'address_unavailable',JSON.stringify(r));assert.ok(!JSON.stringify(r).includes('sv-secret-text'));
+ }
+ const onlyAddress=fakeKeychain({CHACHAMARU_WEBHOOK_URL:url});
+ assert.equal((await s.mac({keychain:onlyAddress.read})('send',{ticket:tk,id:'kc-none',text:'どこにも無い'})).status,'key_unavailable');
+ assert.equal(s.bot.hits.length,0);assert.equal((await s.records()).length,0,'nothing was reserved');
+ const both=fakeKeychain({CHACHAMARU_WEBHOOK_URL:url,CHACHAMARU_SEND_KEY:s.f.keys.send});
+ assert.equal((await s.mac({keychain:both.read})('send',{ticket:tk,id:'kc-none',text:'どこにも無い'})).status,'submitted','the id was never spent');
+});
+test('keychain: without a reader (tests, embedding) the environment is all there is',async t=>{
+ const s=await setup(t);delete s.f.env.CHACHAMARU_SEND_KEY;
+ const r=await s.send('kc-default','環境だけ');
+ assert.equal(r.status,'key_unavailable',JSON.stringify(r));
 });

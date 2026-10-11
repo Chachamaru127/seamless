@@ -514,7 +514,7 @@ test('a stopped Grok CLI peer is said to be stopped in the open band', async ($,
 test('a change seen by a later look is told as a toast; the first look tells nothing', async ($, on) => {
   const { clock, state } = seat(on, response([staged({ reached: 1000 })]))
   const toasts: string[] = []
-  on('ui.toast', ($, e) => { toasts.push(e.text); return {} as never })
+  on('ui.toast', ($, e) => { toasts.push(e.text); return { value: undefined } as never })
   await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   expect(toasts).toEqual([])
   state.data = response([staged({ reached: 1000, processing: 2000 })])
@@ -569,7 +569,7 @@ test('the band does not step back when a later look misses a stage', async ($, o
 test('more than three changes in one look are told as two and a count of the rest', async ($, on) => {
   const { clock, state } = seat(on, response([]))
   const toasts: string[] = []
-  on('ui.toast', ($, e) => { toasts.push(e.text); return {} as never })
+  on('ui.toast', ($, e) => { toasts.push(e.text); return { value: undefined } as never })
   await $.session.start(START); await $.ui.mount(BAND); await clock.settle()
   state.data = response([], ['m1', 'm2', 'm3', 'm4'].map((id, i) => ({ ...incoming('verified'), id, at: new Date(T + i * 1000).toISOString() })))
   await clock.advance(60000); await clock.settle()

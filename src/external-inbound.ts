@@ -8,6 +8,7 @@ import {requests,requestHash,reservationOf,DAY} from './request-store.ts';
 import {inScope,type SessionIdentity,type ScanOptions,type scanSessions} from './sessions-scan.ts';
 import {ContractError,type Registration} from './protocol.ts';
 import type {NativeIdentity} from './native-runtime.ts';
+import type {SecretReader} from './secrets.ts';
 
 // `seamless send|sessions|read --as <registration>`: a registered outside sender (Grok Bot) asks this Mac to act, with an
 // envelope the Bot signed (specs/202610-more-peers T2-3 to T2-5). The signed fields are the only source of the sender and the
@@ -15,7 +16,11 @@ import type {NativeIdentity} from './native-runtime.ts';
 // Order: shape -> roster -> revoked -> key version -> key -> signature -> time -> roster authorization -> nonce -> destination
 // -> reservation. Anything that does not pass stops there and nothing is delivered.
 export type ExternalDeps={
- name:string;home:string;now:()=>number;env:NodeJS.ProcessEnv;
+ name:string;home:string;now:()=>number;
+ // The envelope was signed on this Mac (`bot-send|bot-sessions`), not by the Bot: its nonce record says so (src/nonce-store.ts).
+ signedHere?:boolean;
+ // The values behind the registration's variable names: the environment, then the Keychain (src/secrets.ts).
+ secret:SecretReader;
  // One line for the owner about why a request was refused when the Bot must not be told (names of variables only, never a value).
  diagnose:(line:string)=>void;
  peersPath:string;limitsPath:string;reservationDir:string;keyPath:string;nonceDir:string;
@@ -46,12 +51,12 @@ export async function inRange(git:NonNullable<ScanOptions['git']>,peer:Peer,limi
 }
 // Two key variables holding one value cannot tell which holder signed: the receive key of this registration must differ from every
 // other key variable of the roster, this registration's send key included. Values are only compared, never kept or shown.
-function keyTwin(roster:Peers,env:NodeJS.ProcessEnv,self:Peer,key:string):string|null{
+async function keyTwin(roster:Peers,secret:SecretReader,self:Peer,key:string):Promise<string|null>{
  for(const p of roster.peers)for(const slot of ['sendKeyEnv','receiveKeyEnv'] as const){
   if(p.name===self.name&&slot==='receiveKeyEnv')continue;
-  const v=env[p[slot]];
+  const v=await secret(p[slot]);
   // Compared as the keys they stand for: "Bearer K" in a send key variable is the key K.
-  if(typeof v==='string'&&v!==''&&keyOf(v)===keyOf(key))return `${p.name} ${slot}`;
+  if(v!==undefined&&keyOf(v)===keyOf(key))return `${p.name} ${slot}`;
  }
  return null;
 }
@@ -90,11 +95,11 @@ export async function externalCall(d:ExternalDeps,method:string,input:unknown):P
  if(!peer)return {status:'sender_unregistered'};
  if(peer.revoked)return {status:'key_revoked'};
  if(env.keyVersion!==peer.keyVersion)return {status:'key_version_mismatch'};
- const key=d.env[peer.receiveKeyEnv];
- if(typeof key!=='string'||key==='')return {status:'key_unavailable'};
+ const key=await d.secret(peer.receiveKeyEnv);
+ if(key===undefined)return {status:'key_unavailable'};
  // The send key and the receive key are two keys, and no two registrations share one: a shared value would let a signature of one
  // stand for another. The Bot is told only that this Mac has no usable key; the owner is told why.
- const twin=roster.status==='ok'?keyTwin(roster.value,d.env,peer,key):null;
+ const twin=roster.status==='ok'?await keyTwin(roster.value,d.secret,peer,key):null;
  if(twin){d.diagnose(`keys_not_distinct: ${peer.name} receiveKeyEnv equals ${twin}`);return {status:'key_unavailable'};}
  if(!verifySignature(key,env))return {status:'signature_mismatch'};
  const now=d.now();
@@ -104,7 +109,7 @@ export async function externalCall(d:ExternalDeps,method:string,input:unknown):P
  if(refused(allowed))return {status:allowed.reason};
  // One use per nonce. The record is also the proof of the check that a recipient later shows as "verified".
  let claim;
- try{claim=await claimNonce(d.nonceDir,{peer:peer.name,keyVersion:env.keyVersion,nonce:env.nonce,op:method,id:env.id,recipient:env.recipient,signatureSha256:signatureDigest(env.signature),at:now},now);}
+ try{claim=await claimNonce(d.nonceDir,{peer:peer.name,keyVersion:env.keyVersion,nonce:env.nonce,op:method,id:env.id,recipient:env.recipient,signatureSha256:signatureDigest(env.signature),at:now,...(d.signedHere?{signedBy:'mac' as const}:{})},now);}
  catch{return {status:'nonce_unavailable'};}
  if(claim.status==='seen')return replay(d,env,claim.record?.signatureSha256===signatureDigest(env.signature));
  if(method==='sessions')return list(d,allowed.peer,allowed.limits);

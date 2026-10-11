@@ -3,6 +3,7 @@ import {readLimits,unrestricted,type Limits} from './limits.ts';
 import {inRange,SAME_CONTENT_HOLD_MS} from './external-inbound.ts';
 import {Delivery,type Envelope,type NativeAdapter,type Receipt} from './delivery.ts';
 import {Registry} from './registry.ts';
+import type {SecretReader} from './secrets.ts';
 import {SEAMLESS_ENVELOPE_MARK} from './adapters/grok.ts';
 import type {Registration,Operation} from './protocol.ts';
 import type {Caller,CallerResult} from './caller.ts';
@@ -23,8 +24,8 @@ const KEY=/^[\x21-\x7e]+$/;
 // from the environment, the command line or a file, so a registration's address is https in every real use.
 export type WebhookOptions={loopbackHttp?:boolean;timeoutMs?:number};
 type Endpoint={url:URL;key:string}|{reason:string};
-// The two values behind the registration's variable names, read here and nowhere else. The reasons are fixed words: no value, no
-// part of a value and no system message ever reaches a result, a record or a log.
+// The two values behind the registration's variable names. The reasons are fixed words: no value, no part of a value and no system
+// message ever reaches a result, a record or a log.
 export function endpointOf(env:NodeJS.ProcessEnv,names:Pick<Peer,'addressEnv'|'sendKeyEnv'>,loopbackHttp:boolean):Endpoint{
  const address=env[names.addressEnv];
  if(typeof address!=='string'||address==='')return {reason:'address_unavailable'};
@@ -46,6 +47,13 @@ const notice=(replyTo?:string)=>['[seamless] 別の会話から'+(replyTo?'返�
 export function botBody(e:Envelope,markUnapproved:boolean){
  return {mark:SEAMLESS_ENVELOPE_MARK,notice:notice(e.replyTo),schemaVersion:1,id:e.id,sender:e.sender,recipient:e.recipient,...(e.replyTo?{replyTo:e.replyTo}:{}),text:e.text,...(markUnapproved?{humanApproval:false as const}:{})};
 }
+// The address and the send key are fetched through the reader (the environment, then the Keychain; src/secrets.ts), and nothing
+// else is: the receive key is never asked for here.
+async function endpointFor(secret:SecretReader,names:Pick<Peer,'addressEnv'|'sendKeyEnv'>,loopbackHttp:boolean):Promise<Endpoint>{
+ const values:NodeJS.ProcessEnv={};
+ for(const name of [names.addressEnv,names.sendKeyEnv]){const value=await secret(name);if(value!==undefined)values[name]=value;}
+ return endpointOf(values,names,loopbackHttp);
+}
 async function post(endpoint:{url:URL;key:string},body:string,timeoutMs:number):Promise<Receipt>{
  let res:Response;
  // redirect:manual: an answer that points elsewhere is not followed, so the key goes to the registered address only.
@@ -61,14 +69,14 @@ async function post(endpoint:{url:URL;key:string},body:string,timeoutMs:number):
 // that were just checked. The reservation is already made when this runs (Delivery); a result other than rejected keeps it.
 // The address and the key were found usable by the authorization just before; reading them again here only fails if a variable was
 // changed in those few lines, and then the request is rejected and keeps its reservation like any other refused one.
-export function webhookSend(o:{peer:()=>Peer|undefined;env:NodeJS.ProcessEnv;options:WebhookOptions;markUnapproved:()=>Promise<boolean>}):NativeAdapter['send']{
+export function webhookSend(o:{peer:()=>Peer|undefined;secret:SecretReader;options:WebhookOptions;markUnapproved:()=>Promise<boolean>}):NativeAdapter['send']{
  return async(target,envelope,authorize)=>{
   const body=JSON.stringify(botBody(envelope,await o.markUnapproved()));
   // The last look at the roster, the limits and the caller, right before the POST; only reading two variables lies between.
   if(authorize&&!await authorize())return {status:'rejected'};
   const peer=o.peer();
   if(!peer||peer.name!==target.nativeId)return {status:'rejected'};
-  const endpoint=endpointOf(o.env,peer,o.options.loopbackHttp===true);
+  const endpoint=await endpointFor(o.secret,peer,o.options.loopbackHttp===true);
   if('reason' in endpoint)return {status:'rejected',reason:endpoint.reason};
   return post(endpoint,body,o.options.timeoutMs??WEBHOOK_TIMEOUT_MS);
  };
@@ -76,7 +84,7 @@ export function webhookSend(o:{peer:()=>Peer|undefined;env:NodeJS.ProcessEnv;opt
 export type BotSendDeps={
  caller:Caller;observe:()=>Promise<CallerResult>;callerRegistration:Registration;
  peersPath:string;limitsPath:string;reservationDir:string;keyPath:string;now?:()=>number;
- env:NodeJS.ProcessEnv;git:NonNullable<ScanOptions['git']>;adapter:NativeAdapter;
+ secret:SecretReader;git:NonNullable<ScanOptions['git']>;adapter:NativeAdapter;
  rejectedVersion:(n:Pick<SessionIdentity,'provider'|'version'>,limits:Limits)=>{status:string}|null;
  markUnapproved:()=>Promise<boolean>;webhook?:WebhookOptions;
 };
@@ -108,7 +116,7 @@ export async function sendToBot(d:BotSendDeps,ticket:{nativeId:string;generation
   const seen=JSON.stringify(peer);if(first!==undefined&&first!==seen)return 'peer_changed';
   // The two variables are looked at here for their form only, so a Bot whose address or key is unset or wrong stops before anything is
   // reserved and its id stays free; the values are read again, and used, only at the POST.
-  const endpoint=endpointOf(d.env,peer,d.webhook?.loopbackHttp===true);if('reason' in endpoint)return endpoint.reason;
+  const endpoint=await endpointFor(d.secret,peer,d.webhook?.loopbackHttp===true);if('reason' in endpoint)return endpoint.reason;
   first=seen;current=peer;return null;
  };
  const denied=await validate();if(denied)return {status:denied};
@@ -124,7 +132,7 @@ export async function sendToBot(d:BotSendDeps,ticket:{nativeId:string;generation
  // moved (the receiving path decides the same for a reply to a request made to the Bot, tests/inbound.test.ts). So the Bot's own
  // envelopes in the conversation are read under the current key version; another registration's, or a look-alike's, are left as they are.
  const inbound=d.adapter.inbound?async(recipient:Registration)=>(await d.adapter.inbound!(recipient)).map(e=>e.sender.id===botId&&e.sender.nativeId===ticket.nativeId?{...e,sender:{...e.sender,generation:ticket.generation}}:e):undefined;
- const adapter:NativeAdapter={...d.adapter,...(inbound?{inbound}:{}),send:webhookSend({peer:()=>current,env:d.env,options:d.webhook??{},markUnapproved:d.markUnapproved})};
+ const adapter:NativeAdapter={...d.adapter,...(inbound?{inbound}:{}),send:webhookSend({peer:()=>current,secret:d.secret,options:d.webhook??{},markUnapproved:d.markUnapproved})};
  const delivery=new Delivery(new Registry([caller,bot]),caller.id,adapter,{tracking:{keyPath:d.keyPath,now:d.now},fixedTarget:bot,validate,reservationDir:d.reservationDir,holdSubmittedMs:SAME_CONTENT_HOLD_MS});
  return delivery.send({target:botId,id:call.id,text:call.text,replyTo:call.replyTo,scope:'any_registered'});
 }

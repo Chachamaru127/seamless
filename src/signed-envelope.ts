@@ -1,7 +1,8 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 
 // Bot -> Mac (specs/202610-more-peers T2-3). The Bot signs an envelope with the registration's RECEIVE key; this Mac only verifies.
-// There is deliberately no signing function here: nothing in seamless can sign with a Mac-held key.
+// There is deliberately no signing function here. The MVP's stand-in (src/bot-sign.ts, command line only) signs on this Mac; it is to go
+// before distribution, when signing goes back to the Bot's side.
 //
 // What is signed (one string, UTF-8, the nine lines joined by "\n", no trailing newline):
 //   seamless-inbound-v1

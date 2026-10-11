@@ -19,9 +19,12 @@ import {readPeers,externalPeers,defaultPeersPath} from './peers.ts';
 import {externalCall,inRange} from './external-inbound.ts';
 import {sendToBot,type WebhookOptions} from './webhook-send.ts';
 import {wasSigned} from './nonce-store.ts';
+import {secretReader,noKeychain,type KeychainReader} from './secrets.ts';
+import {signForBot} from './bot-sign.ts';
 // external: set only by `--as <registration>` on the command line (src/cli.ts): the call comes from a registered outside sender.
-export type CallContext={kind:'cli'|'mcp';meta?:unknown;external?:{name:string}};
-export type AutomaticOptions={clock?:StatusClock;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;wake?:(nativeId:string)=>Promise<string|null>;adapter?:NativeAdapter;limitsPath?:string;peersPath?:string;reservationDir?:string;env?:NodeJS.ProcessEnv;diagnose?:(line:string)=>void;webhook?:WebhookOptions};
+// sign: set only by `bot-send|bot-sessions <registration>` (src/cli.ts): the input is an unsigned request, signed here before it takes the same path (src/bot-sign.ts).
+export type CallContext={kind:'cli'|'mcp';meta?:unknown;external?:{name:string;sign?:boolean}};
+export type AutomaticOptions={clock?:StatusClock;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;wake?:(nativeId:string)=>Promise<string|null>;adapter?:NativeAdapter;limitsPath?:string;peersPath?:string;reservationDir?:string;env?:NodeJS.ProcessEnv;keychain?:KeychainReader;diagnose?:(line:string)=>void;webhook?:WebhookOptions};
 export type Ticket={provider:'codex'|'claude'|'grok';nativeId:string;generation:string;cwd:string;branch?:string|null};
 // A registered Bot has no process or folder here: the registration's name and key version stand where a conversation's id and
 // generation do, and cwd and branch are empty.
@@ -71,6 +74,9 @@ export function createAutomatic(options:AutomaticOptions={}){
   const scan=options.scan??((cwd:string,s:AutoScope)=>scanSessions(cwd,s,scanOptions));
   const inspect=options.inspect??(async(n:SessionIdentity)=>n.provider==='codex'?codexIdentity(n.nativeId,bandOwner?{...scanOptions,owner:bandOwner}:scanOptions):n.provider==='grok'?(await import('./adapters/grok.ts')).grokIdentity(n.nativeId,{...scanOptions,...scanOptions.grok},n.generation||undefined):findClaudeIdentity(n.nativeId,home,{...scanOptions,...scanOptions.claude}));
   const wake=options.wake??((id:string)=>wakeCodexThread(id,scanOptions));
+  // Addresses and keys: the environment, then the Keychain. Only the command line (src/cli.ts) hands in the real Keychain reader;
+  // without one, as in tests and when embedded, the environment is all there is.
+  const secret=secretReader(options.env??process.env,options.keychain??noKeychain);
   // Unusable limits are rejected by the delivery's own re-check, which keeps the reservation retryable.
   const markUnapproved=async()=>{const current=await readLimits(limitsPath);return current.status==='ok'&&current.value.markUnapproved===true;};
   const runtime=createNativeRuntime({...scanOptions,codexOwner:bandOwner,markUnapproved,desktopVersion:scanOptions.version,home,codexIdentity:id=>codexIdentity(id,scanOptions)});
@@ -99,7 +105,14 @@ export function createAutomatic(options:AutomaticOptions={}){
     if(!options.adapter||!options.scan)return runtime.checkCompatibility(n,compatibility);
     return compatibility.strictVersions?rejectedVersion(n,limits):null;
    };
-   return externalCall({name:context.external.name,home,now:()=>options.clock?.now()??Date.now(),env:options.env??process.env,diagnose:options.diagnose??(line=>{process.stderr.write(line+'\n');}),peersPath,limitsPath,reservationDir:options.reservationDir??join(home,'.seamless','reservations'),keyPath:join(home,'.seamless','key'),nonceDir:join(home,'.seamless','nonces'),scan,inspect,adapter,git:scanOptions.git,excluded,rejectedVersion,compatibility:externalCompatibility},method,input);
+   const now=()=>options.clock?.now()??Date.now();
+   let presented=input;
+   if(context.external.sign&&(method==='send'||method==='sessions')){
+    const signed=await signForBot({name:context.external.name,peersPath,secret,now},method,input);
+    if('result' in signed)return signed.result;
+    presented=signed.envelope;
+   }
+   return externalCall({name:context.external.name,home,now,signedHere:context.external.sign===true,secret,diagnose:options.diagnose??(line=>{process.stderr.write(line+'\n');}),peersPath,limitsPath,reservationDir:options.reservationDir??join(home,'.seamless','reservations'),keyPath:join(home,'.seamless','key'),nonceDir:join(home,'.seamless','nonces'),scan,inspect,adapter,git:scanOptions.git,excluded,rejectedVersion,compatibility:externalCompatibility},method,presented);
   }
   const observed=await caller(context);if(observed.status!=='ok')return observed;
   const c=observed.caller;
@@ -141,7 +154,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   if(method==='send'||method==='revalidate'){
    const ticket=parseTicket(p.ticket);if(idOf(ticket)===idOf(c))return {status:'self_target'};
    // A registered Bot is reached by webhook, not through a conversation: none of the checks below apply to it (src/webhook-send.ts).
-   if(ticket.provider==='grok-bot')return sendToBot({caller:c,observe:()=>caller(context),callerRegistration:registrations([c])[0],peersPath,limitsPath,reservationDir:options.reservationDir??join(home,'.seamless','reservations'),keyPath:join(home,'.seamless','key'),now:options.clock?.now,env:options.env??process.env,git:scanOptions.git,adapter,rejectedVersion,markUnapproved,webhook:options.webhook},ticket,op,{revalidate:method==='revalidate',id:p.id,text:p.text,replyTo:p.replyTo});
+   if(ticket.provider==='grok-bot')return sendToBot({caller:c,observe:()=>caller(context),callerRegistration:registrations([c])[0],peersPath,limitsPath,reservationDir:options.reservationDir??join(home,'.seamless','reservations'),keyPath:join(home,'.seamless','key'),now:options.clock?.now,secret,git:scanOptions.git,adapter,rejectedVersion,markUnapproved,webhook:options.webhook},ticket,op,{revalidate:method==='revalidate',id:p.id,text:p.text,replyTo:p.replyTo});
    const target:SessionIdentity={...ticket,socket:''};
    let unsupportedVersion:string|undefined;
    const validate=async()=>{

@@ -14,6 +14,7 @@ import {writeLimits,unrestricted} from '../src/limits.ts';
 import type {Caller} from '../src/caller.ts';
 import type {SessionIdentity} from '../src/sessions-scan.ts';
 import type {Envelope} from '../src/delivery.ts';
+import {fakeBin} from './support/fake-bin.ts';
 
 type Cleanup={after:(fn:()=>Promise<void>)=>void};
 const good=(over:Record<string,unknown>={}):Record<string,unknown>=>({name:'chachamaru',displayName:'茶々丸',product:'grok-bot',addressEnv:'CHACHAMARU_WEBHOOK_URL',sendKeyEnv:'CHACHAMARU_SEND_KEY',receiveKeyEnv:'CHACHAMARU_RECV_KEY',keyVersion:1,scope:'all',...over});
@@ -281,8 +282,13 @@ const PLACES=['.seamless','repo','.claude/projects','.codex/sessions','.grok/ses
 const KEY_ENV=['LEAKTEST_ADDR','LEAKTEST_SEND','LEAKTEST_RECV'] as const;
 const ROLE={LEAKTEST_ADDR:'addressEnv',LEAKTEST_SEND:'sendKeyEnv',LEAKTEST_RECV:'receiveKeyEnv'} as const;
 async function git(cwd:string,...args:string[]){execFileSync('git',['-c','user.name=t','-c','user.email=t@example.invalid','-c','commit.gpgsign=false',...args],{cwd,stdio:'pipe'});}
+// SEAMLESS_PEER_SECRETS_FULL=1 also looks in the three products' conversation stores (the default looks in the repository and ~/.seamless).
+const FULL={SEAMLESS_PEER_SECRETS_FULL:'1'};
+const STORES=['.claude/projects','.codex/sessions','.grok/sessions'];
 async function leak(t:Cleanup){
  const base=await tmp(t,'cldx-leak-'),home=join(base,'home'),repo=join(base,'repo');
+ // The commands the script calls to reach the Keychain are stand-ins, first on PATH: a test never reaches the real Keychain.
+ const fake=await fakeBin(base);
  for(const d of ['.seamless','.claude/projects/p','.codex/sessions/s','.grok/sessions/g'])await mkdir(join(home,d),{recursive:true});
  await mkdir(repo);execFileSync('git',['init','-q'],{cwd:repo});await writeFile(join(repo,'notes.txt'),'nothing secret here\n');
  await writeFile(join(home,'.claude/projects/p/a.jsonl'),'{"text":"hello"}\n');
@@ -290,26 +296,43 @@ async function leak(t:Cleanup){
  const place=(p:string)=>p==='repo'?repo:join(home,p);
  const roster_=roster({...good({scope:'all'}),addressEnv:KEY_ENV[0],sendKeyEnv:KEY_ENV[1],receiveKeyEnv:KEY_ENV[2]});
  const run=(env:Record<string,string|undefined>={},opts:{cwd?:string;path?:string;args?:readonly string[]}={})=>{
-  const r=spawnSync('bash',[...(opts.args??[]),script],{cwd:opts.cwd??repo,encoding:'utf8',env:{PATH:opts.path??`${nodeDir}:${process.env.PATH}`,HOME:home,...values,...env} as Record<string,string>});
+  const r=spawnSync('bash',[...(opts.args??[]),script],{cwd:opts.cwd??repo,encoding:'utf8',env:{PATH:`${fake.bin}:${opts.path??`${nodeDir}:${process.env.PATH}`}`,HOME:home,...fake.env,...values,...env} as Record<string,string>});
   const out=r.stdout+r.stderr;
   for(const v of [...Object.values(values),...Object.values(env)])if(v&&v.length>=8)assert.equal(out.includes(v),false,'a value reached the output');
   for(const n of KEY_ENV)assert.equal(out.includes(n),false,'a variable name reached the output');
   return {status:r.status,out};
  };
- return {base,home,repo,values,place,roster:roster_,run,writeRoster:(v:unknown=roster_,mode?:number)=>put(join(home,'.seamless','peers.json'),v,mode)};
+ return {base,home,repo,values,place,fake,roster:roster_,run,writeRoster:(v:unknown=roster_,mode?:number)=>put(join(home,'.seamless','peers.json'),v,mode)};
 }
 const fails=(r:{status:number|null;out:string},role:string,label?:string)=>{assert.equal(r.status,1,label??r.out);assert.match(r.out,/peer-secrets: 失敗/,label);assert.match(r.out,new RegExp(`chachamaru の ${role}`),label);};
 test('peer-secrets: no roster, or a roster without registrations, passes without doing anything',async t=>{
  const f=await leak(t);let r=f.run();assert.equal(r.status,0);assert.match(r.out,/^peer-secrets: ok/);
  await f.writeRoster(roster());r=f.run({LEAKTEST_SEND:''});assert.equal(r.status,0);assert.match(r.out,/^peer-secrets: ok/);
 });
-test('peer-secrets: with registrations whose values are set and stored nowhere, it passes',async t=>{
- const f=await leak(t);await f.writeRoster();const r=f.run();assert.equal(r.status,0,r.out);assert.match(r.out,/^peer-secrets: ok\n$/);
+test('peer-secrets: with registrations whose values are set and stored nowhere, it passes; the default says which stores it did not look in, the full run does not',async t=>{
+ const f=await leak(t);await f.writeRoster();
+ let r=f.run(FULL);assert.equal(r.status,0,r.out);assert.match(r.out,/^peer-secrets: ok\n$/);
+ r=f.run();assert.equal(r.status,0,r.out);assert.match(r.out,/^peer-secrets: ok\npeer-secrets: 注記（会話の保存先.*SEAMLESS_PEER_SECRETS_FULL=1 で照合する）\n$/);
 });
-for(const place of PLACES)test(`peer-secrets: a value written under ${place} fails and names the registration and role only`,async t=>{
+for(const place of PLACES)test(`peer-secrets: a value written under ${place} fails and names the registration and role only${STORES.includes(place)?' (full run)':''}`,async t=>{
  const f=await leak(t);await f.writeRoster();
  const dir=f.place(place);await mkdir(dir,{recursive:true});await writeFile(join(dir,'record.log'),`line before\nsaved: ${f.values.LEAKTEST_SEND}\nline after\n`);
- const r=f.run();fails(r,'sendKeyEnv');assert.equal(/addressEnv|receiveKeyEnv/.test(r.out),false,'only the leaked slot is named');
+ const r=f.run(STORES.includes(place)?FULL:{});fails(r,'sendKeyEnv');assert.equal(/addressEnv|receiveKeyEnv/.test(r.out),false,'only the leaked slot is named');
+});
+// Why the default is narrow: once a registration exists the whole of the conversation stores is tens of gigabytes (about ten minutes), which
+// made verify.sh unusable (specs/202610-more-peers evidence T2-1 and T2-6). The default is the repository (main checkout and worktree) and ~/.seamless.
+for(const store of STORES)test(`peer-secrets: a value under ${store} is not looked for by default, and the pass says so; the full run finds it`,async t=>{
+ const f=await leak(t);await f.writeRoster();
+ await writeFile(join(f.home,store,store.startsWith('.claude')?'p':store.startsWith('.codex')?'s':'g','record.log'),`saved: ${f.values.LEAKTEST_SEND}\n`);
+ let r=f.run();assert.equal(r.status,0,r.out);assert.match(r.out,/^peer-secrets: ok\npeer-secrets: 注記（会話の保存先/);
+ r=f.run(FULL);fails(r,'sendKeyEnv');assert.match(r.out,new RegExp(store.replace('.','\\.')));
+ // The default still looks in the repository and in ~/.seamless.
+ await writeFile(join(f.repo,'leak.txt'),f.values.LEAKTEST_RECV);fails(f.run(),'receiveKeyEnv');
+});
+test('peer-secrets: the full run is on for 1 only; any other value is the default',async t=>{
+ const f=await leak(t);await f.writeRoster();await writeFile(join(f.home,'.claude/projects/p/record.log'),`saved: ${f.values.LEAKTEST_SEND}\n`);
+ for(const v of ['0','','true','yes','11'])assert.equal(f.run({SEAMLESS_PEER_SECRETS_FULL:v}).status,0,JSON.stringify(v));
+ assert.equal(f.run({SEAMLESS_PEER_SECRETS_FULL:'1'}).status,1);
 });
 for(const name of KEY_ENV)test(`peer-secrets: a leaked ${name} is caught whichever of the three names it is`,async t=>{
  const f=await leak(t);await f.writeRoster();await writeFile(join(f.repo,'leak.txt'),`prefix-${f.values[name]}-suffix`);
@@ -370,26 +393,28 @@ for(const locale of ['en_US.UTF-8','ja_JP.UTF-8'])test(`peer-secrets: under ${lo
  fails(f.run({...utf8,LEAKTEST_SEND:wide}),'sendKeyEnv','a non-ASCII value next to invalid bytes');
 });
 // A storage place or a file inside it may be a symbolic link; BSD grep -r alone follows neither.
-for(const place of ['.seamless','.claude/projects','.codex/sessions','.grok/sessions'])test(`peer-secrets: ${place} as a symbolic link to a folder is still searched`,async t=>{
- const f=await leak(t),moved=join(f.base,'moved'),link=join(f.home,place);
+for(const place of ['.seamless',...STORES])test(`peer-secrets: ${place} as a symbolic link to a folder is still searched`,async t=>{
+ const f=await leak(t),moved=join(f.base,'moved'),link=join(f.home,place),env=place==='.seamless'?{}:FULL;
  await mkdir(join(moved,'inner'),{recursive:true});await writeFile(join(moved,'inner','record.log'),`saved ${f.values.LEAKTEST_RECV}\n`);
  await rm(link,{recursive:true});await symlink(moved,link);await f.writeRoster();
- fails(f.run(),'receiveKeyEnv');
- await rm(join(moved,'inner'),{recursive:true});assert.equal(f.run().status,0,'the same link with nothing stored passes');
+ fails(f.run(env),'receiveKeyEnv');
+ await rm(join(moved,'inner'),{recursive:true});assert.equal(f.run(env).status,0,'the same link with nothing stored passes');
 });
 test('peer-secrets: a symbolic link to a file inside a storage place is followed',async t=>{
  const f=await leak(t),outside=join(f.base,'outside');await mkdir(outside);await writeFile(join(outside,'secret.txt'),`x ${f.values.LEAKTEST_SEND} y`);
  await f.writeRoster();await symlink(join(outside,'secret.txt'),join(f.home,'.claude/projects/p/linked.txt'));
- fails(f.run(),'sendKeyEnv');
+ fails(f.run(FULL),'sendKeyEnv');
 });
 test('peer-secrets: a symbolic link that goes nowhere fails instead of passing unchecked',async t=>{
- const f=await leak(t);await f.writeRoster();assert.equal(f.run().status,0);
+ const f=await leak(t);await f.writeRoster();assert.equal(f.run(FULL).status,0);
  await symlink(join(f.base,'nowhere'),join(f.home,'.codex/sessions/s/dead'));
- let r=f.run();assert.equal(r.status,1,r.out);assert.match(r.out,/peer-secrets: 失敗/);
- await rm(join(f.home,'.codex/sessions/s/dead'));assert.equal(f.run().status,0);
+ assert.equal(f.run().status,0,'a store the default run does not look in is not looked at');
+ let r=f.run(FULL);assert.equal(r.status,1,r.out);assert.match(r.out,/peer-secrets: 失敗/);
+ await rm(join(f.home,'.codex/sessions/s/dead'));assert.equal(f.run(FULL).status,0);
  await rm(join(f.home,'.grok/sessions'),{recursive:true});await symlink(join(f.base,'nowhere'),join(f.home,'.grok/sessions'));
- r=f.run();assert.equal(r.status,1,r.out);assert.match(r.out,/\.grok\/sessions/);
- await rm(join(f.home,'.grok/sessions'));assert.equal(f.run().status,0,'a place that does not exist at all is simply skipped');
+ assert.equal(f.run().status,0,'neither is a dead link in place of a store');
+ r=f.run(FULL);assert.equal(r.status,1,r.out);assert.match(r.out,/\.grok\/sessions/);
+ await rm(join(f.home,'.grok/sessions'));assert.equal(f.run(FULL).status,0,'a place that does not exist at all is simply skipped');
 });
 test('peer-secrets: a file that cannot be read fails instead of being skipped',async t=>{
  if(process.getuid?.()===0)return;
@@ -418,7 +443,7 @@ test('peer-secrets: a value is also found as a JSON encoder writes it',async t=>
 });
 test('peer-secrets: a pass names the spellings it did not check, only for values that have such characters',async t=>{
  const f=await leak(t);await f.writeRoster();
- let r=f.run();assert.match(r.out,/^peer-secrets: ok\n$/,'letters, digits and hyphens: nothing left unchecked');
+ let r=f.run(FULL);assert.match(r.out,/^peer-secrets: ok\n$/,'letters, digits and hyphens: nothing left unchecked');
  for(const v of [`https://example.invalid/hook?a=1&b=2-${randomUUID()}`,`a<b>-${randomUUID()}`,`鍵-${randomUUID()}`]){
   r=f.run({LEAKTEST_SEND:v});assert.equal(r.status,0,r.out);assert.match(r.out,/^peer-secrets: ok\n.*注記.*\\uXXXX.*\\\/.*\\u0026/s,v);
  }
@@ -474,7 +499,7 @@ test('verify.sh runs peer-secrets, its failure fails verify, and its pass keeps 
  await writeFile(join(repo,'tests','stand-in.test.ts'),passing);
  for(const [name,variable] of [['tsc','FAKE_TSC'],['claude','FAKE_CLAUDE']] as const){await writeFile(join(fakes,name),`#!/bin/sh\nexit "\${${variable}:-0}"\n`,{mode:0o755});await chmod(join(fakes,name),0o755);}
  const verify=(env:Record<string,string>={})=>{
-  const r=spawnSync('bash',[join(repo,'scripts','verify.sh')],{cwd:f.base,encoding:'utf8',env:{PATH:`${fakes}:${nodeDir}:${process.env.PATH}`,HOME:f.home,...f.values,...env}});
+  const r=spawnSync('bash',[join(repo,'scripts','verify.sh')],{cwd:f.base,encoding:'utf8',env:{PATH:`${fakes}:${f.fake.bin}:${nodeDir}:${process.env.PATH}`,HOME:f.home,...f.fake.env,...f.values,...env}});
   const out=r.stdout+r.stderr;for(const v of Object.values(f.values))assert.equal(out.includes(v),false,'a value reached the output');
   return {status:r.status,out};
  };
@@ -501,4 +526,76 @@ test('peer-secrets: the scripts avoid tracing and echoing',()=>{
  assert.equal(outside.some(l=>/\b(echo|printf)\b[^;|]*(\$v\b|\$\{v\}|\$\{!|\$x\b)/.test(l)),false,'no echo of a value');
  for(const l of lines.filter(l=>l.includes('${!')))assert.match(l,/^\s*(local )?v="\$\{!\w+:-\}"/,'an indirect value only goes into a variable');
  for(const l of lines.filter((l,i)=>/\bemit\b/.test(l)&&i!==start))assert.match(l,/\| scan /,'emit only feeds grep through a pipe');
+});
+
+// The values: the environment first, then the Keychain (generic password, service "seamless", account = the variable's name), as the
+// program reads them (src/secrets.ts). The Keychain is a stand-in on PATH here (tests/support/fake-bin.ts).
+const UNSET={LEAKTEST_ADDR:undefined,LEAKTEST_SEND:undefined,LEAKTEST_RECV:undefined};
+const inKeychain=async(f:Awaited<ReturnType<typeof leak>>,names:readonly string[]=KEY_ENV)=>{for(const n of names)await f.fake.put(n,f.values[n]);};
+test('peer-secrets: a value that is only in the Keychain is used, and a leak of it is found',async t=>{
+ const f=await leak(t);await f.writeRoster();await inKeychain(f);
+ let r=f.run(UNSET);assert.equal(r.status,0,r.out);assert.match(r.out,/^peer-secrets: ok/);
+ for(const name of KEY_ENV){
+  await writeFile(join(f.repo,'leak.txt'),`prefix ${f.values[name]} suffix`);
+  fails(f.run(UNSET),ROLE[name],name);
+ }
+});
+test('peer-secrets: the environment wins over the Keychain, and an empty environment value falls through to it',async t=>{
+ const f=await leak(t);await f.writeRoster();
+ const other=`kc-${randomUUID()}`;await f.fake.put('LEAKTEST_SEND',other);
+ // The environment value is the one looked for; the Keychain one is not.
+ await writeFile(join(f.repo,'leak.txt'),other);assert.equal(f.run().status,0,'the Keychain value is not the one in use');
+ await writeFile(join(f.repo,'leak.txt'),f.values.LEAKTEST_SEND);fails(f.run(),'sendKeyEnv');
+ // Empty in the environment: the Keychain value is the one in use.
+ await writeFile(join(f.repo,'leak.txt'),other);fails(f.run({LEAKTEST_SEND:''}),'sendKeyEnv');
+ const calls=await f.fake.calls();
+ assert.ok(calls.length>0&&calls.every(c=>c==='security find-generic-password -s seamless -a LEAKTEST_SEND -w'),'only the one name the environment did not have was asked');
+});
+test('peer-secrets: nothing in the environment or the Keychain is a failure for that slot only',async t=>{
+ const f=await leak(t);await f.writeRoster();await inKeychain(f,['LEAKTEST_ADDR','LEAKTEST_RECV']);
+ const r=f.run({LEAKTEST_SEND:undefined});fails(r,'sendKeyEnv');assert.match(r.out,/未設定または空/);assert.equal(/addressEnv|receiveKeyEnv/.test(r.out),false);
+});
+test('peer-secrets: a Keychain that cannot be read (locked) is told apart from an item that is not there: the exit status is said, no value and no name is',async t=>{
+ const f=await leak(t);await f.writeRoster();await inKeychain(f);
+ const locked=f.run({...UNSET,FAKE_SECURITY_EXIT:'36'});fails(locked,'sendKeyEnv');
+ assert.match(locked.out,/Keychain を読めなかった（終了 36）/);assert.equal(/未設定または空/.test(locked.out),false,'a Keychain that was not read is not "not set"');
+ const absent=f.run({...UNSET,FAKE_SECURITY_EXIT:'44'});fails(absent,'sendKeyEnv');
+ assert.match(absent.out,/未設定または空/,'status 44 is the item not being there');
+});
+test('peer-secrets: a Keychain that does not answer is given up on at the time limit and said so; the run ends and fails for that slot',async t=>{
+ const f=await leak(t);await f.writeRoster();await inKeychain(f);
+ const started=Date.now(),r=f.run({...UNSET,FAKE_SECURITY_SLOW:'1',SEAMLESS_SECURITY_TIMEOUT:'1'});
+ assert.ok(Date.now()-started<20000,'each of the three lookups ended at its limit (a second), not when the stand-in finished (eight)');
+ fails(r,'sendKeyEnv');assert.match(r.out,/1 秒以内に答えなかった/);assert.equal(/未設定または空/.test(r.out),false);
+});
+test('peer-secrets: a key stored in the Keychain as "Bearer <key>" is also looked for as <key>',async t=>{
+ const f=await leak(t);await f.writeRoster();const k=f.values.LEAKTEST_SEND;await f.fake.put('LEAKTEST_SEND','Bearer '+k);
+ assert.equal(f.run({LEAKTEST_SEND:undefined}).status,0);
+ await writeFile(join(f.repo,'sent.log'),`authorization sent with ${k} once\n`);
+ fails(f.run({LEAKTEST_SEND:undefined}),'sendKeyEnv');
+});
+test('peer-secrets: the Keychain is asked only for the names the environment does not have, with the name as the only variable argument, and no value is ever an argument',async t=>{
+ const f=await leak(t);await f.writeRoster();await inKeychain(f,['LEAKTEST_ADDR','LEAKTEST_SEND']);
+ const r=f.run({LEAKTEST_SEND:undefined,LEAKTEST_ADDR:''});assert.equal(r.status,0,r.out);
+ const calls=await f.fake.calls();
+ const asked=calls.filter(c=>c.startsWith('security')).sort();
+ assert.deepEqual(asked,['security find-generic-password -s seamless -a LEAKTEST_ADDR -w','security find-generic-password -s seamless -a LEAKTEST_SEND -w']);
+ for(const line of calls)for(const v of Object.values(f.values))assert.equal(line.includes(v),false,'a value appeared in an argument list');
+});
+test('peer-secrets: a Keychain value is not printed by bash -x, by SHELLOPTS=xtrace, or by a failing run',async t=>{
+ const f=await leak(t);await f.writeRoster();await inKeychain(f);
+ for(const [label,env,opts] of [['bash -x',UNSET,{args:['-x']}],['SHELLOPTS=xtrace',{...UNSET,SHELLOPTS:'xtrace'},{}]] as const){
+  const r=f.run(env,opts);assert.equal(r.status,0,`${label}: ${r.out}`);assert.match(r.out,/^peer-secrets: ok/);
+ }
+ await writeFile(join(f.repo,'leak.txt'),f.values.LEAKTEST_SEND);
+ fails(f.run({...UNSET,SHELLOPTS:'xtrace'}),'sendKeyEnv','a failing run traced from outside');
+});
+test('peer-secrets: a Keychain that fails (command missing, locked) is "not set", never a pass',async t=>{
+ const f=await leak(t);await f.writeRoster();
+ // No security command at all: the shim is removed from PATH by pointing PATH at a folder with only node and bash.
+ const bare=join(f.base,'bare');await mkdir(bare);
+ await symlink(process.execPath,join(bare,'node'));
+ for(const tool of ['bash','git','grep','tr','cat','dirname','basename'])await symlink(execFileSync('bash',['-c',`command -v ${tool}`]).toString().trim(),join(bare,tool));
+ const r=spawnSync(execFileSync('bash',['-c','command -v bash']).toString().trim(),[script],{cwd:f.repo,encoding:'utf8',env:{PATH:bare,HOME:f.home,...f.values,LEAKTEST_SEND:''} as Record<string,string>});
+ assert.equal(r.status,1,r.stdout+r.stderr);assert.match(r.stdout,/chachamaru の sendKeyEnv/);
 });

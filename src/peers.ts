@@ -3,7 +3,8 @@ import {homedir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {readPrivateJson} from './limits.ts';
 
-// The roster of executors outside this Mac (Grok Bot). Only the owner writes ~/.seamless/peers.json: seamless has no writer here.
+// The roster of executors outside this Mac (Grok Bot). Only the owner writes ~/.seamless/peers.json: the program has no writer here;
+// the one writer is the owner's own setup script (scripts/peer-setup.sh, through scripts/peer-roster-write.ts).
 // It holds the NAMES of environment variables, never their values, and this module never reads process.env.
 export type PeerScope=string[]|'all';
 export type Peer={name:string;displayName:string;product:'grok-bot';addressEnv:string;sendKeyEnv:string;receiveKeyEnv:string;keyVersion:number;revoked?:{at:string};operations?:{read?:false;send?:boolean};scope?:PeerScope};

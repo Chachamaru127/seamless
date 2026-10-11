@@ -11,6 +11,7 @@ import {signingInput,parseSignedEnvelope,verifySignature,sha256Hex} from '../src
 import {claimNonce,wasSigned} from '../src/nonce-store.ts';
 import {SAME_CONTENT_HOLD_MS} from '../src/external-inbound.ts';
 import {externalFixture,peerRecord,secondRecord,sign,isoSeconds,T0} from './support/signed-fixture.ts';
+import {fakeKeychain} from './support/keychain-fixture.ts';
 
 // specs/202610-more-peers T2-3: what a registered outside sender (Grok Bot) must do before this Mac delivers its envelope.
 async function expectRejected(f:Awaited<ReturnType<typeof externalFixture>>,input:unknown,status:string,name?:string){
@@ -289,9 +290,10 @@ test('a real CLI process: the envelope comes on standard input, the nonce surviv
  const twin=sign(recv,{...env,nonce:randomBytes(16).toString('base64url'),id:'cli-twin'});
  const pair=await Promise.all([run(JSON.stringify(twin)),run(JSON.stringify(twin))]);
  assert.deepEqual(pair.map(x=>JSON.parse(x.out).status).sort((a,b)=>a.localeCompare(b)),['nonce_replayed','target_offline']);
- // Without a key in the environment the same kind of envelope is refused.
- const third=await run(JSON.stringify(sign(recv,{...env,nonce:randomBytes(16).toString('base64url'),id:'cli-2'})),{CHACHAMARU_RECV_KEY:''});
- assert.equal(JSON.parse(third.out).status,'key_unavailable');
+ // Under another key the same kind of envelope is refused. (A missing key would send this process to the real Keychain, which the
+ // command line reads by design and a test must not: "no key" is tested in the process with an injected reader, below and in the other tests.)
+ const third=await run(JSON.stringify(sign(recv,{...env,nonce:randomBytes(16).toString('base64url'),id:'cli-2'})),{CHACHAMARU_RECV_KEY:randomBytes(32).toString('hex')});
+ assert.equal(JSON.parse(third.out).status,'signature_mismatch');
 });
 
 // Listing destinations with the same signature, and reading, which is never offered.
@@ -636,4 +638,53 @@ test('an outside sender whose registration covers none of the live conversations
  assert.equal(list.status,'ok');assert.deepEqual(list.candidates,[]);
  const named=await f.call('send',f.envelope({id:'none-named'}));
  assert.equal(named.status,'scope_conflict');assert.equal(f.writes(),0);
+});
+
+// The Keychain (specs/202610-more-peers, MVP): the receive key, and the other keys it is compared with, come from the environment and,
+// when the environment has none, from the Keychain. The reader is injected here; no test reaches the real Keychain.
+const noKeyVariables=(f:Awaited<ReturnType<typeof externalFixture>>)=>{for(const n of ['CHACHAMARU_RECV_KEY','CHACHAMARU_SEND_KEY','SECOND_RECV_KEY','SECOND_SEND_KEY'])delete f.env[n];};
+test('keychain: the receive key can come from the Keychain, and an empty environment value falls through to it',async t=>{
+ const f=await externalFixture(t);noKeyVariables(f);
+ const k=fakeKeychain({CHACHAMARU_RECV_KEY:f.keys.recv,CHACHAMARU_SEND_KEY:f.keys.send});const auto=f.make({keychain:k.read});
+ const r=await f.call('send',f.envelope(),'chachamaru',auto);
+ assert.equal(r.status,'submitted',JSON.stringify(r));assert.equal(f.writes(),1);
+ assert.deepEqual([...new Set(k.asked)].sort(),['CHACHAMARU_RECV_KEY','CHACHAMARU_SEND_KEY'],'the key and the keys it is compared with; never an address');
+ f.env.CHACHAMARU_RECV_KEY='';
+ assert.equal((await f.call('send',f.envelope(),'chachamaru',auto)).status,'submitted');
+ // A wrong key is still a wrong key, wherever it was read from.
+ assert.equal((await f.call('send',f.envelope({key:f.keys.send}),'chachamaru',auto)).status,'signature_mismatch');
+ const text=JSON.stringify([r,await f.readNonces(),f.diagnostics]);for(const key of Object.values(f.keys))assert.ok(!text.includes(key));
+});
+test('keychain: no key in the environment or the Keychain, or a Keychain that fails, is key_unavailable',async t=>{
+ const f=await externalFixture(t);noKeyVariables(f);
+ for(const reader of [fakeKeychain().read,async()=>{throw new Error('locked');},async()=>'']){
+  await expectRejected(f,f.envelope(),'key_unavailable');
+  assert.equal((await f.call('send',f.envelope(),'chachamaru',f.make({keychain:reader}))).status,'key_unavailable');
+ }
+ assert.equal(f.writes(),0);assert.equal(await f.noncesWritten(),0);
+});
+test('keychain: two keys that are one value are caught when either one lives in the Keychain',async t=>{
+ const f=await externalFixture(t);noKeyVariables(f);
+ await f.writePeers(peerRecord({scope:[f.work]}),secondRecord({scope:[f.work]}));
+ const items={CHACHAMARU_RECV_KEY:f.keys.recv,CHACHAMARU_SEND_KEY:f.keys.send,SECOND_RECV_KEY:f.keys.secondRecv,SECOND_SEND_KEY:f.keys.secondSend};
+ const control=f.make({keychain:fakeKeychain(items).read});
+ assert.equal((await f.call('send',f.envelope(),'chachamaru',control)).status,'submitted');
+ // The second registration's send key (in the Keychain) holds the first one's receive key.
+ const twin=f.make({keychain:fakeKeychain({...items,SECOND_SEND_KEY:f.keys.recv}).read});
+ const r=await f.call('send',f.envelope(),'chachamaru',twin);
+ assert.equal(r.status,'key_unavailable',JSON.stringify(r));
+ assert.deepEqual(f.diagnostics,['keys_not_distinct: chachamaru receiveKeyEnv equals second sendKeyEnv']);
+ for(const line of f.diagnostics)for(const key of Object.values(f.keys))assert.ok(!line.includes(key));
+ // The environment and the Keychain are one set of keys: the twin may be in the environment while the key is in the Keychain.
+ f.env.SECOND_RECV_KEY=f.keys.recv;
+ const mixed=f.make({keychain:fakeKeychain({CHACHAMARU_RECV_KEY:f.keys.recv,CHACHAMARU_SEND_KEY:f.keys.send,SECOND_SEND_KEY:f.keys.secondSend}).read});
+ assert.equal((await f.call('send',f.envelope(),'chachamaru',mixed)).status,'key_unavailable');
+ assert.equal(f.writes(),1,'only the control was delivered');
+});
+test('keychain: listing the roster never reads a value',async t=>{
+ const f=await externalFixture(t);noKeyVariables(f);
+ const k=fakeKeychain({CHACHAMARU_RECV_KEY:f.keys.recv});
+ const caller={provider:'claude' as const,nativeId:'claude-b',generation:'42@100',cwd:f.work,socket:'unused',source:'claude-ancestor' as const};
+ const auto=f.make({keychain:k.read,caller:async()=>({status:'ok' as const,caller})});
+ const r=await auto('sessions',{peek:true});assert.equal(r.external.length,1);assert.deepEqual(k.asked,[]);
 });

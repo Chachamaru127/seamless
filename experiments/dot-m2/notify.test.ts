@@ -379,6 +379,19 @@ test('(4c) a callback that answers the headers and then stalls on the body is st
  assert.equal(h.calls.length,1,'a failed check arms no notification');
 });
 
+test('(4d) a callback check whose 2xx answer is larger than 16 KiB is cut off as too_large and the subscription is refused',{timeout:5000},async()=>{
+ // 2026-10-11 の逆の家系の点検: 確認の返事を上限なしで読んでいた。challenge の後ろに大きな詰め物を付けた返事でも受理していた。
+ const huge:Handler=call=>json(JSON.stringify({challenge:JSON.parse(call.body).challenge,pad:'x'.repeat(2*1024*1024)}));
+ const h=harness(huge);
+ await h.send(sub(1));
+ assert.deepEqual(h.reply(1).error.data,{reason:'too_large'});
+ const verification=h.records().find(r=>r.kind==='verification')!;
+ assert.equal(verification.result,'failed');
+ assert.equal(verification.reason,'too_large');
+ await h.advance(60_000);
+ assert.equal(h.calls.length,1,'a refused check arms no notification');
+});
+
 test('(5) a re-subscribe of the same callback and event returns the same id, checks nothing again and extends the expiry',async()=>{
  const h=harness();
  const first=await accepted(h,1,{ttlMs:60_000});
@@ -784,6 +797,16 @@ test('(9) the log has the records of subscribe, check and notification and no se
   ...bodies];
  for(const value of leaks)assert.equal(everything.includes(value),false,`the log leaked ${String(value).slice(0,24)}`);
  assert.equal(/v1,|msg_verification|challenge|signature|authorization|secret/i.test(everything.replace(/has_secret|challenge_failed/g,'')),false);
+});
+
+test('(9b) a method name that is not a known one is never written, whatever its shape (a secret-shaped name stays out of the log)',async()=>{
+ // 2026-10-11 の逆の家系の点検: 形の合う未知の method を、そのまま記録に書いていた。
+ const h=harness();
+ for(const [i,name] of [['secretlike','whsecret.abcdefgh'],['short','foo'],['path','tools/steal']].entries())await h.send(req(i+1,name[1]));
+ const methods=h.records().filter(r=>r.kind==='request').map(r=>r.method);
+ assert.deepEqual(methods,['(other)','(other)','(other)']);
+ const everything=h.rawLog();
+ for(const raw of ['whsecret','abcdefgh','foo','tools/steal'])assert.equal(everything.includes(raw),false,`the log leaked ${raw}`);
 });
 
 test('(10) the other methods answer exactly like the M1 stub; unknown methods, notifications and broken lines are handled',async()=>{

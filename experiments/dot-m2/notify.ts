@@ -15,6 +15,7 @@ const VERSION='2026-07-28';
 const SERVER_INFO={name:'seamless-dot-m1-stub',version:'0.0.0'};
 const EVENT_NAME='m1.probe.created';
 const CALLBACK_HOST='connectors.api.openai.com';
+const MAX_VERIFY_BYTES=16_384;
 // ホスト名の直後は、既定のポートの :443 を明示したものか、/ ? # か終端。
 const CALLBACK_URL=new RegExp('^https://'+CALLBACK_HOST.replace(/\./g,'\\.')+'(?::443)?(?:[/?#]|$)');
 const MAX_LINE=1024*1024;
@@ -23,7 +24,6 @@ const MAX_GRANT_MS=3600_000;
 const CALLBACK_TIMEOUT_MS=10_000;
 const NOTIFY_DELAY_MS=5_000;
 const KNOWN_METHODS=new Set(['initialize','notifications/initialized','notifications/cancelled','ping','server/discover','tools/list','tools/call','events/list','events/subscribe','events/unsubscribe','resources/list','prompts/list','subscriptions/listen']);
-const METHOD_SHAPE=/^[a-z][a-z0-9]*(?:[/_.-][a-z][a-z0-9]*){0,3}$/;
 
 // 外との接点は全てここから注入する。fetch、時計、タイマー、記録の書き込み、標準出力。
 export type Deps={
@@ -41,7 +41,8 @@ type Parsed={url:string;secret:string;args:Obj;grant:number}|{reason:string};
 type Posted={status:number|null;reason:string|null;text:string|null};
 
 const isObject=(v:unknown):v is Obj=>typeof v==='object'&&v!==null&&!Array.isArray(v);
-const methodName=(m:unknown):string=>typeof m!=='string'?'(none)':KNOWN_METHODS.has(m)?m:m.length<=48&&METHOD_SHAPE.test(m)?m:'(other)';
+// 記録する method は既知の名前だけ。ほかの文字列は形が合っても書かない（secret の形の文字列が method に入っても残さない）。
+const methodName=(m:unknown):string=>typeof m!=='string'?'(none)':KNOWN_METHODS.has(m)?m:'(other)';
 const canonical=(v:unknown):string=>Array.isArray(v)?'['+v.map(canonical).join(',')+']':isObject(v)?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}':(JSON.stringify(v)??'null');
 const identityOf=(url:string,args:Obj):string=>'sub_'+createHash('sha256').update(canonical([url,EVENT_NAME,args])).digest('hex').slice(0,32);
 const iso=(ms:number)=>new Date(ms).toISOString();
@@ -145,6 +146,12 @@ export function createNotify(deps:Deps){
   return next;
  }
 
+ // 確認の返事は challenge が入るだけの小さな JSON。上限を超えたら読むのをやめて失敗にする（大きな返事でメモリを使い切らない）。
+ async function boundedText(response:Response):Promise<string>{
+  const chunks:Buffer[]=[];let size=0;
+  if(response.body)for await(const chunk of response.body){size+=chunk.length;if(size>MAX_VERIFY_BYTES){await response.body.cancel().catch(()=>{});throw Error('too_large');}chunks.push(Buffer.from(chunk));}
+  return Buffer.concat(chunks).toString('utf8');
+ }
  // callback への POST を 1 回行う。10 秒で打ち切り（fetch が signal を無視しても打ち切る）、redirect は追わない。
  async function post(url:string,secret:string,subId:string,messageId:string,body:string,readBody:boolean):Promise<Posted>{
   const signedAt=Math.floor(deps.now()/1000);
@@ -167,7 +174,7 @@ export function createNotify(deps:Deps){
    const response=await deps.fetch(url,{method:'POST',redirect:'manual',signal:controller.signal,headers,body});
    if(!(response.status>=100&&response.status<=599))throw Error('bad_status');
    status=response.status;
-   if(readBody&&response.status>=200&&response.status<300)return await response.text();
+   if(readBody&&response.status>=200&&response.status<300)return await boundedText(response);
    response.body?.cancel().catch(()=>{});
    return null;
   })();
@@ -175,8 +182,8 @@ export function createNotify(deps:Deps){
   try{
    const text=await Promise.race([work,deadline]);
    return {status,reason:null,text};
-  }catch{
-   return {status,reason:timedOut?'timeout':'network',text:null};
+  }catch(error){
+   return {status,reason:timedOut?'timeout':(error as Error)?.message==='too_large'?'too_large':'network',text:null};
   }finally{deps.clearTimer(timer);}
  }
 

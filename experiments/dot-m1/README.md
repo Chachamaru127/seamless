@@ -37,7 +37,11 @@ T3-14 では、立花さんが自分の端末で `bash experiments/dot-m1/run-m1
 - tunnel-client は `/opt/homebrew/bin/tunnel-client` の 0.0.15 以上だけを使う。tunnel ID の形は本体の検査（`tunnel_` と 32 文字、または 4 文字の名前空間付き）に合わせる。
 - 鍵は `bash experiments/dot-m1/save-key.sh` で入れる。`security … -w` の入力欄は 128 文字を超えた分を黙って切り捨てる（2026-10-09 に実測。保存された鍵が 128 文字で、OpenAI は 401 invalid_api_key を返した）。このスクリプトは、実行後 2 分以内に新しくコピーされた `sk-` で始まる文字列を保存し、クリップボードを空にする。鍵は `security` の引数に一瞬だけ載る（同じ利用者のプロセスからだけ見える）。
 - つながったかは `/metrics` の `commands_poll_last_successful_timestamp_seconds` が 0 より大きいかで見る。`/readyz` は、鍵が断られていても `ready` を返した（2026-10-09 に実測）。
-- 健康の URL（`/readyz` など）は `.local/dot-m1/health-<tools|notools>.<pid>.url` に書かれる。
+- 健康の URL（`/readyz` など）は `.local/dot-m1/health-<tools|notools|notify>.<pid>.url` に書かれる。
+
+## M2 のモード（notify）
+
+`bash experiments/dot-m1/run-m1.sh notify` は、同じ手順（Keychain、空の環境、ロック、置き場の検査）で、`stub.ts` の代わりに `experiments/dot-m2/notify.ts` を tunnel-client の子プロセスとして起動する。記録は `.local/dot-m1/m2-notify.jsonl`。購読を受理し、callback を確認し、通知を 1 件送る測定で（送る直前に作る印 `m2-notify.jsonl.sent` が、再起動をまたいだ 2 件目を止める。再測定は印を消す）、説明は `experiments/dot-m2/README.md`。この README の `--accept-subscribe` は M1 の別の仕組みで、確認も通知もしない。
 
 ## 返すもの
 

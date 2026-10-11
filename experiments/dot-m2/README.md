@@ -12,7 +12,7 @@ M1 のスタブと同じ入口のまま、`events/subscribe` を受理し、Open
 | 通知（delivery） | 最大 1 件。記録ファイルの隣の印（`<log>.sent`）で、再起動や 2 回目の起動をまたいでも守る | `{"eventId":"evt_m2_…","name":"m1.probe.created","timestamp":…,"data":{"id":"m2-test-1"},"cursor":null}` |
 
 ```sh
-node --test experiments/dot-m2/*.test.ts     # 32 件。うち 2 件は本物のタイマーで 5 秒ずつ待つので約 12 秒かかる
+node --test experiments/dot-m2/*.test.ts     # 34 件。うち 2 件は本物のタイマーで 5 秒ずつ待つので約 12 秒かかる
 ```
 
 ## 起動
@@ -60,7 +60,7 @@ M1 の `--accept-subscribe` と `--no-tools` はこのサーバーには無い�
 
 1. **確認**: 応答を返す前に callback へ POST する。ヘッダは `Content-Type: application/json`、`webhook-id: msg_verification_<乱数>`、`webhook-timestamp`（Unix 秒）、`webhook-signature`（Standard Webhooks の `v1,<base64>`、`events.ts` の `signature` と同じ計算）、`X-MCP-Subscription-Id`。redirect は追わない（`redirect: 'manual'`）。上限は 10 秒で、`fetch` が signal を無視しても 10 秒で打ち切る。
 2. **受理の条件**: 応答が 2xx で、本文の JSON の `challenge` が送った値と一定時間の比較で一致したときだけ。
-3. **失敗**: `-32015` と `data.reason`。理由は `challenge_failed`（2xx だが challenge が違う、無い、JSON でない）、`timeout`、`http_<状態>`（2xx 以外。3xx も）、`network`（接続の失敗）。
+3. **失敗**: `-32015` と `data.reason`。理由は `challenge_failed`（2xx だが challenge が違う、無い、JSON でない）、`timeout`、`http_<状態>`（2xx 以外。3xx も）、`network`（接続の失敗）、`too_large`（確認の返事が 16 KiB を超えた）。
 4. **受理の応答**: `{resultType: "complete", id, refreshBefore, cursor: null, truncated: false}`。`refreshBefore` は「今 + 要求の ttlMs と 1 時間の小さいほう」（`ttlMs` が無い、または `null` なら 1 時間）。
 5. **更新**: 識別子（callback の URL、イベント名、arguments を並べ替えた JSON から作る `sub_…`）が同じで期限内なら、同じ ID を返す。secret が同じなら確認をやり直さず期限だけ延ばす。secret が変わったときは、新しい secret で確認し直し、通れば入れ替え、通らなければ購読を消す（古い secret で署名しても受け手が受けない可能性があるため。`events.ts` の試験と同じ扱い）。
 6. **同時の要求**: 同じ識別子の subscribe と unsubscribe は 1 つずつ順に処理する。確認の最中に同じ購読が来たとき、確認が成功すれば確認は 1 回で済む（失敗したときは購読が消えるので、後ろの要求がそれぞれ確認をやり直し、返事は 10 秒ずつ遅れる。Dot の再試行は M1 で 17 秒間隔だったので、観測された動きでは起きない）。確認の最中に来た unsubscribe は確認の後に効く。他の識別子や ping は止めない。

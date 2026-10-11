@@ -107,7 +107,7 @@ async function accepted(h:H,id=1,patch:J={},delivery:J={}):Promise<string>{
 
 // 記録の許可名簿。宣言していない欄があれば落とし、宣言した欄も決まった形の値だけを通す。
 const HEX8=/^[0-9a-f]{8}$/;
-const REASONS=/^(challenge_failed|timeout|network|http_[1-5]\d\d|bad_event|bad_delivery|bad_url|bad_secret|bad_ttl|bad_arguments|no_subscription|expired|stdin_end|already_sent|reserve_failed|internal)$/;
+const REASONS=/^(challenge_failed|timeout|network|too_large|http_[1-5]\d\d|bad_event|bad_delivery|bad_url|bad_secret|bad_ttl|bad_arguments|no_subscription|expired|stdin_end|already_sent|reserve_failed|internal)$/;
 const isBool=(v:unknown)=>typeof v==='boolean';
 const nullOr=(f:(v:any)=>boolean)=>(v:any)=>v===null||f(v);
 const RECORD_FIELDS:Record<string,(v:any)=>boolean>={

@@ -74,6 +74,16 @@ test('a request the Bot signed but that was not delivered, then delivered under 
  const [delivered]=f.sent;assert.equal(delivered.id,'re-1');
  assert.equal(await wasSigned(f.nonces,f.reservations,delivered),false,'the delivery was made by a signature of this Mac');
 });
+test('if the record of a Mac signature cannot take over the name a recipient looks up, nothing is delivered (fail closed)',async t=>{
+ // 2026-10-11 の逆の家系の再判定: the rename that takes the name over could fail and the delivery went on, leaving the Bot's old record.
+ const f=await externalFixture(t);
+ await mkdir(f.nonces,{recursive:true,mode:0o700});
+ const name=createHash('sha256').update(JSON.stringify(['request','chachamaru',1,'fc-1',DEST])).digest('hex')+'.req';
+ await mkdir(join(f.nonces,name));
+ const r=await botSend(f,unsigned({id:'fc-1'}));
+ assert.equal(r.status,'nonce_unavailable',JSON.stringify(r));
+ assert.equal(f.writes(),0);
+});
 test('the signature is the contract\'s: the same nine lines and HMAC-SHA256 a hand-signed envelope gets, with a fresh random nonce each time',async t=>{
  const f=await externalFixture(t);const seen=new Set<string>();
  for(const id of ['n-1','n-2','n-3']){

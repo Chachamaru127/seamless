@@ -56,7 +56,8 @@ export async function claimNonce(dir:string,record:NonceRecord,now:number):Promi
   // signed before (and that was not delivered then) is never shown as the Bot's. It can only lower what a request is shown as.
   if(record.op==='send'){
    const target=join(dir,byRequest(record.peer,record.keyVersion,record.id,record.recipient));
-   if(record.signedBy==='mac'){const tmp=target+'.'+randomUUID();await link(path,tmp).then(()=>rename(tmp,target)).catch(()=>unlink(tmp).catch(()=>{}));}
+   // If the name cannot be taken over, the request is not delivered: an older record of the Bot would vouch for what this Mac signed.
+   if(record.signedBy==='mac'){const tmp=target+'.'+randomUUID();try{await link(path,tmp);await rename(tmp,target);}catch{await unlink(tmp).catch(()=>{});throw Error('vouch_unavailable');}}
    else await link(path,target).catch(()=>{});
   }
   return {status:'claimed'};

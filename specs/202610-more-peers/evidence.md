@@ -610,3 +610,17 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
   - Work chat から購読が来るか（OpenAI の手順では Work chat も購読元。通常の Chat が購読しなかったことは手順と合う）。
 - 次の一手: 測定 M2（`--accept-subscribe` で購読を受理し、OpenAI の手順どおり検証に応え、通知を 1 件 `connectors.api.openai.com` へ送る）。callback への外部送信なので、立花さんの go が要る。T3-17（本体の実装の作業分け）は M2 の後。
 - 名前（2026-10-11 立花さん）: ChatGPT の Dot の表示名を「茶々丸dot」にした。Grok Bot は「茶々丸」。名簿の登録名は英小文字（例: Grok Bot は `chachamaru`、Dot は `chachamaru-dot`）なので、表示名が似ていても登録名はぶつからない。
+
+## MVP の部品と M2 の道具の判定（2026-10-11、Codex gpt-6-astra、high、読み取り専用）
+
+- 立花さんの方針（Plans.md の「MVP を先に完成させる」）に沿って、2 つを作った。
+  - 茶々丸の MVP 部品（workflow `wf_3cbbf5ae-07e`）: 鍵と住所を Keychain から読む（`src/secrets.ts`）、Mac 上で署名を代行する `bot-send` と `bot-sessions`（`src/bot-sign.ts`）、設定スクリプト `scripts/peer-setup.sh`、漏れの確認の既定の範囲。
+  - M2 の道具（workflow `wf_a95eb098-b2a`）: `experiments/dot-m2/notify.ts` と `run-m1.sh notify`。
+  - どちらも Claude の家系の施工、照合、穴探し、直しの 4 役で作った。
+- 茶々丸の部品の判定: 1 回目（a62bb95）FAIL 2 件 → 2 回目（0ee7bb4）FAIL 2 件 → 3 回目（d8e2066）PASS、確信度 high（今の MVP の使い方が前提）。原文は `reviews/mvp-judge-a62bb95.md`、`reviews/mvp-rejudge-0ee7bb4.md`、`reviews/mvp-rejudge-d8e2066.md`。
+  - 直したもの: Mac が署名して届けた依頼を、同じ ID の古い茶々丸の署名の記録で「確かめた送り手」と表示しない（Mac の署名の記録が名前を上書きする）。上書きできなければ届けない。
+  - 先送りの表に足したもの: 設定スクリプトが値を引数に一瞬載せること、Keychain の読み手の範囲、掃除と上書きが重なる経路（茶々丸が自分で署名するまで起きない）。
+- M2 の道具の判定: 1 回目（f6b8204）FAIL 2 件（未知の要求の名前を記録に書く、確認の返事を上限なしで読む）→ 2 回目（006f34c）PASS、確信度 high。IP の固定の先送りは、この 1 回の測定を止める理由にならないと判定された。原文は `reviews/m2-judge-f6b8204.md`、`reviews/m2-rejudge-006f34c.md`。
+- 私が走らせた `bash scripts/verify.sh`（d8e2066）: exit 0。node 697 件すべて通過、帯 99 件、`peer-secrets: ok（登録なし）`。`node --test experiments/dot-m2/*.test.ts`: 34 件通過。
+- 帯の試験 2 件が、Claude Code 2.1.296 の試験ハーネスの変更（`ui.toast` の代役に `{ value }` を求める）で落ちていた。試験の代役だけを合わせた（本番の hook は無変更）。
+- 点検役の 1 人が、偽の道具を置かずに `peer-setup.sh` を 1 回起動し、実在の Keychain に存在確認を 1 回、実在のクリップボードを約 30 秒読んだと自己申告した。Keychain の `seamless` の項目が 1 つも無いことを私が確かめた（値の書き込みと読み出しは無い）。

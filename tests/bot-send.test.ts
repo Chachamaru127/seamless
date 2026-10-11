@@ -61,6 +61,19 @@ test('what this Mac signed is not shown as the Bot\'s: the record says so, and t
  await cli(['bot-sessions','chachamaru'],async()=>'',f.automatic);
  assert.equal((await f.readNonces()).find(r=>r.op==='sessions').signedBy,'mac');
 });
+// 2026-10-11 の逆の家系の判定: the Bot's signature spent on a request that was not delivered (the destination was not running) left the
+// one name "was this request signed" looks up; the same id delivered later by bot-send was then shown as the Bot's (verified).
+test('a request the Bot signed but that was not delivered, then delivered under the same id by bot-send, is shown as declared',async t=>{
+ const f=await externalFixture(t);
+ const offline=f.make({inspect:async()=>null});
+ const env=f.envelope({recipient:DEST,id:'re-1',text:'あとで届く'});
+ assert.equal((await f.call('send',env,'chachamaru',offline)).status,'target_offline');
+ assert.equal(f.writes(),0);
+ assert.equal((await botSend(f,unsigned({id:'re-1',text:'あとで届く'}))).status,'submitted');
+ assert.equal(f.writes(),1);
+ const [delivered]=f.sent;assert.equal(delivered.id,'re-1');
+ assert.equal(await wasSigned(f.nonces,f.reservations,delivered),false,'the delivery was made by a signature of this Mac');
+});
 test('the signature is the contract\'s: the same nine lines and HMAC-SHA256 a hand-signed envelope gets, with a fresh random nonce each time',async t=>{
  const f=await externalFixture(t);const seen=new Set<string>();
  for(const id of ['n-1','n-2','n-3']){

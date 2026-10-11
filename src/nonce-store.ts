@@ -52,7 +52,13 @@ export async function claimNonce(dir:string,record:NonceRecord,now:number):Promi
  if(await publish(path,JSON.stringify(record))){
   // The same inode under the second name: same content, same age, same permissions. If a request id is signed again, the first
   // record already vouches for it and the second name is left alone; if it cannot be made, the request just stays unvouched.
-  if(record.op==='send')await link(path,join(dir,byRequest(record.peer,record.keyVersion,record.id,record.recipient))).catch(()=>{});
+  // A signature this Mac made takes the second name over in one step (rename), so a request it delivered under an id the Bot had
+  // signed before (and that was not delivered then) is never shown as the Bot's. It can only lower what a request is shown as.
+  if(record.op==='send'){
+   const target=join(dir,byRequest(record.peer,record.keyVersion,record.id,record.recipient));
+   if(record.signedBy==='mac'){const tmp=target+'.'+randomUUID();await link(path,tmp).then(()=>rename(tmp,target)).catch(()=>unlink(tmp).catch(()=>{}));}
+   else await link(path,target).catch(()=>{});
+  }
   return {status:'claimed'};
  }
  const old=await privateJson(path);

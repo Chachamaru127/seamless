@@ -609,3 +609,4 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
   - 複数の plugin の登録が同じ tunnel を選べるか。
   - Work chat から購読が来るか（OpenAI の手順では Work chat も購読元。通常の Chat が購読しなかったことは手順と合う）。
 - 次の一手: 測定 M2（`--accept-subscribe` で購読を受理し、OpenAI の手順どおり検証に応え、通知を 1 件 `connectors.api.openai.com` へ送る）。callback への外部送信なので、立花さんの go が要る。T3-17（本体の実装の作業分け）は M2 の後。
+- 名前（2026-10-11 立花さん）: ChatGPT の Dot の表示名を「茶々丸dot」にした。Grok Bot は「茶々丸」。名簿の登録名は英小文字（例: Grok Bot は `chachamaru`、Dot は `chachamaru-dot`）なので、表示名が似ていても登録名はぶつからない。

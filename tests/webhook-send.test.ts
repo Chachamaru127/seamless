@@ -5,7 +5,7 @@ import type {AddressInfo} from 'node:net';
 import {readdir,readFile,stat,writeFile,chmod,rm} from 'node:fs/promises';
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {randomBytes} from 'node:crypto';
+import {randomBytes,createHash} from 'node:crypto';
 import {createAutomatic,issueTicket,parseTicket} from '../src/automatic.ts';
 import {runCli} from '../src/cli.ts';
 import {requests,reservationFile} from '../src/request-store.ts';
@@ -76,7 +76,7 @@ test('scene 1: a 2xx answer is accepted (submitted); the body is the envelope as
   assert.equal(r.status,'submitted',JSON.stringify(r));assert.equal(s.bot.hits.length,1,String(status));
   const hit=s.bot.hits[0];
   assert.equal(hit.method,'POST');assert.equal(hit.headers['content-type'],'application/json');assert.equal(new URL(s.f.env.CHACHAMARU_WEBHOOK_URL!).pathname,hit.path);
-  assert.deepEqual(Object.keys(hit.json).sort(),['id','mark','notice','recipient','schemaVersion','sender','text']);
+  assert.deepEqual(Object.keys(hit.json).sort(),['id','mark','notice','recipient','replyToken','schemaVersion','sender','text']);
   assert.equal(hit.json.schemaVersion,1);assert.equal(hit.json.id,`s1-${status}`);assert.equal(hit.json.text,'ビルドが終わったら教えて');
   assert.deepEqual(hit.json.sender,{id:'claude:claude-b',nativeId:'claude-b',generation:'42@100'});
   assert.deepEqual(hit.json.recipient,{id:'grok-bot:chachamaru',nativeId:'chachamaru',generation:'1'});
@@ -88,6 +88,24 @@ test('scene 1: a 2xx answer is accepted (submitted); the body is the envelope as
   assert.deepEqual(record.recipient,{id:'grok-bot:chachamaru',provider:'grok-bot',nativeId:'chachamaru',generation:'1',cwd:''});
   assert.deepEqual([record.sender.id,record.sender.provider,record.sender.nativeId,record.sender.generation],['claude:claude-b','claude','claude-b','42@100']);
  }
+});
+
+// 立花さんの判断 1 (2026-10-12): the Bot's routine runs under a new id each time (M3-4), so a reply proves it is the Bot's by the
+// one-time word this Mac sent with the request, which only the Bot's own address received.
+test('each request carries its own reply word; only its hash is kept, in the private record, and nothing returned shows either',async t=>{
+ const s=await setup(t);
+ const a=await s.send('rt-1','一つ目'),b=await s.send('rt-2','二つ目');
+ assert.equal(a.status,'submitted');assert.equal(b.status,'submitted');
+ const [x,y]=s.bot.hits.map(h=>h.json.replyToken as string);
+ for(const w of [x,y])assert.match(w,/^[A-Za-z0-9_-]{32}$/);
+ assert.notEqual(x,y,'a new word for every request');
+ const sha=(v:string)=>createHash('sha256').update(v).digest('hex');
+ const records=await s.records();
+ for(const [id,word] of [['rt-1',x],['rt-2',y]] as const){
+  const r=records.find(r=>r.id===id)!;assert.equal((r as any).replyTokenSha256,sha(word),id);
+ }
+ for(const shown of [a,b])assert.ok(!JSON.stringify(shown).includes('replyToken')&&!JSON.stringify(shown).includes(x)&&!JSON.stringify(shown).includes(y),'the caller never sees the word');
+ const disk=await treeText(s.f.home);assert.ok(!disk.includes(x)&&!disk.includes(y),'the word itself is written nowhere');
 });
 
 // Scene 2.

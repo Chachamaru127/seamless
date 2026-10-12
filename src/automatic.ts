@@ -109,7 +109,7 @@ export function createAutomatic(options:AutomaticOptions={}){
    const now=()=>options.clock?.now()??Date.now();
    let presented=input;
    if(context.external.sign&&(method==='send'||method==='sessions')){
-    const signed=await signForBot({name:context.external.name,peersPath,secret,now,executor:options.botExecutor??createExecutorCheck({env:options.env??process.env})},method,input);
+    const signed=await signForBot({name:context.external.name,peersPath,secret,now,executor:options.botExecutor??createExecutorCheck({env:options.env??process.env,reservationDir:options.reservationDir??join(home,'.seamless','reservations'),now})},method,input);
     if('result' in signed)return signed.result;
     presented=signed.envelope;
    }

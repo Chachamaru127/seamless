@@ -10,7 +10,7 @@ import { Registry, permitted } from './registry.ts';
 import { ContractError, object } from './protocol.ts';
 import type { Registration } from './protocol.ts';
 export type Envelope={id:string;sender:{id:string;nativeId:string;generation:string};recipient:{id:string;nativeId:string;generation:string};text:string;replyTo?:string};
-export type Receipt={status:'submitted'|'unknown'|'rejected';nativeMessageId?:string;payloadSha256?:string;reason?:string;version?:string};
+export type Receipt={status:'submitted'|'unknown'|'rejected';nativeMessageId?:string;payloadSha256?:string;replyTokenSha256?:string;reason?:string;version?:string};
 export type NativeAdapter={inboxState?:(target:Registration,id:string,sender:{id:string;nativeId:string})=>Promise<string|null>;received?:(target:Registration)=>Promise<import("./inbound.ts").Received[]>;sentIds?:(target:Registration,ids:string[],recipient:Pick<Registration,'provider'|'nativeId'>)=>Promise<string[]>;structure?:(target:Registration)=>Promise<StructureItem[]>;inbound?:(recipient:Registration)=>Promise<Envelope[]>;read:(target:Registration,options:{cursor?:string;limit?:number})=>Promise<unknown>;send:(target:Registration,envelope:Envelope,authorize?:()=>Promise<boolean>)=>Promise<Receipt>};
 export class Delivery {
  private tracking?:{keyPath:string;now?:()=>number};
@@ -82,8 +82,8 @@ export class Delivery {
   let denied:string|null=null,recheckRejected=false;
   const authorize=async()=>{denied=await this.validate?.()??null;if(denied){recheckRejected=true;return false;}try{await this.refreshHook();}catch{recheckRejected=true;return false;}const currentSender=this.registry.get(sender.id),currentTarget=this.registry.get(target.id);const allowed=!!currentSender&&!!currentTarget&&JSON.stringify(currentSender)===JSON.stringify(sender)&&JSON.stringify(currentTarget)===JSON.stringify(target)&&permitted(currentSender,currentTarget,'send');if(!allowed)recheckRejected=true;return allowed;};
   let receipt:Receipt;try{receipt=await authorize()?await this.adapter.send(target,envelope,authorize):{status:'rejected'};}catch{receipt={status:'unknown'};}
-  // The payload hash stays in the private record only; no returned receipt carries it.
-  const {payloadSha256,...visible}=receipt;receipt=visible;
+  // The payload hash and the hash of a Bot's reply word stay in the private record only; no returned receipt carries them.
+  const {payloadSha256,replyTokenSha256,...visible}=receipt;receipt=visible;
   if(receipt.status==='rejected'&&recheckRejected){
    try{await unlink(path);}catch{return {status:'unknown'};}
    this.attempts.delete(p.id as string);
@@ -91,7 +91,7 @@ export class Delivery {
   }
   // A lost process leaves pending; another process never retries that reservation.
   const temporary=path+'.'+randomUUID();let state;
-  try{state=await open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await state.writeFile(JSON.stringify({hash,status:receipt.status,at:Date.now(),...metadata,...(payloadSha256?{payloadSha256}:{})}));await state.sync();await state.close();state=undefined;await rename(temporary,path);}catch{receipt={status:'unknown'};}finally{await state?.close();}
+  try{state=await open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await state.writeFile(JSON.stringify({hash,status:receipt.status,at:Date.now(),...metadata,...(payloadSha256?{payloadSha256}:{}),...(replyTokenSha256?{replyTokenSha256}:{})}));await state.sync();await state.close();state=undefined;await rename(temporary,path);}catch{receipt={status:'unknown'};}finally{await state?.close();}
   if(receipt.status==='rejected'&&!denied)denied=await this.validate?.()??null;
   return denied&&receipt.status==='rejected'?{status:denied}:receipt;
  }

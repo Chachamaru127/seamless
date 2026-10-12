@@ -790,3 +790,11 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - 本物の経路の確認の結果（茶々丸の報告を立花さんが貼り付け、15:3x）: 茶々丸が `bot-send` で「M3-2 受け取りました」を返そうとして、`executor_unverified`、reason `bot_id_missing` で断られた。返信は届いていない。つまり本線の 09384b1 では、茶々丸から Mac への返信が止まっている（Mac から茶々丸へは動く）。
 - 考えられる原因（未確認）: (a) リーダーの読み違い。M3 の台本は「値に UUID を含む変数の名前」を出す作りで、`CURSOR_CONVERSATION_ID` が UUID そのものかは確かめていなかった。値が UUID の前後に文字を持つ形なら、`src/bot-executor.ts` の形の検査で `bot_id_missing` になる。(b) `bot-send` を動かしたときだけ、この変数が渡っていない（道具や承認の流れの違い）。
 - 切り分け: 台本に `CURSOR_CONVERSATION_ID` の形（UUID の部分は `<UUID>` に伏せる）を出す節を足し（66ad88f）、15:42:23 に茶々丸へ「bot-send と同じ動かし方で台本を動かし、結果は立花さんへチャットで」と依頼した（`m3-diag-20261012`、submitted）。
+
+## 測定 M3-4 と、ルーチンからの返信の確かめ方（2026-10-12 15:4x〜16:xx JST）
+
+- 茶々丸の切り分けの報告（立花さんの貼り付け、15:4x）: チャットから動かすと `CURSOR_CONVERSATION_ID` は茶々丸の UUID そのもの。受け口のルーチンから動かすと `sand-subagent-<UUID>` の形で、茶々丸の UUID を値に持つ変数は無い。起動元はどちらも Grok Bot のアプリで、経路も同じ。違いは、M3 は立花さんの承認の後、M3-2 はルーチンの範囲内として承認なしで動いたこと。リーダーの読み違いではなく、ルーチンの ID が別だったのが原因。
+- 測定 M3-4（`experiments/grok-bot-m3/note-id.sh`、値と時刻を本線の `.local/m3/ids.txt` に書くだけ）: ルーチンに 2 回動かしてもらった。15:46:04 は `sand-subagent-48e30927-af7f-4990-94ba-8786b6a8a37a`、15:46:42 は `sand-subagent-1dfe487b-0ecc-4781-9c50-f7101a293248`。ルーチンの ID は実行ごとに変わるので、環境変数ではルーチンの茶々丸を見分けられない。
+- 作り（判断 1 の続き）: Mac が茶々丸へ webhook で送るたびに、その依頼だけの合言葉（24 バイトの乱数、base64url で 32 文字）を本文の `replyToken` に入れ、予約の記録には指紋（SHA-256）だけを残す（`src/webhook-send.ts`、`src/delivery.ts`）。呼んだ会話への結果には出さない。`bot-send` の入力に `replyToken` を足し（署名する本文には入れない）、合言葉があれば、元の依頼の予約が茶々丸宛てで、返信先が元の依頼の送り手の同じ世代で、24 時間以内で、指紋が合うこと（比べる時間は値によらない）を確かめる。起動元が Grok Bot のアプリであることも合わせて確かめる。合言葉が無ければ、これまでの UUID の確認。
+- 試験（先に書いて落ちるのを確かめてから作った）: `tests/webhook-send.test.ts`（本文に依頼ごとに別の合言葉がある、予約には指紋だけ、結果とディスクに合言葉そのものは無い。scene 1 の本文の欄に `replyToken` を足した）、`tests/bot-executor.test.ts`（合言葉の 8 つの断る場合、Codex の起動元は合言葉があっても断る、合言葉だけで依頼が無いのは断る）、`tests/bot-send.test.ts`（ルーチンの ID のままで合言葉つきの返信は届く、違う合言葉は断る、合言葉は署名も配送もされない、合言葉は文字列だけ）。verify.sh は exit 0（node 716 件、帯 99 件、peer-secrets ok）。
+- 使い方の文（`handoff/chachamaru-mvp.md`）に、返信に `replyToken` を入れる手順を足した。

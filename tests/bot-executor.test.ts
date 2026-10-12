@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import {createExecutorCheck,createAppVerifier,GROK_BOT_TEAM,GROK_BOT_IDS} from '../src/bot-executor.ts';
 import type {Ancestor} from '../src/caller.ts';
 import type {Peer} from '../src/peers.ts';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {requestToBot} from './support/signed-fixture.ts';
 
 // specs/202610-more-peers, 立花さんの判断 1 (2026-10-12): bot-send and bot-sessions sign only for the Bot itself, told apart by fixed
 // identities (the Grok Bot app's signature on an ancestor's executable, the Bot's UUID), never by a display name. Measured in M3.
@@ -13,9 +17,9 @@ const peer=(over:Partial<Peer>={}):Peer=>({name:'chachamaru',displayName:'茶々
 type Row={pid:number;ppid:number;comm:string;exe:string|null};
 const botTree:Row[]=[{pid:500,ppid:400,comm:'node',exe:'/opt/node'},{pid:400,ppid:300,comm:'bash',exe:'/bin/bash'},{pid:300,ppid:200,comm:'/bin/zsh',exe:'/bin/zsh'},{pid:200,ppid:100,comm:HELPER,exe:HELPER},{pid:100,ppid:1,comm:APP,exe:APP}];
 const codexTree:Row[]=[{pid:500,ppid:400,comm:'node',exe:'/opt/node'},{pid:400,ppid:300,comm:'/bin/zsh',exe:'/bin/zsh'},{pid:300,ppid:1,comm:'/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex',exe:'/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'}];
-function check(tree:Row[],env:NodeJS.ProcessEnv,signedPaths:string[]=[HELPER,APP]){
+function check(tree:Row[],env:NodeJS.ProcessEnv,signedPaths:string[]=[HELPER,APP],more:{reservationDir?:string;now?:()=>number}={}){
  const verified:string[]=[],looked:number[]=[];
- const run=createExecutorCheck({pid:500,env,
+ const run=createExecutorCheck({pid:500,env,...more,
   process:async pid=>{const r=tree.find(x=>x.pid===pid);return r?{pid:r.pid,ppid:r.ppid,executable:null,command:r.comm} as Ancestor:null;},
   executable:async pid=>{looked.push(pid);return tree.find(x=>x.pid===pid)?.exe??null;},
   verify:async path=>{verified.push(path);return signedPaths.includes(path);}});
@@ -68,4 +72,34 @@ test('the signature requirement names the team and the two identifiers of the ap
  assert.deepEqual(GROK_BOT_IDS,['com.anysphere.sand','com.anysphere.sand.electron-helper']);assert.equal(GROK_BOT_TEAM,'DCNK4UB866');
  const no=createAppVerifier(async()=>{throw new Error('code object is not signed at all');});
  assert.equal(await no(HELPER),false);
+});
+
+// The routine the Bot's webhook starts runs under a new id each time (M3-4: sand-subagent-<UUID>, a different UUID per run), so a
+// reply from it is the Bot's when it carries the one-time word this Mac sent with the request (src/webhook-send.ts).
+test('a reply from the Bot\'s routine: the word sent with the request, from the app, to the conversation that asked',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'seamless-word-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const T=Date.parse('2026-10-12T06:00:00Z'),from={provider:'claude' as const,nativeId:'claude-b',generation:'42@100',cwd:'/w'};
+ const WORD='w'.repeat(32),routine={CURSOR_CONVERSATION_ID:'sand-subagent-48e30927-af7f-4990-94ba-8786b6a8a37a'};
+ await requestToBot(dir,{id:'ask-1',from,replyWord:WORD,at:T-60_000});
+ await requestToBot(dir,{id:'ask-old',from,replyWord:WORD,at:T-86_400_001});
+ await requestToBot(dir,{id:'ask-second',from,bot:'second',replyWord:WORD,at:T-60_000});
+ await requestToBot(dir,{id:'ask-no-word',from,at:T-60_000});
+ const reply=(over:Record<string,string>={})=>({replyTo:'ask-1',replyToken:WORD,recipient:'claude:claude-b:42@100',...over});
+ const c=(tree=botTree)=>check(tree,routine,[HELPER,APP],{reservationDir:dir,now:()=>T}).run;
+ assert.equal(await c()(peer(),reply()),null);
+ for(const [label,over,reason] of [
+  ['another word',{replyToken:'x'.repeat(32)},'reply_token_mismatch'],
+  ['a word that is not one',{replyToken:'short'},'reply_token_mismatch'],
+  ['a request made to another Bot',{replyTo:'ask-second'},'reply_token_mismatch'],
+  ['a request older than a day',{replyTo:'ask-old'},'reply_token_mismatch'],
+  ['a request sent without a word',{replyTo:'ask-no-word'},'reply_token_mismatch'],
+  ['no such request',{replyTo:'nothing'},'reply_token_mismatch'],
+  ['to another conversation than the one that asked',{recipient:'claude:claude-x:42@100'},'reply_token_mismatch'],
+  ['to another run of the conversation that asked',{recipient:'claude:claude-b:43@100'},'reply_token_mismatch'],
+ ] as const)assert.equal(await c()(peer(),reply(over)),reason,label);
+ // The word does not stand in for the app: from a Codex conversation it is refused all the same.
+ assert.equal(await c(codexTree)(peer(),reply()),'not_from_bot_app');
+ // A word without a request to answer is no proof, and the routine's own id is not the Bot's.
+ assert.equal(await c()(peer(),{replyToken:WORD,recipient:'claude:claude-b:42@100'}),'reply_token_mismatch');
+ assert.equal(await c()(peer()),'bot_id_missing');
 });

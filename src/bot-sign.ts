@@ -15,17 +15,19 @@ import type {ExecutorCheck} from './bot-executor.ts';
 // executor says whether the Bot itself runs this command (src/bot-executor.ts, 立花さんの判断 1). No key is read for anyone else.
 export type BotSigning={name:string;peersPath:string;secret:SecretReader;now:()=>number;executor:ExecutorCheck};
 export type Signed={envelope:SignedEnvelope}|{result:{status:string;reason?:string}};
-const FIELDS=['recipient','id','replyTo','text'];
+// replyToken is the word a reply gives back (src/bot-executor.ts); it is looked at before signing and is not part of what is signed.
+const FIELDS=['recipient','id','replyTo','text','replyToken'];
 const isoSeconds=(ms:number)=>new Date(Math.floor(ms/1000)*1000).toISOString().slice(0,19)+'Z';
 // What the person gives for a send: the four fields of a request, as JSON. The sender, key version, time, nonce and signature are
 // made here, never taken from the input.
-function request(input:unknown):{recipient:string;id:string;replyTo?:string;text:string}|{reason:string}{
+function request(input:unknown):{recipient:string;id:string;replyTo?:string;text:string;replyToken?:string}|{reason:string}{
  if(!input||typeof input!=='object'||Array.isArray(input))return {reason:'shape'};
  const v=input as Record<string,unknown>;
  for(const k of Object.keys(v))if(!FIELDS.includes(k))return {reason:'unknown_field'};
  for(const k of ['recipient','id','text'])if(typeof v[k]!=='string')return {reason:k};
  if(v.replyTo!==undefined&&typeof v.replyTo!=='string')return {reason:'replyTo'};
- return {recipient:v.recipient as string,id:v.id as string,...(v.replyTo===undefined?{}:{replyTo:v.replyTo as string}),text:v.text as string};
+ if(v.replyToken!==undefined&&typeof v.replyToken!=='string')return {reason:'replyToken'};
+ return {recipient:v.recipient as string,id:v.id as string,...(v.replyTo===undefined?{}:{replyTo:v.replyTo as string}),text:v.text as string,...(v.replyToken===undefined?{}:{replyToken:v.replyToken as string})};
 }
 export async function signForBot(d:BotSigning,method:'send'|'sessions',input:unknown):Promise<Signed>{
  const asked=method==='sessions'?{recipient:LIST_RECIPIENT,id:`list-${randomBytes(8).toString('hex')}`,text:''}:request(input);
@@ -34,10 +36,11 @@ export async function signForBot(d:BotSigning,method:'send'|'sessions',input:unk
  if(roster.status==='unusable')return {result:{status:'peers_unusable'}};
  const peer=roster.status==='ok'?roster.value.peers.find(p=>p.name===d.name):undefined;
  if(!peer)return {result:{status:'sender_unregistered'}};
- const refused=await d.executor(peer);
+ const {replyToken,...toSign}=asked as typeof asked&{replyToken?:string};
+ const refused=await d.executor(peer,replyToken===undefined?undefined:{replyTo:toSign.replyTo,recipient:toSign.recipient,replyToken});
  if(refused)return {result:{status:'executor_unverified',reason:refused}};
  const key=await d.secret(peer.receiveKeyEnv);
  if(key===undefined)return {result:{status:'key_unavailable'}};
- const fields={sender:peer.name,keyVersion:peer.keyVersion,...asked,signedAt:isoSeconds(d.now()),nonce:randomBytes(16).toString('base64url')};
+ const fields={sender:peer.name,keyVersion:peer.keyVersion,...toSign,signedAt:isoSeconds(d.now()),nonce:randomBytes(16).toString('base64url')};
  return {envelope:{...fields,signature:createHmac('sha256',key).update(signingInput(fields)).digest('hex')}};
 }

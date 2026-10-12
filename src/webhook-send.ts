@@ -1,3 +1,4 @@
+import {randomBytes,createHash} from 'node:crypto';
 import {readPeers,peerStatus,peerOperations,keyOf,type Peer} from './peers.ts';
 import {readLimits,unrestricted,type Limits} from './limits.ts';
 import {inRange,SAME_CONTENT_HOLD_MS} from './external-inbound.ts';
@@ -44,8 +45,10 @@ const notice=(replyTo?:string)=>['[seamless] 別の会話から'+(replyTo?'返�
  ...(replyTo?[]:['返すときは、replyTo にこの依頼 ID を入れて返信してください。'])].join('\n');
 // The envelope as the other routes carry it (schemaVersion, id, sender, recipient, replyTo, text, humanApproval:false only when the
 // owner's limits say to mark), with the notice and the same mark line the Grok CLI route puts before its machine-readable part.
-export function botBody(e:Envelope,markUnapproved:boolean){
- return {mark:SEAMLESS_ENVELOPE_MARK,notice:notice(e.replyTo),schemaVersion:1,id:e.id,sender:e.sender,recipient:e.recipient,...(e.replyTo?{replyTo:e.replyTo}:{}),text:e.text,...(markUnapproved?{humanApproval:false as const}:{})};
+// replyToken: a word made for this one request (立花さんの判断 1, 2026-10-12). Only the Bot's own address receives it; the Bot gives it
+// back with its reply (`bot-send`), which is how this Mac tells the Bot's routine, whose id changes every run, from anyone else.
+export function botBody(e:Envelope,markUnapproved:boolean,replyToken:string){
+ return {mark:SEAMLESS_ENVELOPE_MARK,notice:notice(e.replyTo),schemaVersion:1,id:e.id,sender:e.sender,recipient:e.recipient,...(e.replyTo?{replyTo:e.replyTo}:{}),text:e.text,replyToken,...(markUnapproved?{humanApproval:false as const}:{})};
 }
 // The address and the send key are fetched through the reader (the environment, then the Keychain; src/secrets.ts), and nothing
 // else is: the receive key is never asked for here.
@@ -71,14 +74,16 @@ async function post(endpoint:{url:URL;key:string},body:string,timeoutMs:number):
 // changed in those few lines, and then the request is rejected and keeps its reservation like any other refused one.
 export function webhookSend(o:{peer:()=>Peer|undefined;secret:SecretReader;options:WebhookOptions;markUnapproved:()=>Promise<boolean>}):NativeAdapter['send']{
  return async(target,envelope,authorize)=>{
-  const body=JSON.stringify(botBody(envelope,await o.markUnapproved()));
+  // The word is kept only as its hash, in the private record of the request (src/delivery.ts); no result carries it.
+  const replyToken=randomBytes(24).toString('base64url'),replyTokenSha256=createHash('sha256').update(replyToken).digest('hex');
+  const body=JSON.stringify(botBody(envelope,await o.markUnapproved(),replyToken));
   // The last look at the roster, the limits and the caller, right before the POST; only reading two variables lies between.
   if(authorize&&!await authorize())return {status:'rejected'};
   const peer=o.peer();
   if(!peer||peer.name!==target.nativeId)return {status:'rejected'};
   const endpoint=await endpointFor(o.secret,peer,o.options.loopbackHttp===true);
   if('reason' in endpoint)return {status:'rejected',reason:endpoint.reason};
-  return post(endpoint,body,o.options.timeoutMs??WEBHOOK_TIMEOUT_MS);
+  return {...await post(endpoint,body,o.options.timeoutMs??WEBHOOK_TIMEOUT_MS),replyTokenSha256};
  };
 }
 export type BotSendDeps={

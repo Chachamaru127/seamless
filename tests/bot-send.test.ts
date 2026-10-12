@@ -144,7 +144,7 @@ test('the same keys that are one value are refused here too, and the diagnostic 
  const r=await botSend(f,unsigned());assert.equal(r.status,'key_unavailable',JSON.stringify(r));
  assert.deepEqual(f.diagnostics,['keys_not_distinct: chachamaru receiveKeyEnv equals chachamaru sendKeyEnv']);assert.equal(f.writes(),0);
 });
-test('the request on standard input has exactly four fields; nothing the Bot would sign or choose can be passed in',async t=>{
+test('the request on standard input has the four fields of a request and, for a reply, the word it gives back; nothing the Bot would sign or choose can be passed in',async t=>{
  const f=await externalFixture(t);
  assert.deepEqual(await botSend(f,'{not json'),{status:'envelope_invalid',reason:'json'});
  assert.deepEqual(await botSend(f,''),{status:'envelope_invalid',reason:'json'});
@@ -154,6 +154,8 @@ test('the request on standard input has exactly four fields; nothing the Bot wou
  for(const [label,bad] of [['no recipient',{id:'x',text:'t'}],['no id',{recipient:DEST,text:'t'}],['no text',{recipient:DEST,id:'x'}],['empty text',unsigned({text:''})],['listing recipient',unsigned({recipient:'*'})],['replyTo empty',unsigned({replyTo:''})],['id with a line break',unsigned({id:'a\nb'})],['text a number',unsigned({text:5})],['array',[]],['null',null],['string',JSON.stringify('x')]] as const){
   const r=await botSend(f,bad as unknown);assert.equal(r.status,'envelope_invalid',label+JSON.stringify(r));
  }
+ // The word must be text; it is checked, never signed (tests/bot-executor.test.ts).
+ assert.deepEqual(await botSend(f,unsigned({replyToken:7})),{status:'envelope_invalid',reason:'replyToken'});
  assert.equal(f.writes(),0);assert.equal(await f.noncesWritten(),0);
 });
 test('the arguments are the command and one registration name; nothing secret can be an argument, read has no bot variant, and the standard input is not touched for a listing',async t=>{
@@ -239,6 +241,25 @@ test('only the Bot itself gets a signature: from a Codex conversation, from anot
  // A registration with no botIds signs for nobody.
  await f.writePeers(peerRecord({scope:[f.work]}));
  assert.deepEqual(await botSend(f,unsigned({id:'x-unset'}),using(HELPER,BOT)),{status:'executor_unverified',reason:'bot_id_unset'});
+});
+
+test('a reply from the Bot\'s routine, whose id changes every run, is signed when it gives back the word sent with the request; the word is not signed or delivered',async t=>{
+ const f=await externalFixture(t);const BOT='69590697-ebf9-44d5-8f40-64dbc9455660',WORD='k'.repeat(32);
+ await f.writePeers(peerRecord({scope:[f.work],botIds:[BOT]}));
+ await requestToBot(f.reservations,{id:'ask-r',from:{provider:'claude',nativeId:'claude-b',generation:'42@100',cwd:f.work},replyWord:WORD,at:T0-60_000});
+ const {createExecutorCheck}=await import('../src/bot-executor.ts');
+ const HELPER='/Applications/Grok Bot.app/Contents/Frameworks/Grok Bot Helper.app/Contents/MacOS/Grok Bot Helper';
+ const tree=[{pid:500,ppid:400,exe:'/opt/node'},{pid:400,ppid:300,exe:'/bin/zsh'},{pid:300,ppid:1,exe:HELPER}];
+ const routine=f.make({botExecutor:createExecutorCheck({pid:500,env:{CURSOR_CONVERSATION_ID:'sand-subagent-1dfe487b-0ecc-4781-9c50-f7101a293248'},reservationDir:f.reservations,now:()=>T0,
+  process:async pid=>{const r=tree.find(x=>x.pid===pid);return r?{pid:r.pid,ppid:r.ppid,executable:null}:null;},executable:async pid=>tree.find(x=>x.pid===pid)?.exe??null,verify:async path=>path===HELPER})});
+ const answer=(over:Record<string,unknown>={})=>unsigned({id:'rep-1',replyTo:'ask-r',replyToken:WORD,...over});
+ assert.deepEqual(await botSend(f,answer({id:'rep-0',replyToken:'z'.repeat(32)}),routine),{status:'executor_unverified',reason:'reply_token_mismatch'});
+ assert.deepEqual(await botSend(f,unsigned({id:'rep-00'}),routine),{status:'executor_unverified',reason:'bot_id_missing'},'without the word, the routine is not the Bot');
+ assert.equal(f.writes(),0);assert.equal(await f.noncesWritten(),0);
+ const ok=await botSend(f,answer(),routine);
+ assert.equal(ok.status,'submitted',JSON.stringify(ok));assert.equal(f.writes(),1);
+ assert.equal(f.sent[0].replyTo,'ask-r');assert.ok(!JSON.stringify(f.sent[0]).includes(WORD)&&!('replyToken' in f.sent[0]),'the word is neither signed nor delivered');
+ const [n]=await f.readNonces();assert.ok(!JSON.stringify(n).includes(WORD));
 });
 
 test('a real CLI process that is not the Bot: the request comes on standard input and only the name in the arguments, and it is refused before anything is signed',async t=>{

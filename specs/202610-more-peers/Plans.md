@@ -23,7 +23,7 @@ Updated: 2026-10-09 JST
 
 | 先送りするもの | 今の形 | 期日 |
 |---|---|---|
-| 茶々丸の側での署名 | Mac 上で署名を代行する（`bot-send`、`bot-sessions`）。2026-10-12 の判断 1 から、Grok Bot のアプリ（署名のチーム DCNK4UB866）の子で、Bot の UUID（`CURSOR_CONVERSATION_ID`）が名簿の `botIds` にあるときだけ署名する（`src/bot-executor.ts`）。残る穴: 同じアプリのほかの Bot が UUID をわざと書き換えれば名乗れる。それまでは、この Mac で本人の権限でコマンドを動かせる者は誰でも茶々丸として署名できた。2026-10-12 に、立花さんの Codex の会話 2 つが実際に茶々丸の名前で 3 通の送信を試みた。2 通は submitted（受け手には declared として出た）、1 通は invalid_reply で断られた（evidence.md の訂正の節） | 配布の前（Bot の側の署名に戻す）。前倒しの分（アプリの署名と Bot の UUID の確認）は 2026-10-12 に実装した |
+| 茶々丸の側での署名 | Mac 上で署名を代行する（`bot-send`、`bot-sessions`）。2026-10-12 の判断 1 から、Grok Bot のアプリ（署名のチーム DCNK4UB866）の子で、Bot の UUID（`CURSOR_CONVERSATION_ID`）が名簿の `botIds` にあるとき、または受け口のルーチンからの返信が依頼に添えた合言葉（`replyToken`、依頼ごとの使い捨て、Mac には指紋だけ）を返したときだけ署名する（`src/bot-executor.ts`）。残る穴: 同じアプリのほかの Bot が UUID をわざと書き換えれば名乗れる。それまでは、この Mac で本人の権限でコマンドを動かせる者は誰でも茶々丸として署名できた。2026-10-12 に、立花さんの Codex の会話 2 つが実際に茶々丸の名前で 3 通の送信を試みた。2 通は submitted（受け手には declared として出た）、1 通は invalid_reply で断られた（evidence.md の訂正の節） | 配布の前（Bot の側の署名に戻す）。前倒しの分（アプリの署名と Bot の UUID の確認）は 2026-10-12 に実装した |
 | 会話の保存先まで見る鍵の漏れの確認 | verify.sh ではリポジトリと `~/.seamless` だけ。全体は `SEAMLESS_PEER_SECRETS_FULL=1` のときだけ（約 10 分） | 配布の前 |
 | 設定スクリプトが値を引数に載せること | `scripts/peer-setup.sh`（と `experiments/dot-m1/save-key.sh`）は、Keychain に保存する瞬間だけ、URL と鍵の値を `security add-generic-password -w` の引数に載せる。同じ利用者のプロセスからは、その一瞬だけ見える。入力欄を使うと 128 文字で切れるため（2026-10-09 に実測） | 配布の前（標準入力で受けて Keychain に入れる形にする） |
 | Keychain の項目を誰が読めるか | 同じ利用者のプロセスなら `security -w` で読める（macOS の既定） | 配布の前（信頼するアプリを絞るか、Bot の側の署名へ戻す） |

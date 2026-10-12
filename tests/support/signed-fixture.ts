@@ -18,10 +18,10 @@ export const secondRecord=(over:Record<string,unknown>={}):Record<string,unknown
 export type FixtureTarget=SessionIdentity;
 // A request a Mac conversation made to a registered outside sender earlier (the reservation record that sending to the Bot
 // leaves). Written the way the delivery writes one: named by the sender and the request id, private to the owner.
-export async function requestToBot(reservations:string,r:{id:string;from:{provider:'claude'|'codex'|'grok';nativeId:string;generation:string;cwd:string};bot?:string;botKeyVersion?:number;replyTo?:string;status?:string;at?:number}){
+export async function requestToBot(reservations:string,r:{id:string;from:{provider:'claude'|'codex'|'grok';nativeId:string;generation:string;cwd:string};bot?:string;botKeyVersion?:number;replyTo?:string;status?:string;at?:number;replyWord?:string}){
  await mkdir(reservations,{recursive:true,mode:0o700});await chmod(reservations,0o700);
  const bot=r.bot??'chachamaru',party=(p:{provider:string;nativeId:string;generation:string;cwd:string})=>({id:`${p.provider}:${p.nativeId}`,...p});
- const record={hash:createHash('sha256').update(r.id).digest('hex'),status:r.status??'submitted',at:r.at??T0-60_000,id:r.id,sender:party(r.from),recipient:{id:`grok-bot:${bot}`,provider:'grok-bot',nativeId:bot,generation:String(r.botKeyVersion??1),cwd:''},...(r.replyTo?{replyTo:r.replyTo}:{})};
+ const record={hash:createHash('sha256').update(r.id).digest('hex'),status:r.status??'submitted',at:r.at??T0-60_000,id:r.id,sender:party(r.from),recipient:{id:`grok-bot:${bot}`,provider:'grok-bot',nativeId:bot,generation:String(r.botKeyVersion??1),cwd:''},...(r.replyTo?{replyTo:r.replyTo}:{}),...(r.replyWord?{replyTokenSha256:createHash('sha256').update(r.replyWord).digest('hex')}:{})};
  const name=createHash('sha256').update(JSON.stringify([r.from.provider,'local',r.from.nativeId,r.id])).digest('hex')+'.json';
  await writeFile(join(reservations,name),JSON.stringify(record),{mode:0o600});
 }

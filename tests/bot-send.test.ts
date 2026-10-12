@@ -262,7 +262,7 @@ test('a reply from the Bot\'s routine, whose id changes every run, is signed whe
  const [n]=await f.readNonces();assert.ok(!JSON.stringify(n).includes(WORD));
 });
 
-test('a reply whose own fields are not a valid envelope is refused before its word is used, so the corrected reply still goes',async t=>{
+test('a reply whose own fields are not a valid envelope, or whose id is taken, is refused, and the corrected reply still goes',async t=>{
  const f=await externalFixture(t);const BOT='69590697-ebf9-44d5-8f40-64dbc9455660',WORD='v'.repeat(32);
  await f.writePeers(peerRecord({scope:[f.work],botIds:[BOT]}));
  await requestToBot(f.reservations,{id:'ask-v',from:{provider:'claude',nativeId:'claude-b',generation:'42@100',cwd:f.work},replyWord:WORD,at:T0-60_000});
@@ -277,11 +277,11 @@ test('a reply whose own fields are not a valid envelope is refused before its wo
  for(const [label,over] of [['empty text',{id:'rep-e',text:''}],['listing recipient',{id:'rep-l',recipient:'*'}]] as const){
   const r=await botSend(f,unsigned({...over,replyTo:'ask-v',replyToken:WORD}),routine);assert.equal(r.status,'envelope_invalid',label+JSON.stringify(r));
  }
- // A reply id the Bot already used for something else is refused before the word is touched, so a fresh id still answers.
+ // A reply id the Bot already used for something else is refused by the delivery (id_conflict); the word is not used up by it,
+ // so the reply under a fresh id still goes.
  await requestToBot(f.reservations,{id:'ask-w',from:{provider:'claude',nativeId:'claude-b',generation:'42@100',cwd:f.work},replyWord:'w'.repeat(32),at:T0-60_000});
  assert.equal((await botSend(f,unsigned({id:'taken-1',replyTo:'ask-w',replyToken:'w'.repeat(32)}),routine)).status,'submitted');
- assert.deepEqual(await botSend(f,unsigned({id:'taken-1',replyTo:'ask-v',replyToken:WORD}),routine),{status:'executor_unverified',reason:'reply_id_taken'});
- assert.deepEqual(await botSend(f,unsigned({id:'taken-1',replyTo:'ask-v',replyToken:WORD,text:'別の本文'}),routine),{status:'executor_unverified',reason:'reply_id_taken'});
+ assert.equal((await botSend(f,unsigned({id:'taken-1',replyTo:'ask-v',replyToken:WORD}),routine)).status,'id_conflict');
  const ok=await botSend(f,unsigned({id:'rep-v',replyTo:'ask-v',replyToken:WORD}),routine);
  assert.equal(ok.status,'submitted',JSON.stringify(ok));
 });

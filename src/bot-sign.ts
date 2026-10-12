@@ -38,10 +38,10 @@ export async function signForBot(d:BotSigning,method:'send'|'sessions',input:unk
  if(!peer)return {result:{status:'sender_unregistered'}};
  const {replyToken,...toSign}=asked as typeof asked&{replyToken?:string};
  const fields={sender:peer.name,keyVersion:peer.keyVersion,...toSign,signedAt:isoSeconds(d.now()),nonce:randomBytes(16).toString('base64url')};
- // Checked as the envelope it would become before anything else, so a reply that would be refused anyway never uses up its word.
+ // Checked as the envelope it would become (the receiving path's own check) before anything about the process is looked at.
  const shape=envelopeFor(method,{...fields,signature:'0'.repeat(64)});
  if(!shape.ok)return {result:{status:'envelope_invalid',reason:shape.reason}};
- const refused=await d.executor(peer,replyToken===undefined?undefined:{replyTo:toSign.replyTo,recipient:toSign.recipient,replyToken,id:toSign.id});
+ const refused=await d.executor(peer,replyToken===undefined?undefined:{replyTo:toSign.replyTo,recipient:toSign.recipient,replyToken});
  if(refused)return {result:{status:'executor_unverified',reason:refused}};
  const key=await d.secret(peer.receiveKeyEnv);
  if(key===undefined)return {result:{status:'key_unavailable'}};

@@ -1,5 +1,7 @@
 茶々丸へ（seamless との連携の使い方。MVP 版、2026-10-11 立花さん）
 
+この手順は茶々丸だけが使います。Mac の Claude、Codex、Grok CLI の会話は、bot-send と bot-sessions を実行しないでください。実行すると、茶々丸が書いていない文が茶々丸の名前で届きます（2026-10-12 に Codex の会話で実際に起きた）。茶々丸へ送りたい会話は、seamless の send で宛先 grok-bot:chachamaru に送ります。
+
 ■ 届くもの
 - 立花さんの Mac の会話（Claude、Codex、Grok CLI）から、ルーチン「seamless からの依頼の受け口」に依頼が届きます。<webhook_event> の中身は JSON の封筒です。
 - 主な項目: id（依頼 ID）、sender（送り手。id と generation）、text（本文）、replyTo（返信のときだけ）、notice（注意書き）、mark（seamless の印）。

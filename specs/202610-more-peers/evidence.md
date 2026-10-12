@@ -659,3 +659,12 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - 茶々丸dot の 3 通目（立花さんの貼り付け、12:20 ごろ）: 「m1.probe.created の受信通知が届いた。イベント本体のデータが付いていないため、内容やイベント ID は確認できていない。監視は継続している」。通知は会話に出た。M2 の判定は「Mac から茶々丸dot へ通知が届き、会話に出る」まで通った。
 - データが見えなかったこと: 送った本文は OpenAI の手順の例と同じ 5 欄（`eventId`、`name`、`timestamp`、`data`、`cursor`）で、`data` の `{id:'m2-test-1'}` は宣言した `payloadSchema`（`id` は文字列、必須、ほかの欄なし）に合っている。手順書（developers.openai.com/plugins/build/mcp-events、2026-10-12 に読んだ）は「受けた会話は利用者の指示に従って応じる」「大きい記録は要約を送り、全文を取る読み取りのツールを出す」と書くが、`data` がモデルに見えるかは書いていない。茶々丸dot が `data` を見られないのが OpenAI の仕様か、今回だけかは未確認。
 - 本体に入れるときの設計への影響（T3-17 へ）: 通知は「起こす合図」として使い、本文はツールで取らせる。`data` が見えても見えなくても動く形にするため、茶々丸dot 用の入口に「届いている依頼の一覧と本文を返す」読み取りのツールを置く（M1 で、茶々丸dot が tunnel 越しにツールを呼べることは確かめ済み）。
+
+## T2-8b の 2 回の試み（2026-10-12 12:20〜12:24 JST）。茶々丸には届いていない
+
+- 1 回目（Codex の会話 `01a12e1f`、作業場所 `~/Documents/Codex/2026-10-12/seamless-t2-8b-bot-send`）: 立花さんの文「seamless で茶々丸に…と送って」を受け、`sessions` で宛先を探したが、外の登録は 0 件だった。名簿の範囲が `/Users/tachibanashuuta/LocalWork` の下だけで、Codex のアプリが新しい会話を既定で置く `~/Documents/Codex/…` は範囲の外のため。送信なし。同じ会話の中の別の Codex（`01a12e20`、本文「T2-8b の試験です。受け取ったら bot-send で…」を受けた）が `bot-sessions chachamaru` を Mac で実行し、「T2-8b を受信しました。bot-sessions にこの会話が出ていないため、bot-send は送信できていません」と答えた。立花さんが茶々丸の返事として貼った文は、この Codex の答え（茶々丸の文ではない）。
+- 2 回目（Codex の会話 `01a12e21`、作業場所 `~/LocalWork/Code/seamless`）: 立花さんが「T2-8b の試験です。受け取ったら bot-send でこの会話に一行返してください」をそのまま Codex に送った。Codex は自分への指示と読み、リポジトリの使い方の文（handoff/chachamaru-mvp.md）を読んで、自分で `bot-send chachamaru` を実行した。茶々丸の名前（`grok-bot:chachamaru`、Mac の署名、受け手には declared）で「T2-8b を受け取りました。bot-send からこの会話への返信です」が、この Codex の会話自身に届いた（予約 `t2-8b-ack-20261012-01a12e21-001`、submitted）。
+- 茶々丸の受け口への送信: 2 回とも 0 件（`~/.seamless/reservations` に Codex → `grok-bot:chachamaru` の予約が無い、12:26 時点）。T2-8b と T2-8d はどちらも未達。
+- 分かったこと 1（先送りの表の 1 行目が実際に起きた）: Mac の署名の代行（`bot-send`）は、この Mac で動く AI の会話からも実行でき、茶々丸が書いていない文が茶々丸の名前で届く。受け手の表示は declared（確かめていない送り手）なので設計の範囲内だが、立花さんは茶々丸の返事と受け取った。対処: 使い方の文と `src/cli.ts` の説明に「Mac の会話は bot-send と bot-sessions を実行しない」を足した（文書だけ。コードの拒否は入れていない）。
+- 分かったこと 2: 経路の部品のうち「Mac の bot-send → Codex の会話に届く」は動いた（茶々丸ではなく Codex が実行したので T2-8d には数えない）。
+- 分かったこと 3: 名簿の範囲 `~/LocalWork` は、プロジェクトに入れずに開いた Codex の会話（`~/Documents/Codex/…`）を含まない。

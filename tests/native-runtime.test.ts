@@ -57,7 +57,10 @@ import net from 'node:net';
 import fs from 'node:fs/promises';
 import {syncBuiltinESMExports} from 'node:module';
 import {readLimits,unrestricted} from '../src/limits.ts';
-for(const provider of ['claude','codex'] as const)for(const mark of [undefined,false,true,'legacy'] as const)test(`${provider} outbound envelope marker with markUnapproved=${String(mark)}`,async t=>{
+// TC-3b (specs/202610-more-peers): an envelope a registered Grok Bot signed (src/external-inbound.ts) is written by this same
+// adapter, so it gets the same marker, and never humanApproval:true.
+const markerSenders={local:{id:'a',nativeId:'a',generation:'g'},'grok-bot':{id:'grok-bot:chachamaru',nativeId:'chachamaru',generation:'1'}} as const;
+for(const [from,sender] of Object.entries(markerSenders))for(const provider of ['claude','codex'] as const)for(const mark of [undefined,false,true,'legacy'] as const)test(`${provider} envelope marker from a ${from} sender with markUnapproved=${String(mark)}`,async t=>{
  const home=await mkdtemp(join(tmpdir(),'marker-')),path=join(home,'limits.json');
  if(mark!==undefined&&mark!=='legacy')await fs.writeFile(path,JSON.stringify({...unrestricted,markUnapproved:mark}),{mode:0o600});
  let payload:Record<string,unknown>|undefined,content:string|undefined;
@@ -84,10 +87,11 @@ for(const provider of ['claude','codex'] as const)for(const mark of [undefined,f
  const target={...r,provider};
  const identity=async()=>({nativeId:r.nativeId,generation:r.generation,cwd:home,socket:join(home,'.codex','ipc','ipc.sock')});
  const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',claudeVersion:async()=>'2.1.284',codexIdentity:identity,claudeIdentity:identity,...(mark==='legacy'?{}:{markUnapproved:async()=>{const l=await readLimits(path);return l.status==='ok'&&l.value.markUnapproved===true;}})});
- const receipt=await adapter.send(target,{id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'test'});
+ const receipt=await adapter.send(target,{id:'m',sender:{...sender},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'test'});
  assert.equal(receipt.status,'submitted');assert.ok(payload);
  const {createHash}=await import('node:crypto');
  assert.equal(receipt.payloadSha256,provider==='claude'?createHash('sha256').update(content!).digest('hex'):undefined);
  assert.equal(Object.hasOwn(payload,'humanApproval'),mark===true);
  if(mark===true)assert.equal(payload.humanApproval,false);
+ assert.notEqual(payload.humanApproval,true);assert.equal((payload.sender as {id:string}).id,sender.id);
 });

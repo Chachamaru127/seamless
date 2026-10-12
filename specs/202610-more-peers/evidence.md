@@ -697,3 +697,8 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - `claude:968ced28` は、茶々丸が送る 3 秒前（12:27:37）に、別の Codex の会話へ `t2-8b-leaderpm-20261012-01` を送っている。AISDR 側の作業の一部か、宛先の取り違えかは未確認。
 - 3 通とも本文は Mac に残らない（予約は hash だけ）。自動の返信の連鎖は起きていない（3 つの会話から茶々丸への送信は記録に無い）。
 - 設計への影響（使ってみて分かったこと）: 茶々丸は一覧の中から自分で宛先を選べる。名簿の範囲（`limits`）の中なら、Mac は送り先の正しさを確かめない。配布の前に「茶々丸が返せるのは、茶々丸に依頼を送った会話だけ」に絞るかを決める（先送りの表に足す）。
+
+## T2-9 の前の補い（2026-10-12 12:3x JST）
+
+- T2-8c と T2-8d の「送り手が名簿の登録名として確かめられた」の対応: 2 通とも、Mac は封筒の HMAC を名簿の `chachamaru`（鍵の版 1）の受信鍵で確かめ、nonce を `~/.seamless/nonces` に記録した（記録は peer `chachamaru`、keyVersion 1、op `send`、id は各返信の ID）。受け手の表示が `declared` なのは、その nonce の記録が `signedBy: 'mac'`（Mac が茶々丸の代わりに署名した）だからで、確かめに失敗したからではない（Plans.md の先送りの表「茶々丸の側での署名」）。
+- TC-3b: webhook へ送る封筒は `tests/webhook-send.test.ts` の 442 行で、markUnapproved の有無の両方を確かめ済み。受ける側（茶々丸が署名した封筒）は、`src/external-inbound.ts` が封筒を `humanApproval` なしで渡し（`tests/signed-inbound.test.ts` の 54 行）、Mac の会話へ書く直前に `src/native-runtime.ts` の 172 行が markUnapproved に従って印を付ける。この書き込みの試験（`tests/native-runtime.test.ts` の「envelope marker」）に、送り手が `grok-bot:chachamaru` の封筒を足した。Claude と Codex の宛先それぞれで、markUnapproved が無い、false、true、古い呼び方の 4 通りを確かめ、true のときだけ `humanApproval:false` が付き、どの場合も `humanApproval:true` が無い（16 件通過）。本番では `src/automatic.ts` の 82 行が、受ける経路にもこの同じ書き込みの部品を渡している。

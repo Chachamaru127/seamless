@@ -33,5 +33,12 @@ if [ -n "$uuid" ]; then
  done
  [ $found -eq 1 ] || echo "(なし)"
 fi
+echo "== CURSOR_CONVERSATION_ID の形（UUID の部分は <UUID> に置き換える。最初の 200 文字まで）"
+if [ -z "${CURSOR_CONVERSATION_ID+x}" ]; then echo "(無い)"
+elif [ -z "$CURSOR_CONVERSATION_ID" ]; then echo "(空)"
+else
+ printf '%s' "$CURSOR_CONVERSATION_ID" | sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<UUID>/g' | head -c 200; echo
+ echo "長さ ${#CURSOR_CONVERSATION_ID}"
+fi
 echo "== 作業フォルダ"
 pwd

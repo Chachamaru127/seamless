@@ -638,3 +638,20 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - まだのもの: T2-8b（Codex → 茶々丸）、T2-8d（茶々丸 → Codex）、T2-8e（返信の後 10 分で依頼の件数が増えないこと。12:06 の時点の茶々丸に関わる予約は 2 件）、T2-9（正式な判定）。
 - M2 の 1 行の宛先違い（2026-10-12 12:07）: 「seamless-dot-m1-probe のイベント m1.probe.created を監視して」が、茶々丸dot（ChatGPT）ではなく茶々丸（Grok Bot）に届いた。茶々丸の答え（立花さんの貼り付け。茶々丸の自己申告で未確認）は「このコネクタは私の一覧に無い。私はコネクタのツールを呼べるだけで、`events/subscribe` を送る仕組みは無い。監視は未開始。私を起こすなら webhook」。M1 の結果（購読を送るのは Dot だけ）と食い違わない。M2 のサーバーの記録 `m2-notify.jsonl` は起動の 1 行のまま（12:10 時点。購読も検証も来ていない）。tunnel は接続中（最後の取得は 12:09:57）。
 - 茶々丸dot の画面（12:10、背後から読み取りのみ）: 立花さんが別の作業（Rappiness）の途中だったので、M2 の 1 行は入力していない。
+- T2-8e（返信の後 10 分の実観測）: `~/.seamless/reservations` のうち送り手か宛先が `grok-bot:chachamaru` の予約は、12:06:18 に 2 件、12:16:23 に 2 件。返信の後に依頼は増えていない（自動の返信の連鎖なし）。
+
+## 測定 M2（2026-10-12 12:15〜12:17 JST、茶々丸dot、`run-m1.sh notify`）
+
+立花さんが 12:15 に茶々丸dot（ChatGPT）へ「seamless-dot-m1-probe のイベント m1.probe.created を監視して」と送った。サーバーは 2026-10-11 22:30 から待機（pid 81745、tunnel-client 0.0.16、tunnel は接続中）。記録 `.local/dot-m1/m2-notify.jsonl` の順:
+
+| 時刻（JST） | 記録 | 中身 |
+|---|---|---|
+| 12:15:56 | `tools/call` | 茶々丸dot がツールを 1 回呼んだ（名前は記録しない作り。応答は result） |
+| 12:16:42 | `verification` | callback の確認。宛先 `connectors.api.openai.com`、HTTP 200、541 ms、結果 ok |
+| 12:16:42 | `events/subscribe` | イベント `m1.probe.created`、配送は webhook、宛先 `connectors.api.openai.com`、secret あり、受理、更新ではない（新規） |
+| 12:16:47 | `delivery` | 通知 1 件の送信を開始（data `{id:'m2-test-1'}`） |
+| 12:16:48 | `delivery` | OpenAI 側が HTTP 200 で受け取った。`.sent` の印ができ、2 件目は送らない |
+
+- 判定: Mac から茶々丸dot への通知の経路（購読の受理 → callback の確認 → 署名つきの通知 → 200）は、実物で 1 回通った。MVP の完成の定義の「茶々丸dot へは、Mac から通知が届く」の、OpenAI が受け取るところまでを満たす。
+- まだ見ていないもの: 茶々丸dot の画面に通知が出たか（OpenAI が受け取った後の段。12:17 の画面にはまだ出ていない）。
+- 茶々丸dot の返事（画面、12:15）: 「m1.probe.created の監視設定を確認して、有効になっていなければ設定します。設定できたことまで確認して返します」。

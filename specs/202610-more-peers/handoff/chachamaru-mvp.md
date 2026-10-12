@@ -1,5 +1,7 @@
 茶々丸へ（seamless との連携の使い方。MVP 版、2026-10-11 立花さん）
 
+ほかの Bot に渡すとき（2026-10-12、茶々丸以外の Bot ともやり取りする想定）: この文の chachamaru を、その Bot の登録名に、茶々丸をその Bot の表示名に置き換えて渡します。その前に、Mac で `bash scripts/peer-setup.sh --bot-id <その Bot の UUID> <登録名> <表示名>` を 1 回動かし、宛先と鍵と Bot の UUID を登録します（UUID は Bot のサーバーの agents の下のフォルダ名）。受け口のルーチンからの返信は合言葉で見分けるので、UUID が無くても返せます。UUID は、その Bot がチャットから自分で送るときに要ります。
+
 この手順は茶々丸だけが使います。Mac の Claude、Codex、Grok CLI の会話は、bot-send と bot-sessions を実行しないでください。実行すると、茶々丸が書いていない文が茶々丸の名前で届きます（2026-10-12 に Codex の会話で実際に起きた）。茶々丸へ送りたい会話は、seamless の send で宛先 grok-bot:chachamaru に送ります。
 2026-10-12 から、bot-send と bot-sessions は、Grok Bot のアプリから茶々丸自身が動かしたときだけ署名します。確かめ方は 2 つです。チャットから動かすときは、環境変数 CURSOR_CONVERSATION_ID の茶々丸の UUID。受け口のルーチンから返信するときは、届いた封筒の replyToken（その依頼だけの合言葉。ルーチンは実行ごとに別の ID で動くため）。どちらも、起動元が Grok Bot のアプリであることも確かめます。ほかから動かすと `{"status":"executor_unverified"}` が返り、何も送られません。
 

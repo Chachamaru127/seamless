@@ -198,6 +198,24 @@ test('other names, display names and folders: the environment names follow the r
  // A folder spelled with a trailing slash or a dot segment is stored in the form the roster accepts.
  await s.again(COPIES);assert.equal(s.run(['my-bot','マイ ボット',`${folder}/./`]).status,0);assert.deepEqual((await s.roster()).peers[0].scope,[folder]);
 });
+// 2026-10-12: more Bots than 茶々丸 are expected. A Bot is told apart by its own UUID (src/bot-executor.ts), which the setup records.
+test('--bot-id records the Bot\'s own UUID; another run adds a second one; a rerun without it keeps them; a malformed one stops before anything is asked',async t=>{
+ const s=await setup(t);const A='69590697-ebf9-44d5-8f40-64dbc9455660',B='11111111-2222-4333-8444-555555555555';
+ const r=s.run(['--bot-id',A,'my-bot','マイ ボット']);assert.equal(r.status,0,r.out);
+ assert.deepEqual((await s.roster()).peers[0].botIds,[A]);assert.match(r.stdout,new RegExp(`Bot の UUID: ${A}`));
+ await s.again(COPIES);const again=s.run(['my-bot','--bot-id',B]);assert.equal(again.status,0,again.out);
+ assert.deepEqual((await s.roster()).peers[0].botIds,[A,B],'added, not replaced');
+ await s.again(COPIES);assert.equal(s.run(['my-bot']).status,0);assert.deepEqual((await s.roster()).peers[0].botIds,[A,B],'kept by a rerun that names none');
+ await s.again(COPIES);assert.equal(s.run(['my-bot','--bot-id',A]).status,0);assert.deepEqual((await s.roster()).peers[0].botIds,[A,B],'the same one twice is kept once');
+ const before=await readFile(s.peersPath,'utf8');
+ for(const bad of [['--bot-id'],['--bot-id','not-a-uuid'],['--bot-id',A.toUpperCase()],['--bot-id','']]){
+  const x=s.run([...bad,'my-bot']);assert.notEqual(x.status,0,JSON.stringify(bad)+x.out);
+ }
+ assert.equal(await readFile(s.peersPath,'utf8'),before,'nothing was changed by a refused run');
+ // The usage names the option.
+ assert.match(s.run(['--nope']).out,/--bot-id/);
+});
+
 test('a copy that never comes is a failure after the wait: nothing is kept, the roster is not made, and the clipboard is left as the person has it',async t=>{
  const s=await setup(t);await s.fake.copyAt([[3,'not an address']]);
  const r=s.run();assert.equal(r.status,1,r.out);assert.match(r.out,/2 分/);

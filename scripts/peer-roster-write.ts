@@ -3,6 +3,7 @@
 //   check <name> <displayName|""> <scopeRoot|""> <addressEnv> <sendKeyEnv> <receiveKeyEnv> <rotate: 0|1>
 //       exit 0 when the roster is usable and the registration would be valid; prints what the run will do to the row (before anything is asked)
 //   put   <the same seven> <newKey: 0|1>     writes it; prints one line, "registered <name> <keyVersion> <scope>"
+// Both take one more, last argument: the Bot's own UUID to add to the row's botIds (src/bot-executor.ts), or "" for none.
 // An empty displayName or scopeRoot means "not given": an existing row keeps its own, a new row gets the defaults. A row that is set up
 // again keeps what the owner decided (scope, operations, display name, key version; a row with no scope stays without one); only the three variable names are the standard
 // ones, because the values are kept under them. A revoked row is never un-revoked by a plain rerun: only --rotate (a new receive key
@@ -16,8 +17,9 @@ import {defaultPeersPath,readPeers,validPeers,peerOperations,type Peer,type Peer
 
 const fail=(message:string):never=>{process.stderr.write(`peer-roster-write: ${message}\n`);process.exit(1);};
 const [command,name,displayArg,rootArg,addressEnv,sendKeyEnv,receiveKeyEnv,rotateArg,newKeyArg]=process.argv.slice(2);
+const botIdArg=process.argv.slice(2)[command==='put'?9:8]??'';
 const bit=(v:string|undefined)=>v==='0'||v==='1';
-if(!['check','put'].includes(command)||[name,displayArg,rootArg,addressEnv,sendKeyEnv,receiveKeyEnv].some(v=>v===undefined)||!bit(rotateArg)||command==='put'&&!bit(newKeyArg))fail('arguments');
+if(!['check','put'].includes(command)||[name,displayArg,rootArg,addressEnv,sendKeyEnv,receiveKeyEnv].some(v=>v===undefined)||!bit(rotateArg)||command==='put'&&!bit(newKeyArg)||botIdArg!==''&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(botIdArg))fail('arguments');
 const path=defaultPeersPath(),dir=dirname(path),rotate=rotateArg==='1';
 const scopeText=(scope:PeerScope|undefined)=>scope===undefined?'未設定':scope==='all'?'すべての場所':scope.join('、');
 
@@ -44,8 +46,9 @@ async function next(roster:Peers):Promise<{roster:Peers;keyVersion:number;scope:
  const scope:PeerScope|undefined=rootArg!==''?[await scopeRoot(rootArg)]:old!==undefined?old.scope:'all';
  const keyVersion=old===undefined?1:old.keyVersion+(command==='put'&&newKeyArg==='1'?1:0);
  const operations=old===undefined?{send:true}:old.operations;
- // The Bot's UUIDs (src/bot-executor.ts) are the owner's: a rerun keeps them, so it does not stop the Bot from signing.
- const botIds=old?.botIds;
+ // The Bot's UUIDs (src/bot-executor.ts) are the owner's: a rerun keeps them, so it does not stop the Bot from signing. A UUID given
+ // (--bot-id) is added to them, never put in their place.
+ const kept=old?.botIds??[],botIds=botIdArg===''?old?.botIds:kept.includes(botIdArg)?kept:[...kept,botIdArg];
  const peer:Peer={name,displayName,product:'grok-bot',addressEnv,sendKeyEnv,receiveKeyEnv,keyVersion,...(operations===undefined?{}:{operations}),...(scope===undefined?{}:{scope}),...(botIds===undefined?{}:{botIds})};
  const peers=old===undefined?[...roster.peers,peer]:roster.peers.map(p=>p.name===name?peer:p);
  const made={version:1 as const,peers};
@@ -59,6 +62,7 @@ async function next(roster:Peers):Promise<{roster:Peers;keyVersion:number;scope:
     ...(old.displayName!==displayName?[`表示名: ${old.displayName} → ${displayName}`]:[]),
     ...(old.revoked?['失効の印: 外す（--rotate）。受信鍵と keyVersion を新しくする']:[]),
     ...(old.addressEnv!==addressEnv||old.sendKeyEnv!==sendKeyEnv||old.receiveKeyEnv!==receiveKeyEnv?[`値の置き場: ${old.addressEnv}、${old.sendKeyEnv}、${old.receiveKeyEnv} → Keychain の標準の名前（${addressEnv}、${sendKeyEnv}、${receiveKeyEnv}）`]:[])];
+ if(botIdArg!=='')plan.push(`Bot の UUID: ${botIdArg}（${kept.includes(botIdArg)?'登録済み、そのまま':'足す'}）。この Bot がチャットから自分で送るときの見分けに使う`);
  return {roster:made,keyVersion,scope,plan};
 }
 async function write(roster:Peers){

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # One run registers a Grok Bot on this Mac (default: chachamaru, 茶々丸, every place: a Bot works across projects).
-#   bash scripts/peer-setup.sh [--rotate] [registration name] [display name] [scope folder]
+#   bash scripts/peer-setup.sh [--rotate] [--bot-id <the Bot's UUID>] [registration name] [display name] [scope folder]
+# --bot-id adds the Bot's own UUID to the row (src/bot-executor.ts uses it when the Bot sends from its chat); it never replaces one.
 # A new registration gets the display name 茶々丸 and the scope "all" (every place) unless a folder is given. A registration that is in the roster keeps what
 # the owner decided (scope, whether it may send, display name, key version) unless a folder or a name is given; it is said before anything is
 # asked. A revoked registration is not touched without --rotate, which makes a new receive key and a new key version and lifts the revocation.
@@ -20,15 +21,22 @@ set -euo pipefail
 # Visible ASCII is the only text a key or an address can be made of here, and the character classes below must mean the same everywhere.
 export LC_ALL=C
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-usage() { echo "使い方: bash scripts/peer-setup.sh [--rotate] [登録名] [表示名] [範囲のフォルダ]（省略時: 既存の登録はその表示名と範囲のまま、新規は 茶々丸 と すべての場所。フォルダを渡すとそこだけ）" >&2; exit 2; }
-rotate=0; args=()
+usage() { echo "使い方: bash scripts/peer-setup.sh [--rotate] [--bot-id <Bot の UUID>] [登録名] [表示名] [範囲のフォルダ]（省略時: 既存の登録はその表示名と範囲のまま、新規は 茶々丸 と すべての場所。フォルダを渡すとそこだけ）" >&2; exit 2; }
+rotate=0; args=(); botid=""; want_id=0
 for a in "$@"; do
+  if [ "$want_id" -eq 1 ]; then
+    want_id=0
+    if ! [[ $a =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then echo "peer-setup: --bot-id は Bot の UUID（小文字の 8-4-4-4-12 桁）にしてください" >&2; exit 1; fi
+    botid="$a"; continue
+  fi
   case "$a" in
     --rotate) rotate=1 ;;
+    --bot-id) want_id=1 ;;
     -*) usage ;;
     *) args+=("$a") ;;
   esac
 done
+if [ "$want_id" -eq 1 ]; then usage; fi
 if [ "${#args[@]}" -gt 3 ]; then usage; fi
 # Not given is empty here; the defaults (and what an existing row keeps) are decided in peer-roster-write.ts. Given but empty is a mistake.
 name="${args[0]-chachamaru}"; display="${args[1]-}"; root="${args[2]-}"
@@ -39,7 +47,7 @@ upper="$(printf '%s' "$name" | tr 'a-z-' 'A-Z_')"
 urlname="SEAMLESS_${upper}_URL"; sendname="SEAMLESS_${upper}_SEND_KEY"; recvname="SEAMLESS_${upper}_RECV_KEY"
 # Everything that can be checked without a value is checked first: the folder, the display name, whether the roster can be used and
 # whether this registration would be valid in it. Nothing is asked for until then.
-if ! node "$here/peer-roster-write.ts" check "$name" "$display" "$root" "$urlname" "$sendname" "$recvname" "$rotate"; then
+if ! node "$here/peer-roster-write.ts" check "$name" "$display" "$root" "$urlname" "$sendname" "$recvname" "$rotate" "$botid"; then
   echo "peer-setup: 名簿、引数、または登録の状態に問題があり、何も変更していません（上の理由を直してください）" >&2; exit 1
 fi
 had_recv=0
@@ -105,7 +113,7 @@ else
   got=""
   newkey=1
 fi
-summary="$(node "$here/peer-roster-write.ts" put "$name" "$display" "$root" "$urlname" "$sendname" "$recvname" "$rotate" "$newkey")"
+summary="$(node "$here/peer-roster-write.ts" put "$name" "$display" "$root" "$urlname" "$sendname" "$recvname" "$rotate" "$newkey" "$botid")"
 read -r _ _ version scope <<<"$summary"
 echo "名簿: ~/.seamless/peers.json に $name を登録した（keyVersion $version、範囲 $scope）"
 echo "クリップボードは空にした"

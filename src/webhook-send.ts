@@ -73,9 +73,10 @@ async function post(endpoint:{url:URL;key:string},body:string,timeoutMs:number):
 // The address and the key were found usable by the authorization just before; reading them again here only fails if a variable was
 // changed in those few lines, and then the request is rejected and keeps its reservation like any other refused one.
 export function webhookSend(o:{peer:()=>Peer|undefined;secret:SecretReader;options:WebhookOptions;markUnapproved:()=>Promise<boolean>}):NativeAdapter['send']{
- return async(target,envelope,authorize)=>{
-  // The word is kept only as its hash, in the private record of the request (src/delivery.ts); no result carries it.
-  const replyToken=randomBytes(24).toString('base64url'),replyTokenSha256=createHash('sha256').update(replyToken).digest('hex');
+ return async(target,envelope,authorize,carry)=>{
+  // The word comes from prepare (below), whose hash is already in the request's record; without it nothing is sent.
+  const replyToken=(carry as {replyToken?:unknown}|undefined)?.replyToken;
+  if(typeof replyToken!=='string')return {status:'rejected',reason:'reply_word_missing'};
   const body=JSON.stringify(botBody(envelope,await o.markUnapproved(),replyToken));
   // The last look at the roster, the limits and the caller, right before the POST; only reading two variables lies between.
   if(authorize&&!await authorize())return {status:'rejected'};
@@ -83,8 +84,14 @@ export function webhookSend(o:{peer:()=>Peer|undefined;secret:SecretReader;optio
   if(!peer||peer.name!==target.nativeId)return {status:'rejected'};
   const endpoint=await endpointFor(o.secret,peer,o.options.loopbackHttp===true);
   if('reason' in endpoint)return {status:'rejected',reason:endpoint.reason};
-  return {...await post(endpoint,body,o.options.timeoutMs??WEBHOOK_TIMEOUT_MS),replyTokenSha256};
+  return post(endpoint,body,o.options.timeoutMs??WEBHOOK_TIMEOUT_MS);
  };
+}
+// A new word for each request. Its hash goes into the request's record with the reservation, before the POST (src/delivery.ts), so a
+// reply that comes back at once, or after this process is gone, is still known; the word itself is only handed to the send.
+export function replyWord():{record:{replyTokenSha256:string};carry:{replyToken:string}}{
+ const replyToken=randomBytes(24).toString('base64url');
+ return {record:{replyTokenSha256:createHash('sha256').update(replyToken).digest('hex')},carry:{replyToken}};
 }
 export type BotSendDeps={
  caller:Caller;observe:()=>Promise<CallerResult>;callerRegistration:Registration;
@@ -137,7 +144,7 @@ export async function sendToBot(d:BotSendDeps,ticket:{nativeId:string;generation
  // moved (the receiving path decides the same for a reply to a request made to the Bot, tests/inbound.test.ts). So the Bot's own
  // envelopes in the conversation are read under the current key version; another registration's, or a look-alike's, are left as they are.
  const inbound=d.adapter.inbound?async(recipient:Registration)=>(await d.adapter.inbound!(recipient)).map(e=>e.sender.id===botId&&e.sender.nativeId===ticket.nativeId?{...e,sender:{...e.sender,generation:ticket.generation}}:e):undefined;
- const adapter:NativeAdapter={...d.adapter,...(inbound?{inbound}:{}),send:webhookSend({peer:()=>current,secret:d.secret,options:d.webhook??{},markUnapproved:d.markUnapproved})};
+ const adapter:NativeAdapter={...d.adapter,...(inbound?{inbound}:{}),prepare:replyWord,send:webhookSend({peer:()=>current,secret:d.secret,options:d.webhook??{},markUnapproved:d.markUnapproved})};
  const delivery=new Delivery(new Registry([caller,bot]),caller.id,adapter,{tracking:{keyPath:d.keyPath,now:d.now},fixedTarget:bot,validate,reservationDir:d.reservationDir,holdSubmittedMs:SAME_CONTENT_HOLD_MS});
  return delivery.send({target:botId,id:call.id,text:call.text,replyTo:call.replyTo,scope:'any_registered'});
 }

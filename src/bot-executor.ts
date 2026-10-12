@@ -1,10 +1,13 @@
 import {execFile} from 'node:child_process';
-import {createHash,timingSafeEqual} from 'node:crypto';
+import {createHash,timingSafeEqual,randomUUID} from 'node:crypto';
 import {promisify} from 'node:util';
 import {processInfo,type Ancestor} from './caller.ts';
 import {processFiles} from './native-runtime.ts';
 import type {Peer} from './peers.ts';
-import {reservationOf,DAY} from './request-store.ts';
+import {reservationOf,reservationFile,DAY} from './request-store.ts';
+import {open,mkdir,lstat,link,unlink} from 'node:fs/promises';
+import {constants} from 'node:fs';
+import {join,dirname} from 'node:path';
 
 // specs/202610-more-peers, 立花さんの判断 1 (2026-10-12): `bot-send|bot-sessions <registration>` sign only for the Bot itself.
 // The Bot is told apart by fixed identities, never by a display name (measured in M3, evidence.md):
@@ -27,8 +30,9 @@ export function createAppVerifier(run:Run=promisify(execFile)):AppVerifier{
  return async path=>{try{await run('/usr/bin/codesign',['--verify','--strict',`-R=${requirement}`,path],{timeout:15000});return true;}catch{return false;}};
 }
 export type ExecutorOptions={pid?:number;env?:NodeJS.ProcessEnv;process?:(pid:number)=>Promise<Ancestor|null>;executable?:(pid:number)=>Promise<string|null>;verify?:AppVerifier;reservationDir?:string;now?:()=>number};
-// What a reply names: the request it answers, the conversation it goes to (provider:nativeId:generation) and the word it gives back.
-export type ReplyProof={replyTo?:string;recipient?:string;replyToken?:string};
+// What a reply names: the request it answers, the conversation it goes to (provider:nativeId:generation), the word it gives back and
+// its own id (a word answers its request with one reply id only).
+export type ReplyProof={replyTo?:string;recipient?:string;replyToken?:string;id?:string};
 // null when the Bot itself runs the command; otherwise why not. Nothing about the process is looked at before the id or the word matches.
 export type ExecutorCheck=(peer:Peer,reply?:ReplyProof)=>Promise<string|null>;
 const WORD=/^[A-Za-z0-9_-]{32}$/;
@@ -36,7 +40,8 @@ export function createExecutorCheck(o:ExecutorOptions={}):ExecutorCheck{
  return async(peer,reply)=>{
   if(reply?.replyToken!==undefined){
    if(!await wordMatches(o,peer,reply))return 'reply_token_mismatch';
-   return await fromBotApp(o)?null:'not_from_bot_app';
+   if(!await fromBotApp(o))return 'not_from_bot_app';
+   return await useWord(o,reply);
   }
   if(!peer.botIds?.length)return 'bot_id_unset';
   const raw=(o.env??process.env).CURSOR_CONVERSATION_ID,id=typeof raw==='string'?raw.toLowerCase():'';
@@ -49,12 +54,30 @@ export function createExecutorCheck(o:ExecutorOptions={}):ExecutorCheck{
 // sent with this word. Only the word's hash is on disk; the comparison takes the same time whatever it holds.
 async function wordMatches(o:ExecutorOptions,peer:Peer,reply:ReplyProof):Promise<boolean>{
  const word=reply.replyToken,m=/^(claude|codex|grok):([^:]+):(.+)$/.exec(reply.recipient??'');
- if(!o.reservationDir||!reply.replyTo||typeof word!=='string'||!WORD.test(word)||!m)return false;
+ if(!o.reservationDir||!reply.replyTo||!reply.id||typeof word!=='string'||!WORD.test(word)||!m)return false;
  const asked=await reservationOf(o.reservationDir,m[1],'local',m[2],reply.replyTo).catch(()=>null);
  if(!asked||asked.recipient.id!==`grok-bot:${peer.name}`||asked.sender.id!==`${m[1]}:${m[2]}`||asked.sender.generation!==m[3])return false;
  const age=(o.now??Date.now)()-asked.at;if(!(age>=0&&age<=DAY))return false;
  if(typeof asked.replyTokenSha256!=='string'||!/^[0-9a-f]{64}$/.test(asked.replyTokenSha256))return false;
  return timingSafeEqual(Buffer.from(asked.replyTokenSha256,'hex'),createHash('sha256').update(word).digest());
+}
+// A word is used once: the first reply that passes writes its id into a file named for the request it answers, created exclusively,
+// so of two replies at once only one gets it. The same reply id again (a retry after a failed delivery) passes; any other is refused.
+async function useWord(o:ExecutorOptions,reply:ReplyProof):Promise<string|null>{
+ try{
+  const m=/^(claude|codex|grok):([^:]+):/.exec(reply.recipient!)!,dir=join(dirname(o.reservationDir!),'reply-words-used');
+  await mkdir(dir,{recursive:true,mode:0o700});const d=await lstat(dir);
+  if(!d.isDirectory()||d.isSymbolicLink()||(d.mode&0o777)!==0o700||d.uid!==process.getuid?.())return 'reply_token_unavailable';
+  const path=join(dir,reservationFile(m[1],'local',m[2],reply.replyTo!));
+  // The id is written whole to a private temporary file first and then linked into place, so the mark never exists half written.
+  const tmp=path+'.'+randomUUID();let file;
+  try{
+   file=await open(tmp,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await file.writeFile(reply.id!);await file.sync();await file.close();file=undefined;
+   try{await link(tmp,path);return null;}
+   catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST')return 'reply_token_unavailable';}
+   let held;try{held=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW);const s=await held.stat();if(!s.isFile()||(s.mode&0o777)!==0o600||s.uid!==process.getuid?.()||s.size>1024)return 'reply_token_unavailable';return (await held.readFile('utf8'))===reply.id?null:'reply_token_used';}finally{await held?.close();}
+  }finally{await file?.close();await unlink(tmp).catch(()=>{});}
+ }catch{return 'reply_token_unavailable';}
 }
 async function fromBotApp(o:ExecutorOptions):Promise<boolean>{
  const inspect=o.process??processInfo,executable=o.executable??(async(pid:number)=>(await processFiles(pid)).executable),verify=o.verify??createAppVerifier();

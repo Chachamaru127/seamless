@@ -108,6 +108,20 @@ test('each request carries its own reply word; only its hash is kept, in the pri
  const disk=await treeText(s.f.home);assert.ok(!disk.includes(x)&&!disk.includes(y),'the word itself is written nowhere');
 });
 
+test('the hash of the reply word is in the record before the request leaves, so a reply that comes back at once, or after this process is gone, is still known',async t=>{
+ let seen:any=null;const sha=(v:string)=>createHash('sha256').update(v).digest('hex');
+ let s:Setup;
+ s=await setup(t,async(hit,_req,res)=>{seen={word:hit.json.replyToken,records:await s.records()};res.statusCode=200;res.end('accepted');});
+ assert.equal((await s.send('early-1','すぐ返す')).status,'submitted');
+ const during=seen.records.find((r:any)=>r.id==='early-1');
+ assert.equal(during.status,'pending','the POST is still in flight');assert.equal(during.replyTokenSha256,sha(seen.word),'yet the hash is already on disk');
+ const after=(await s.records()).find(r=>r.id==='early-1') as any;assert.equal(after.replyTokenSha256,sha(seen.word),'and stays after the answer');
+ // An address that does not answer leaves the request unknown, with the hash kept for a reply that may still come.
+ const silent=await setup(t,()=>{});
+ const r=await silent.send('early-2','応答なし');assert.equal(r.status,'unknown');
+ assert.match(((await silent.records()).find(x=>x.id==='early-2') as any).replyTokenSha256,/^[0-9a-f]{64}$/);
+});
+
 // Scene 2.
 test('scene 2: any answer that is not 2xx is not accepted (rejected); only the status number is reported, never the answer\'s body, and a redirect is not followed',async t=>{
  for(const status of [400,401,403,404,429,500,502,503,301,302,307]){

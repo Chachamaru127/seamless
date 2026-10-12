@@ -84,7 +84,7 @@ test('a reply from the Bot\'s routine: the word sent with the request, from the 
  await requestToBot(dir,{id:'ask-old',from,replyWord:WORD,at:T-86_400_001});
  await requestToBot(dir,{id:'ask-second',from,bot:'second',replyWord:WORD,at:T-60_000});
  await requestToBot(dir,{id:'ask-no-word',from,at:T-60_000});
- const reply=(over:Record<string,string>={})=>({replyTo:'ask-1',replyToken:WORD,recipient:'claude:claude-b:42@100',...over});
+ const reply=(over:Record<string,string>={})=>({replyTo:'ask-1',replyToken:WORD,recipient:'claude:claude-b:42@100',id:'r-1',...over});
  const c=(tree=botTree)=>check(tree,routine,[HELPER,APP],{reservationDir:dir,now:()=>T}).run;
  assert.equal(await c()(peer(),reply()),null);
  for(const [label,over,reason] of [
@@ -102,4 +102,24 @@ test('a reply from the Bot\'s routine: the word sent with the request, from the 
  // A word without a request to answer is no proof, and the routine's own id is not the Bot's.
  assert.equal(await c()(peer(),{replyToken:WORD,recipient:'claude:claude-b:42@100'}),'reply_token_mismatch');
  assert.equal(await c()(peer()),'bot_id_missing');
+});
+
+test('a word answers its request once: the same reply may be sent again, another reply id is refused, and of two at once only one passes',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'seamless-once-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const T=Date.parse('2026-10-12T06:00:00Z'),from={provider:'claude' as const,nativeId:'claude-b',generation:'42@100',cwd:'/w'};
+ const WORD='o'.repeat(32),routine={CURSOR_CONVERSATION_ID:'sand-subagent-48e30927-af7f-4990-94ba-8786b6a8a37a'};
+ for(const id of ['ask-a','ask-b','ask-c'])await requestToBot(dir,{id,from,replyWord:WORD,at:T-60_000,status:id==='ask-c'?'pending':'submitted'});
+ const reply=(replyTo:string,id:string)=>({replyTo,replyToken:WORD,recipient:'claude:claude-b:42@100',id});
+ const c=(tree=botTree)=>check(tree,routine,[HELPER,APP],{reservationDir:dir,now:()=>T}).run;
+ // A refused attempt (not from the app) uses nothing up.
+ assert.equal(await c(codexTree)(peer(),reply('ask-a','r-0')),'not_from_bot_app');
+ assert.equal(await c()(peer(),reply('ask-a','r-1')),null);
+ assert.equal(await c()(peer(),reply('ask-a','r-1')),null,'the same reply again (a retry) passes');
+ assert.equal(await c()(peer(),reply('ask-a','r-2')),'reply_token_used','another reply with the same word does not');
+ const both=await Promise.all([c()(peer(),reply('ask-b','x-1')),c()(peer(),reply('ask-b','x-2'))]);
+ assert.deepEqual(both.filter(r=>r===null).length,1,JSON.stringify(both));assert.ok(both.includes('reply_token_used'));
+ // A request still waiting for its answer (the reply came first) is answered all the same.
+ assert.equal(await c()(peer(),reply('ask-c','p-1')),null);
+ // Without a reply id there is nothing to bind the word to.
+ assert.equal(await c()(peer(),{replyTo:'ask-a',replyToken:WORD,recipient:'claude:claude-b:42@100'}),'reply_token_mismatch');
 });

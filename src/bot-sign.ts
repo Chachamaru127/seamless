@@ -37,7 +37,7 @@ export async function signForBot(d:BotSigning,method:'send'|'sessions',input:unk
  const peer=roster.status==='ok'?roster.value.peers.find(p=>p.name===d.name):undefined;
  if(!peer)return {result:{status:'sender_unregistered'}};
  const {replyToken,...toSign}=asked as typeof asked&{replyToken?:string};
- const refused=await d.executor(peer,replyToken===undefined?undefined:{replyTo:toSign.replyTo,recipient:toSign.recipient,replyToken});
+ const refused=await d.executor(peer,replyToken===undefined?undefined:{replyTo:toSign.replyTo,recipient:toSign.recipient,replyToken,id:toSign.id});
  if(refused)return {result:{status:'executor_unverified',reason:refused}};
  const key=await d.secret(peer.receiveKeyEnv);
  if(key===undefined)return {result:{status:'key_unavailable'}};

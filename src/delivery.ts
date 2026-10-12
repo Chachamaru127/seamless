@@ -10,8 +10,11 @@ import { Registry, permitted } from './registry.ts';
 import { ContractError, object } from './protocol.ts';
 import type { Registration } from './protocol.ts';
 export type Envelope={id:string;sender:{id:string;nativeId:string;generation:string};recipient:{id:string;nativeId:string;generation:string};text:string;replyTo?:string};
-export type Receipt={status:'submitted'|'unknown'|'rejected';nativeMessageId?:string;payloadSha256?:string;replyTokenSha256?:string;reason?:string;version?:string};
-export type NativeAdapter={inboxState?:(target:Registration,id:string,sender:{id:string;nativeId:string})=>Promise<string|null>;received?:(target:Registration)=>Promise<import("./inbound.ts").Received[]>;sentIds?:(target:Registration,ids:string[],recipient:Pick<Registration,'provider'|'nativeId'>)=>Promise<string[]>;structure?:(target:Registration)=>Promise<StructureItem[]>;inbound?:(recipient:Registration)=>Promise<Envelope[]>;read:(target:Registration,options:{cursor?:string;limit?:number})=>Promise<unknown>;send:(target:Registration,envelope:Envelope,authorize?:()=>Promise<boolean>)=>Promise<Receipt>};
+export type Receipt={status:'submitted'|'unknown'|'rejected';nativeMessageId?:string;payloadSha256?:string;reason?:string;version?:string};
+// What an adapter wants settled before a request leaves: fields for the private record (written with the reservation, before the
+// send) and something handed to its send only (never written). A Bot's reply word is made this way (src/webhook-send.ts).
+export type Prepared={record:Record<string,string>;carry:unknown};
+export type NativeAdapter={inboxState?:(target:Registration,id:string,sender:{id:string;nativeId:string})=>Promise<string|null>;received?:(target:Registration)=>Promise<import("./inbound.ts").Received[]>;sentIds?:(target:Registration,ids:string[],recipient:Pick<Registration,'provider'|'nativeId'>)=>Promise<string[]>;structure?:(target:Registration)=>Promise<StructureItem[]>;inbound?:(recipient:Registration)=>Promise<Envelope[]>;read:(target:Registration,options:{cursor?:string;limit?:number})=>Promise<unknown>;prepare?:(target:Registration,envelope:Envelope)=>Prepared;send:(target:Registration,envelope:Envelope,authorize?:()=>Promise<boolean>,carry?:unknown)=>Promise<Receipt>};
 export class Delivery {
  private tracking?:{keyPath:string;now?:()=>number};
  private discovery:Discovery;
@@ -69,21 +72,22 @@ export class Delivery {
   const envelope:Envelope={id:p.id as string,text:p.text as string,sender:identity(sender),recipient:identity(target),...(p.replyTo===undefined?{}:{replyTo:p.replyTo as string})};
   const party=(r:Registration)=>({id:r.id,provider:r.provider,nativeId:r.nativeId,generation:r.generation,cwd:r.workspace});
   const metadata=this.tracking?{id:envelope.id,sender:party(sender),recipient:party(target),...(envelope.replyTo?{replyTo:envelope.replyTo}:{}),at:(this.tracking.now??Date.now)()}:{};
+  const prepared=this.adapter.prepare?.(target,envelope),kept=prepared?.record??{};
   let path:string;
   try{
    await mkdir(this.reservationDir,{recursive:true,mode:0o700});const dir=await lstat(this.reservationDir);
    if(!dir.isDirectory()||dir.isSymbolicLink()||(dir.mode&0o777)!==0o700||dir.uid!==process.getuid?.())return {status:'reservation_unavailable'};
    path=join(this.reservationDir,reservationFile(sender.provider,sender.host,sender.nativeId,p.id as string));
    let file;
-   try{file=await open(path,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await file.writeFile(JSON.stringify({hash,status:'pending',at:Date.now(),...metadata}));await file.sync();}
+   try{file=await open(path,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await file.writeFile(JSON.stringify({hash,status:'pending',at:Date.now(),...metadata,...kept}));await file.sync();}
    catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST')return {status:'reservation_unavailable'};let existing;try{existing=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW);const stat=await existing.stat();if(!stat.isFile()||(stat.mode&0o777)!==0o600||stat.uid!==process.getuid?.()||stat.size>16384)return {status:'reservation_unavailable'};const record=JSON.parse(await existing.readFile('utf8'));if(record.hash!==hash)return {status:'id_conflict'};return {status:record.status==='submitted'?'submitted':record.status==='rejected'?'rejected':'unknown'};}catch{return {status:'unknown'};}finally{await existing?.close();}}
    finally{await file?.close();}
   }catch{return {status:'reservation_unavailable'};}
   let denied:string|null=null,recheckRejected=false;
   const authorize=async()=>{denied=await this.validate?.()??null;if(denied){recheckRejected=true;return false;}try{await this.refreshHook();}catch{recheckRejected=true;return false;}const currentSender=this.registry.get(sender.id),currentTarget=this.registry.get(target.id);const allowed=!!currentSender&&!!currentTarget&&JSON.stringify(currentSender)===JSON.stringify(sender)&&JSON.stringify(currentTarget)===JSON.stringify(target)&&permitted(currentSender,currentTarget,'send');if(!allowed)recheckRejected=true;return allowed;};
-  let receipt:Receipt;try{receipt=await authorize()?await this.adapter.send(target,envelope,authorize):{status:'rejected'};}catch{receipt={status:'unknown'};}
-  // The payload hash and the hash of a Bot's reply word stay in the private record only; no returned receipt carries them.
-  const {payloadSha256,replyTokenSha256,...visible}=receipt;receipt=visible;
+  let receipt:Receipt;try{receipt=await authorize()?await this.adapter.send(target,envelope,authorize,prepared?.carry):{status:'rejected'};}catch{receipt={status:'unknown'};}
+  // The payload hash stays in the private record only; no returned receipt carries it.
+  const {payloadSha256,...visible}=receipt;receipt=visible;
   if(receipt.status==='rejected'&&recheckRejected){
    try{await unlink(path);}catch{return {status:'unknown'};}
    this.attempts.delete(p.id as string);
@@ -91,7 +95,7 @@ export class Delivery {
   }
   // A lost process leaves pending; another process never retries that reservation.
   const temporary=path+'.'+randomUUID();let state;
-  try{state=await open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await state.writeFile(JSON.stringify({hash,status:receipt.status,at:Date.now(),...metadata,...(payloadSha256?{payloadSha256}:{}),...(replyTokenSha256?{replyTokenSha256}:{})}));await state.sync();await state.close();state=undefined;await rename(temporary,path);}catch{receipt={status:'unknown'};}finally{await state?.close();}
+  try{state=await open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await state.writeFile(JSON.stringify({hash,status:receipt.status,at:Date.now(),...metadata,...kept,...(payloadSha256?{payloadSha256}:{})}));await state.sync();await state.close();state=undefined;await rename(temporary,path);}catch{receipt={status:'unknown'};}finally{await state?.close();}
   if(receipt.status==='rejected'&&!denied)denied=await this.validate?.()??null;
   return denied&&receipt.status==='rejected'?{status:denied}:receipt;
  }

@@ -41,6 +41,7 @@ export function createExecutorCheck(o:ExecutorOptions={}):ExecutorCheck{
   if(reply?.replyToken!==undefined){
    if(!await wordMatches(o,peer,reply))return 'reply_token_mismatch';
    if(!await fromBotApp(o))return 'not_from_bot_app';
+   if(await idTaken(o,peer,reply))return 'reply_id_taken';
    return await useWord(o,reply);
   }
   if(!peer.botIds?.length)return 'bot_id_unset';
@@ -60,6 +61,14 @@ async function wordMatches(o:ExecutorOptions,peer:Peer,reply:ReplyProof):Promise
  const age=(o.now??Date.now)()-asked.at;if(!(age>=0&&age<=DAY))return false;
  if(typeof asked.replyTokenSha256!=='string'||!/^[0-9a-f]{64}$/.test(asked.replyTokenSha256))return false;
  return timingSafeEqual(Buffer.from(asked.replyTokenSha256,'hex'),createHash('sha256').update(word).digest());
+}
+// A reply id this Bot already sent under (its reservation, src/external-inbound.ts) for another request or to another conversation would
+// be refused only after the word is used; it is refused before. The same id for this same reply (a retry) is not taken.
+async function idTaken(o:ExecutorOptions,peer:Peer,reply:ReplyProof):Promise<boolean>{
+ const sent=await reservationOf(o.reservationDir!,'grok-bot','external',peer.name,reply.id!).catch(()=>null);
+ if(!sent)return false;
+ const m=/^(claude|codex|grok):([^:]+):/.exec(reply.recipient!)!;
+ return sent.replyTo!==reply.replyTo||sent.recipient.id!==`${m[1]}:${m[2]}`;
 }
 // A word is used once: the first reply that passes writes its id into a file named for the request it answers, created exclusively,
 // so of two replies at once only one gets it. The same reply id again (a retry after a failed delivery) passes; any other is refused.

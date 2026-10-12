@@ -277,6 +277,11 @@ test('a reply whose own fields are not a valid envelope is refused before its wo
  for(const [label,over] of [['empty text',{id:'rep-e',text:''}],['listing recipient',{id:'rep-l',recipient:'*'}]] as const){
   const r=await botSend(f,unsigned({...over,replyTo:'ask-v',replyToken:WORD}),routine);assert.equal(r.status,'envelope_invalid',label+JSON.stringify(r));
  }
+ // A reply id the Bot already used for something else is refused before the word is touched, so a fresh id still answers.
+ await requestToBot(f.reservations,{id:'ask-w',from:{provider:'claude',nativeId:'claude-b',generation:'42@100',cwd:f.work},replyWord:'w'.repeat(32),at:T0-60_000});
+ assert.equal((await botSend(f,unsigned({id:'taken-1',replyTo:'ask-w',replyToken:'w'.repeat(32)}),routine)).status,'submitted');
+ assert.deepEqual(await botSend(f,unsigned({id:'taken-1',replyTo:'ask-v',replyToken:WORD}),routine),{status:'executor_unverified',reason:'reply_id_taken'});
+ assert.deepEqual(await botSend(f,unsigned({id:'taken-1',replyTo:'ask-v',replyToken:WORD,text:'別の本文'}),routine),{status:'executor_unverified',reason:'reply_id_taken'});
  const ok=await botSend(f,unsigned({id:'rep-v',replyTo:'ask-v',replyToken:WORD}),routine);
  assert.equal(ok.status,'submitted',JSON.stringify(ok));
 });

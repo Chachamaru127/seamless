@@ -78,6 +78,9 @@ test('another registration\'s key does not pass, and neither does a key the Bot 
  await expectRejected(f,f.envelope({key:randomBytes(32).toString('hex')}),'signature_mismatch');
  // And the second registration cannot sign as the first by naming it: --as and the envelope must say the same name.
  await expectRejected(f,f.envelope({sender:'second',key:f.keys.secondRecv}),'sender_mismatch','chachamaru');
+ // The order of the reasons is kept: a wrong sender is said before what the call needs of the fields (an empty text, a listing shape).
+ await expectRejected(f,f.envelope({sender:'second',key:f.keys.secondRecv,text:''}),'sender_mismatch','chachamaru');
+ assert.equal((await f.call('sessions',f.envelope({sender:'second',key:f.keys.secondRecv,recipient:'claude:claude-b:42@100'}),'chachamaru')).status,'sender_mismatch');
  assert.equal((await f.call('send',f.envelope({sender:'second',key:f.keys.secondRecv}),'second')).status,'submitted');
 });
 test('a revoked registration is refused even with a correct signature',async t=>{

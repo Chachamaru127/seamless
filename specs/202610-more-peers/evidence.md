@@ -742,3 +742,21 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - 変えていないもの: 手元の制限 `~/.seamless/limits.json`（今は無い）で範囲を絞ったときに、名簿の `"all"` より制限が優先される照合（`src/external-inbound.ts` の `inRange`）。Mac の Claude、Codex、Grok CLI どうしの範囲。
 - 判定（Codex gpt-6-astra、high、読み取り専用、9926e73）: FAIL、確信度 high。項目 1、2、4 は Yes（外の登録だけが広がり、手元の制限、失効、未設定、送信の可否、除外は弱めていない。再実行で既存の範囲は広がらない。記録と実在の名簿が一致）。項目 3 が No: `scripts/peer-setup.sh` の 23 行の使い方の表示が「新規は 茶々丸 と $HOME/LocalWork」のまま。→ 使い方の表示の試験（`tests/peer-setup.test.ts` の引数の試験で、不明なオプションのときの表示に「新規は 茶々丸 と すべての場所」があり LocalWork が無い）を先に足して落ちるのを確かめ、表示を直した（20 件通過）。原文は `reviews/scope-all-judge-9926e73.md`。
 - 再判定（3e7e5ef）: **PASS**、確信度 high。使い方の表示と試験が新しい既定に合い、前回 Yes の項目も崩れていない。verify は 3e7e5ef で exit 0（node 705 件、帯 99 件、peer-secrets ok）。原文は `reviews/scope-all-rejudge-3e7e5ef.md`（判定の原文の行末の空白は消した）。
+
+## 立花さんの判断 2 の確認: 茶々丸dot まわりの使い分け（2026-10-12 13:10〜13:50 JST）
+
+調べ方: workflow `wf_ec48a770-212`（Claude の調査役 3 体が、リポジトリの試作、アプリ標準の機能、過去の判断を別々に調べ、まとめ役 1 体と反証役 1 体が突き合わせた。読み取りだけ）。反証役の指摘のうち要点はリーダーが手元で確かめた。
+
+| 流れ | 担当 | 状態 | 根拠 |
+|---|---|---|---|
+| Dot → Mac の Codex（タスクを作る、続ける） | アプリ標準（Dot の「あなたのコンピューター」） | 公式にある。この Mac にも Dot に結び付いたタスクの記録がある | learn.chatgpt.com/docs/dots/computers-and-apps（2026-10-12 取得）。`~/.codex/.codex-global-state.json` の `aeon-subtasks-by-account-v1` と `cloud-aeon-sidebar-cache-v1`（Dot の会話ごとの印） |
+| Mac の Codex → Dot に結び付いたタスク | アプリ標準（Codex の道具 `codex_app` の `send_message_to_thread`、`hostId: durable`） | 使われた記録がある（Codex の会話が「dot とやりとりして…」と送った）。そこから Dot 本人へ報告が戻るかは未確認 | `~/.codex/sessions` の rollout（`"hostId":"durable","prompt":"人間立花からこの元チャットで『dotとやりとりして…』"`）。公式は「裏の作業は Dot に報告を返す」と書く（tasks-and-memory） |
+| Mac の Claude、Grok CLI、茶々丸 → Dot | アプリ標準の道は見つからない。seamless の通知（MCP Events、測定 M2 で通った）か、Codex の会話を経由する形 | seamless の通知は試作だけで本体に無い（T3-17） | evidence.md の M2 の節。`src/peers.ts` の product は grok-bot だけ |
+| Codex ⇄ Codex | アプリ標準（`codex_app`）と seamless が重なる | 別の論点 | `~/.codex/state_5.sqlite` の `thread_dynamic_tools` |
+| Mac → Dot の通知の作り | 二重の試作: 本線の Codex の会話の `experiments/dot-events`（保持と予約は揃うが実物の購読を受けられない作り、実機 0 回）と、`experiments/dot-m2/notify.ts`（実物で通った、保持はメモリだけ） | T3-17 で 1 本にする（notify.ts を土台に、events.ts から保持、依頼ごとの予約、接続先固定の受け口などを取る案） | 調査役が両方の試験を走らせた（21 件と 34 件、すべて通過） |
+
+- 「Codex 内部ですでにできている」の読み: 最も字面に近いのは、Codex の道具 `codex_app` で Dot に結び付いたタスクへ送れること（上の表の 2 行目）。本線の Codex の会話が作った `experiments/dot-events` の可能性もある。どちらも、Claude、Grok CLI、茶々丸から Dot へ届ける道にはならない。
+- seamless の Codex の部品は、`src/native-runtime.ts` が会話の持ち主を `hostId:'local'` で探すので、Dot に結び付いたタスク（durable）を一覧に出さない（コードからの推論。実行は未確認）。
+- T3-17 の中で決める必要が見つかった衝突: M2 の後に書いた「本文は Dot に読み取りのツールで取らせる」は、Plans.md の H10「Dot からの read は閉じる」とぶつかる。
+- 安全の観察（seamless の変更ではない）: `~/.codex/config.toml` の既定が全権限で承認なしの設定なら、Dot が作るローカルのタスクもその設定で動く可能性がある（未確認）。
+- 訂正: Q5 という問いを最初に立てたのは Claude 側の spec.md（76b04a9、2026-10-08 16:46）で、Codex の文書（dot-events-integration.md）は答えの案を足した。

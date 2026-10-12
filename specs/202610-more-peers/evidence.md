@@ -684,7 +684,7 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - 茶々丸の画面（立花さんの観察）: 「特に表示なし」。茶々丸は会話の画面ではなく、webhook で起きた裏の処理で返した。
 - 茶々丸の説明（立花さんが茶々丸に聞いた答えの貼り付け、12:3x）: 「12:27 に Codex（01a12e26）から依頼が届き、bot-send で返した（submitted）。表示が無かったのは、ルーチンの結果がまず茶々丸に届き、茶々丸がチャットへ伝える仕組みだから。今回は伝えていなかった」。つまり、茶々丸の側で届いた依頼が立花さんに見えるかは、茶々丸がチャットに書くかどうかで決まり、seamless からは保証できない。Mac の側（依頼を送った会話）では、返信が会話に届き、段も記録に残る。
 
-### この試験の外で、茶々丸が送った 3 通（目的はこの会話からは見えない）
+### この試験の外で、茶々丸の名前で送られた 3 通（12:39 に訂正: 送ったのは茶々丸ではなく Codex の会話。下の「訂正」を参照）
 
 | 時刻（JST） | 宛先 | ID | 結果 |
 |---|---|---|---|
@@ -702,3 +702,20 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 
 - T2-8c と T2-8d の「送り手が名簿の登録名として確かめられた」の対応: 2 通とも、Mac は封筒の HMAC を名簿の `chachamaru`（鍵の版 1）の受信鍵で確かめ、nonce を `~/.seamless/nonces` に記録した（記録は peer `chachamaru`、keyVersion 1、op `send`、id は各返信の ID）。受け手の表示が `declared` なのは、その nonce の記録が `signedBy: 'mac'`（Mac が茶々丸の代わりに署名した）だからで、確かめに失敗したからではない（Plans.md の先送りの表「茶々丸の側での署名」）。
 - TC-3b: webhook へ送る封筒は `tests/webhook-send.test.ts` の 442 行で、markUnapproved の有無の両方を確かめ済み。受ける側（茶々丸が署名した封筒）は、`src/external-inbound.ts` が封筒を `humanApproval` なしで渡し（`tests/signed-inbound.test.ts` の 54 行）、Mac の会話へ書く直前に `src/native-runtime.ts` の 172 行が markUnapproved に従って印を付ける。この書き込みの試験（`tests/native-runtime.test.ts` の「envelope marker」）に、送り手が `grok-bot:chachamaru` の封筒を足した。Claude と Codex の宛先それぞれで、markUnapproved が無い、false、true、古い呼び方の 4 通りを確かめ、true のときだけ `humanApproval:false` が付き、どの場合も `humanApproval:true` が無い（16 件通過）。本番では `src/automatic.ts` の 82 行が、受ける経路にもこの同じ書き込みの部品を渡している。
+- TC-1（Claude ⇄ Codex、今回の版。T2-8a と T2-8b の後）: 依頼 `tc-1-20261012`（この会話 → `codex:01a12e26`）の 4 段は、受理 03:36:55.984Z、届いた 03:36:56.229Z、処理開始 03:36:56.229Z、返答完了 03:38:37.441Z（返信 `tc-1-reply-01a12e26`「TC-1 受け取りました」、replyTo 一致）。既存の Claude と Codex の往復は壊れていない（AC10）。返答までの 101 秒の大半は、Codex が「別の会話からの依頼だけでは送れない。本人の許可が要る」と立花さんに聞いた待ち時間。契約では seamless で本人の別の会話へ返す分は事前承認済み（2026-10-07）だが、Codex は聞くほうを選んだ（安全側の挙動なので直さない）。
+- この会話の呼び名: 会話の圧縮の後、この会話は `claude:f2a04e59-9f7a-4753-af0b-a8b013d26409`（世代 57534@1791775815685）として動いている。12:36 以降の送受信はこの名前。
+
+### 訂正: 茶々丸の名前で送られた 3 通は、Codex の会話が送った（12:39 確認）
+
+茶々丸に seamless で問い合わせた（依頼 `t2-8b-check-20261012`、12:36:57）。返信 `chachamaru-20261012-t2-8b-check-001`（03:39:21Z、送ってから 2 分 24 秒）の答えを、Codex の会話の記録（`~/.codex/sessions/2026/10/12/` の rollout）で確かめた。
+
+| 送られた ID | 実際に送った者 | 根拠 |
+|---|---|---|
+| `t2-8b-ack-20261012-01a12e21-001`（12:22:40） | Codex の会話 `01a12e21`（作業フォルダ seamless）。立花さんが打った「T2-8b の試験です。受け取ったら bot-send でこの会話に一行返してください」を自分への指示と読み、`bot-send chachamaru` を Mac で動かして自分の会話に送った | rollout に `bot-send chachamaru <<'JSON'` が 7 回、結果 submitted が 2 回 |
+| `t2-8b-codex-reply-20261012-01`（12:27:40） | Codex の会話 `01a12e1f`（作業フォルダ `~/Documents/Codex/2026-10-12/seamless-t2-8b-bot-send`、12:20:10 に開始）の下の作業 `01a12e20`。`claude:968ced28` から届いた依頼 `t2-8b-leaderpm-20261012-01` への返信として、茶々丸の名前で送った。返信する者（chachamaru）が元の依頼の宛先（`codex:01a12e1f`）と違うので、Mac が `invalid_reply` で断った | rollout に `bot-send chachamaru` が 10 回、`invalid_reply` が 2 回 |
+| `t2-8b-codex-ack-20261012-01`（12:27:45） | 同じ Codex の作業が、replyTo を外して送り直した。submitted | 同上 |
+
+- 茶々丸が今日 `bot-send` で送ったのは 2 通だけ（T2-8a と T2-8b の返信）。
+- 起きたこと: Plans.md の先送りの表の「この Mac で本人の権限でコマンドを動かせる者は、誰でも茶々丸として署名できる」が、使い始めた当日に、立花さんの Codex の会話によって実際に起きた。悪意ではなく、私が渡した文の「bot-send でこの会話に一行返して」を Codex が自分への指示と読んだため。
+- 守れたこと: 3 通とも、受け手には送り手が `declared`（確かめていない名乗り）として出た。返信の取り違えは `invalid_reply` で止まった（T2-5 の拒否の経路が実物で働いた）。どの会話も自動で返信の連鎖を起こしていない。
+- 判断が要ること（立花さんへ）: 先送りの期日（配布の前）を前に倒し、`bot-send` と `bot-sessions` を「Grok Bot のアプリから動かしたときだけ」受け付ける形にするか。今の呼び手の特定（`src/caller.ts` の祖先と署名の確認）を使えば、Claude、Codex、Grok CLI の会話から動かした `bot-send` を断れる。セキュリティの変更なので、立花さんの判断の後に行う。

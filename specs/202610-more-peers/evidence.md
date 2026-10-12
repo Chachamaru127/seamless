@@ -760,3 +760,18 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - T3-17 の中で決める必要が見つかった衝突: M2 の後に書いた「本文は Dot に読み取りのツールで取らせる」は、Plans.md の H10「Dot からの read は閉じる」とぶつかる。
 - 安全の観察（seamless の変更ではない）: `~/.codex/config.toml` の既定が全権限で承認なしの設定なら、Dot が作るローカルのタスクもその設定で動く可能性がある（未確認）。
 - 訂正: Q5 という問いを最初に立てたのは Claude 側の spec.md（76b04a9、2026-10-08 16:46）で、Codex の文書（dot-events-integration.md）は答えの案を足した。
+
+## 測定 M3: 茶々丸が Mac で動かすコマンドの起動元（2026-10-12 13:5x JST）
+
+依頼 `m3-whoami-20261012`（13:10:25）に、茶々丸が返信 `chachamaru-m3-whoami-reply-001` で答えた（立花さんが Grok Bot の画面で承認した後。茶々丸は台本の中身を読んで読み取りだけと確かめてから、自分の Bot の UUID を渡して 1 回動かした。終了コード 0）。送り手の表示は declared（Mac の代行署名）。
+
+| 項目 | 結果 |
+|---|---|
+| 起動元 | `bash` ← `/bin/zsh` ← `Grok Bot Helper`（Identifier `com.anysphere.sand.electron-helper`、TeamIdentifier `DCNK4UB866`）← `Grok Bot`（Identifier `com.anysphere.sand`、TeamIdentifier `DCNK4UB866`、親は launchd） |
+| 関係する環境変数の名前 | `AGENT_TRANSCRIPTS`、`CURSOR_AGENT`、`CURSOR_CONVERSATION_ID`、`CURSOR_REQUEST_ID`、`SAND_AGENT`、`SAND_CLIENT_APP_VERSION`、`SAND_DATA_ROOT`、`SAND_LAB`、`SAND_LOCAL_EXEC_GENERATION`、`SAND_PACKAGED`、`SAND_SENTRY_ENVIRONMENT`、`SAND_SENTRY_RELEASE`、`__CURSOR_SANDBOX_ENV_RESTORE` |
+| 茶々丸の Bot の UUID（`69590697-ebf9-44d5-8f40-64dbc9455660`）を値に含む変数 | `CURSOR_CONVERSATION_ID`、`__CURSOR_SANDBOX_ENV_RESTORE` |
+| 作業フォルダ | ホームフォルダ |
+
+- 茶々丸の補足: 同じ Grok Bot のアプリから、ほかの Bot も Mac のコマンドを動かす（Bot のサーバーのエージェントのフォルダは 77 個）。アプリの署名だけでは茶々丸とほかの Bot を見分けられない。
+- 分かったこと: 「Grok Bot のアプリから動かされた」は、起動元のアプリの署名（Identifier とチーム ID。表示名ではない）で確かめられる。「どの Bot か」は `CURSOR_CONVERSATION_ID` の UUID で見分けられる。
+- 未確認: 茶々丸の UUID が、ルーチン（webhook で起きた処理。今回はこれ）と、立花さんとのチャットのどちらでも同じか。UUID は環境変数なので、同じアプリの中のほかの Bot がわざと書き換えれば名乗れる（Codex や Claude の会話からは、起動元の署名で断れる）。

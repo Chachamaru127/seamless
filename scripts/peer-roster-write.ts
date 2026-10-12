@@ -44,7 +44,9 @@ async function next(roster:Peers):Promise<{roster:Peers;keyVersion:number;scope:
  const scope:PeerScope|undefined=rootArg!==''?[await scopeRoot(rootArg)]:old!==undefined?old.scope:'all';
  const keyVersion=old===undefined?1:old.keyVersion+(command==='put'&&newKeyArg==='1'?1:0);
  const operations=old===undefined?{send:true}:old.operations;
- const peer:Peer={name,displayName,product:'grok-bot',addressEnv,sendKeyEnv,receiveKeyEnv,keyVersion,...(operations===undefined?{}:{operations}),...(scope===undefined?{}:{scope})};
+ // The Bot's UUIDs (src/bot-executor.ts) are the owner's: a rerun keeps them, so it does not stop the Bot from signing.
+ const botIds=old?.botIds;
+ const peer:Peer={name,displayName,product:'grok-bot',addressEnv,sendKeyEnv,receiveKeyEnv,keyVersion,...(operations===undefined?{}:{operations}),...(scope===undefined?{}:{scope}),...(botIds===undefined?{}:{botIds})};
  const peers=old===undefined?[...roster.peers,peer]:roster.peers.map(p=>p.name===name?peer:p);
  const made={version:1 as const,peers};
  if(!validPeers(made))return fail('registration_invalid');

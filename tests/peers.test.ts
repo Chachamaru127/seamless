@@ -58,8 +58,8 @@ const required=['name','displayName','product','addressEnv','sendKeyEnv','receiv
 const long=(n:number,c='a')=>c.repeat(n);
 const badPeers:Array<[string,unknown]>=[
  // botIds (2026-10-12, 判断 1): the Bot's own UUIDs, lower-case, at least one when present.
- ['botIds empty',good({botIds:[]})],['botIds not a list',good({botIds:'69590697-ebf9-44d5-8f40-64dbc9455660'})],['botIds not a UUID',good({botIds:['chachamaru']})],
- ['botIds upper case',good({botIds:['69590697-EBF9-44D5-8F40-64DBC9455660']})],['botIds repeated',good({botIds:['69590697-ebf9-44d5-8f40-64dbc9455660','69590697-ebf9-44d5-8f40-64dbc9455660']})],
+ ['botIds empty',roster(good({botIds:[]}))],['botIds not a list',roster(good({botIds:'69590697-ebf9-44d5-8f40-64dbc9455660'}))],['botIds not a UUID',roster(good({botIds:['chachamaru']}))],
+ ['botIds upper case',roster(good({botIds:['69590697-EBF9-44D5-8F40-64DBC9455660']}))],['botIds repeated',roster(good({botIds:['69590697-ebf9-44d5-8f40-64dbc9455660','69590697-ebf9-44d5-8f40-64dbc9455660']}))],
  ['null',null],['array',[]],['string','x'],['number',1],['no version',{peers:[]}],['version 2',{version:2,peers:[]}],['no peers',{version:1}],['peers not an array',{version:1,peers:{}}],
  ['unknown top-level key',{version:1,peers:[],extra:1}],
  ['unknown entry key',roster(good({extra:1}))],

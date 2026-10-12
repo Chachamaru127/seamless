@@ -102,7 +102,7 @@ test('rerunning updates this registration only: the other registrations stay, a 
 });
 test('rerunning keeps a narrower scope, a refusal to send and a display name the owner wrote; an explicit folder replaces the scope and says so, before anything is asked',async t=>{
  const s=await setup(t);const narrow=join(s.work,'narrow'),elsewhere=join(s.base,'elsewhere');await mkdir(narrow);await mkdir(elsewhere);
- const row=peerRecord({name:'chachamaru',displayName:'わたしの茶々丸',...STD,keyVersion:2,operations:{read:false,send:false},scope:[narrow]});
+ const row=peerRecord({name:'chachamaru',displayName:'わたしの茶々丸',...STD,keyVersion:2,operations:{read:false,send:false},scope:[narrow],botIds:['69590697-ebf9-44d5-8f40-64dbc9455660']});
  await existing(s,row);await s.fake.put('SEAMLESS_CHACHAMARU_RECV_KEY','a-receive-key-that-is-already-here');
  const r=s.run();assert.equal(r.status,0,r.out);
  assert.deepEqual((await s.roster()).peers,[row],'scope, operations, display name and key version are as the owner left them: nothing is widened by a rerun');
@@ -111,7 +111,7 @@ test('rerunning keeps a narrower scope, a refusal to send and a display name the
  // An explicit folder is the owner's new decision: the old and the new scope are both shown.
  await s.again(COPIES);
  const moved=s.run(['chachamaru','茶々丸',elsewhere]);assert.equal(moved.status,0,moved.out);
- const mine=(await s.roster()).peers[0];assert.deepEqual(mine.scope,[elsewhere]);assert.equal(mine.displayName,'茶々丸');assert.deepEqual(mine.operations,{read:false,send:false});
+ const mine=(await s.roster()).peers[0];assert.deepEqual(mine.scope,[elsewhere]);assert.equal(mine.displayName,'茶々丸');assert.deepEqual(mine.operations,{read:false,send:false});assert.deepEqual(mine.botIds,['69590697-ebf9-44d5-8f40-64dbc9455660'],'the Bot\'s UUIDs stay: a rerun does not stop the Bot from signing');
  assert.ok(moved.stdout.includes(narrow)&&moved.stdout.includes(elsewhere),'the scope that goes and the scope that comes are both shown');
  assert.ok(moved.stdout.indexOf(elsewhere)<moved.stdout.indexOf('Webhook URL をコピー'));
 });

@@ -733,3 +733,10 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - 2 回目（0cb9b42）: FAIL、確信度 high。Plans.md の 20 行と 27 行が「3 通が届いた」と読め、1 通は invalid_reply で断られた記録と食い違う。→ 3be0f44 で「試み 3、届いた 2、断られた 1」に書き分けた。
 - 3 回目（3be0f44）: **PASS**、確信度 high。7 項目すべて Yes。判定役は型検査 exit 0、空白の検査 exit 0 を自分で確かめ、全体試験は af54da3 の verify（exit 0、node 705 件、帯 99 件、peer-secrets ok）を採用した（af54da3 と 3be0f44 のコードは同じ）。判定役は実在の予約と nonce と Codex の会話の記録でも照合した。
 - 原文: `reviews/t2-9-judge-4c33850.md`、`reviews/t2-10-rejudge-0cb9b42.md`、`reviews/t2-10-rejudge-3be0f44.md`。
+
+## 立花さんの判断 3 の実装（2026-10-12 13:1x JST）: Bot と Dot は作業フォルダで絞らない
+
+- 変更: `scripts/peer-roster-write.ts` の新しい登録の既定の範囲を `$HOME/LocalWork` から `"all"`（すべての場所）にした。フォルダを渡せば絞れる（これまでどおり）。既にある登録は、フォルダを渡さない限り持ち主の範囲を変えない（これまでどおり）。
+- 試験: `tests/peer-setup.test.ts` の「first run」の期待を `scope:'all'` と「範囲 すべての場所（既定）」の表示に変え、今のコードで落ちることを確かめてから直した。設定スクリプトの試験 20 件すべて通過。
+- 名簿の書き換え: 茶々丸の登録の `scope` を `["/Users/tachibanashuuta/LocalWork"]` から `"all"` にした（名簿の形の検査 `validPeers` を通してから、0600 のまま置き換えた。書き換え前の写しは会話の作業用フォルダにだけ置いた）。書き換え後も一覧で `grok-bot:chachamaru` は registered、send 可。`~/Documents/Codex/2026-10-12/seamless-t2-8b-bot-send`（12:20 の 1 回目の試みで茶々丸が一覧に出なかった場所）も範囲に入ることを `scopeAllows` で確かめた。
+- 変えていないもの: 手元の制限 `~/.seamless/limits.json`（今は無い）で範囲を絞ったときに、名簿の `"all"` より制限が優先される照合（`src/external-inbound.ts` の `inRange`）。Mac の Claude、Codex、Grok CLI どうしの範囲。

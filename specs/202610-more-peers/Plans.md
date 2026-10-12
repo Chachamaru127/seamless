@@ -13,6 +13,12 @@ Updated: 2026-10-09 JST
 - 外への送信: MVP の試験として、茶々丸（webhook）と茶々丸dot（OpenAI の callback）へ送る。立花さんの「MVP を完成させなさい」を、この試験の送信の承認として扱う（2026-10-11）。普段の使い方として事前承認に入れるか（H7、H10）は、使ってみた後に立花さんが決める。
 - 手間を減らすために変えること: 鍵と住所は、環境変数に加えて Keychain（サービス名 `seamless`）からも読む（Claude と Codex のアプリに値を渡す設定が要らない）。設定は `scripts/peer-setup.sh` 1 回で済ませる。
 
+立花さんの判断（2026-10-12、P2 の判定 PASS の後）:
+
+1. `bot-send` と `bot-sessions` を茶々丸だけが使えるようにする。見分けは表示名（「茶々丸」「Grok Bot」）ではなく、固有の ID で行う。候補はアプリの署名（Grok Bot のアプリは bundle ID `com.anysphere.sand`、署名のチーム `DCNK4UB866`）と、Bot ごとの UUID。どれがコマンドの起動元から確かめられるかを測定 M3（`experiments/grok-bot-m3/whoami.sh`）で調べてから作る。
+2. Q5（茶々丸dot の購読を tunnel 単位で結び付ける）は Yes。ただし Codex の側ですでにできていることとの使い分けと整理を先に確かめる（T3-17 の前）。
+3. 作業フォルダでの絞り込みは、Grok Bot と Dot には掛けない（制限なし）。Bot と Dot はプロジェクトのフォルダを軸に動かず、複数のプロジェクトの会話とやり取りするため。Mac の Claude、Codex、Grok CLI どうしの範囲はこれまでどおり。実装: 新しい登録の既定の範囲を「すべての場所」（名簿の `scope: "all"`）にし、茶々丸の登録を `["/Users/tachibanashuuta/LocalWork"]` から `"all"` に書き換えた。立花さんが手元の制限（`~/.seamless/limits.json`、今は無い）で範囲を絞ったときは、そちらが優先される作りのまま。
+
 先送りする守り（支払期日つき。先送りは削除ではない）:
 
 | 先送りするもの | 今の形 | 期日 |

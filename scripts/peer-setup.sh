@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# One run registers a Grok Bot on this Mac (default: chachamaru, 茶々丸, folders under $HOME/LocalWork).
+# One run registers a Grok Bot on this Mac (default: chachamaru, 茶々丸, every place: a Bot works across projects).
 #   bash scripts/peer-setup.sh [--rotate] [registration name] [display name] [scope folder]
-# A new registration gets the display name 茶々丸 and the scope $HOME/LocalWork unless given. A registration that is in the roster keeps what
+# A new registration gets the display name 茶々丸 and the scope "all" (every place) unless a folder is given. A registration that is in the roster keeps what
 # the owner decided (scope, whether it may send, display name, key version) unless a folder or a name is given; it is said before anything is
 # asked. A revoked registration is not touched without --rotate, which makes a new receive key and a new key version and lifts the revocation.
 # 1. Asks you to copy the Webhook URL, waits (2 minutes) for a newly copied https:// text, keeps it in the Keychain.

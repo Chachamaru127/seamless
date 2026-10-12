@@ -11,8 +11,7 @@
 // no symbolic link, owner only), so a roster that command would not use is refused here too and never replaced.
 import {lstat,mkdir,chmod,open,rename,unlink,stat} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
-import {homedir} from 'node:os';
-import {dirname,join,resolve} from 'node:path';
+import {dirname,resolve} from 'node:path';
 import {defaultPeersPath,readPeers,validPeers,peerOperations,type Peer,type PeerScope,type Peers} from '../src/peers.ts';
 
 const fail=(message:string):never=>{process.stderr.write(`peer-roster-write: ${message}\n`);process.exit(1);};
@@ -41,7 +40,8 @@ async function next(roster:Peers):Promise<{roster:Peers;keyVersion:number;scope:
  if(old?.revoked&&!rotate)return fail(`${name} は失効している。--rotate を付けると、新しい受信鍵と新しい keyVersion で失効を外す（付けない再実行は何も変えない）`);
  const displayName=displayArg!==''?displayArg:old?.displayName??'茶々丸';
  // A row without a scope (seamless refuses it) stays without one unless a folder is given: a rerun does not hand out a place to read from.
- const scope:PeerScope|undefined=rootArg!==''?[await scopeRoot(rootArg)]:old!==undefined?old.scope:[await scopeRoot(join(homedir(),'LocalWork'))];
+ // A new row reaches every place: a Bot or a Dot is not tied to one project folder (2026-10-12). A folder given narrows it.
+ const scope:PeerScope|undefined=rootArg!==''?[await scopeRoot(rootArg)]:old!==undefined?old.scope:'all';
  const keyVersion=old===undefined?1:old.keyVersion+(command==='put'&&newKeyArg==='1'?1:0);
  const operations=old===undefined?{send:true}:old.operations;
  const peer:Peer={name,displayName,product:'grok-bot',addressEnv,sendKeyEnv,receiveKeyEnv,keyVersion,...(operations===undefined?{}:{operations}),...(scope===undefined?{}:{scope})};

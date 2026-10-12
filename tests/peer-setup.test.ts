@@ -52,8 +52,9 @@ test('first run: the URL and the header value are kept in the Keychain, a receiv
  assert.equal(await s.fake.get('SEAMLESS_CHACHAMARU_SEND_KEY'),KEY1,'"Bearer " is taken off: the Keychain holds the key');
  const recv=await s.fake.get('SEAMLESS_CHACHAMARU_RECV_KEY');assert.match(recv??'',/^[0-9a-f]{64}$/);
  const roster=await s.roster();
- assert.deepEqual(roster,{version:1,peers:[{name:'chachamaru',displayName:'茶々丸',product:'grok-bot',addressEnv:'SEAMLESS_CHACHAMARU_URL',sendKeyEnv:'SEAMLESS_CHACHAMARU_SEND_KEY',receiveKeyEnv:'SEAMLESS_CHACHAMARU_RECV_KEY',keyVersion:1,operations:{send:true},scope:[s.work]}]});
+ assert.deepEqual(roster,{version:1,peers:[{name:'chachamaru',displayName:'茶々丸',product:'grok-bot',addressEnv:'SEAMLESS_CHACHAMARU_URL',sendKeyEnv:'SEAMLESS_CHACHAMARU_SEND_KEY',receiveKeyEnv:'SEAMLESS_CHACHAMARU_RECV_KEY',keyVersion:1,operations:{send:true},scope:'all'}]},'a new Bot or Dot registration reaches every place: they work across projects (2026-10-12)');
  assert.equal(validPeers(roster),true);
+ assert.match(r.stdout,/範囲 すべての場所（既定）/);
  const read=await readPeers(s.peersPath);assert.equal(read.status,'ok','the roster passes the same private-file check seamless itself makes');
  assert.equal((await stat(s.peersPath)).mode&0o777,0o600);assert.equal((await stat(dirname(s.peersPath))).mode&0o777,0o700);
  assert.equal(await s.fake.clipboard(),'');assert.equal(await s.fake.copies(),2,'emptied after the URL and after the header value');

@@ -212,6 +212,7 @@ test('arguments and the roster are checked before anything is asked for: a bad n
  const s=await setup(t);const untouched=async(label:string)=>{assert.equal(await s.fake.get('SEAMLESS_CHACHAMARU_URL'),null,label);assert.equal((await s.fake.calls()).length,0,`${label}: neither the Keychain nor the clipboard was reached`);};
  for(const [label,args] of [['upper case',['Bad']],['space',['a b']],['empty name',['']],['too long',['a'.repeat(64)]],['four arguments',['a','b','/tmp','x']],['unknown option',['--nope']],['a folder that does not exist',['chachamaru','茶々丸',join(s.base,'nowhere')]],['a file as the folder',['chachamaru','茶々丸',script]],['display name too long',['chachamaru','x'.repeat(65)]],['empty display name',['chachamaru','']]] as const){
   const r=s.run([...args]);assert.notEqual(r.status,0,`${label}: ${r.out}`);await untouched(label);
+  if(label==='unknown option'){assert.match(r.out,/新規は 茶々丸 と すべての場所/,'the usage says what a new registration gets');assert.doesNotMatch(r.out,/LocalWork/);}
  }
  await mkdir(dirname(s.peersPath),{mode:0o700});
  for(const [label,write] of [['broken JSON',()=>writeFile(s.peersPath,'{nope',{mode:0o600})],['not private',async()=>{await writeFile(s.peersPath,JSON.stringify({version:1,peers:[]}),{mode:0o644});await chmod(s.peersPath,0o644);}]] as const){

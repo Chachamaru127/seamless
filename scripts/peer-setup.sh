@@ -20,7 +20,7 @@ set -euo pipefail
 # Visible ASCII is the only text a key or an address can be made of here, and the character classes below must mean the same everywhere.
 export LC_ALL=C
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-usage() { echo "使い方: bash scripts/peer-setup.sh [--rotate] [登録名] [表示名] [範囲のフォルダ]（省略時: 既存の登録はその表示名と範囲のまま、新規は 茶々丸 と \$HOME/LocalWork）" >&2; exit 2; }
+usage() { echo "使い方: bash scripts/peer-setup.sh [--rotate] [登録名] [表示名] [範囲のフォルダ]（省略時: 既存の登録はその表示名と範囲のまま、新規は 茶々丸 と すべての場所。フォルダを渡すとそこだけ）" >&2; exit 2; }
 rotate=0; args=()
 for a in "$@"; do
   case "$a" in

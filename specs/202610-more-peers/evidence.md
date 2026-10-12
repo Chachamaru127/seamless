@@ -632,3 +632,7 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - 新しい版の一覧（`node src/cli.ts serve` の sessions、この会話から）: external に `grok-bot:chachamaru`（表示名 茶々丸、registered、send 可、read 不可、切符あり）。Mac の会話の候補は 18。
 - T2-8a（Claude → 茶々丸、1 通）: 12:04:39 JST に依頼 `t2-8a-20261012` を送った。結果は `submitted`（webhook が 2xx を返した）。段は、受理が observed（予約が submitted）、配信確認と処理開始は unobserved（外の実行主体）、返答完了は unobserved。本文は試験の文だけで、会話の中身は入れていない。製品の版: Claude Code 2.1.295。
 - 送り手の Keychain の読み取り: この会話の子プロセス（`node src/cli.ts serve`）から、確認の画面を出さずに URL と送信鍵を読めた（結果が address_unavailable や key_unavailable にならなかった）。MCP として起動した子プロセスでの確認はまだ。
+- T2-8c（茶々丸 → Claude、1 通）: 茶々丸が Mac で `bot-send chachamaru` を動かし、返信 `chachamaru-20261012-t2-8a-001`（本文「T2-8a 受け取りました」、replyTo `t2-8a-20261012`）がこの会話に届いた（2026-10-12 03:05:47Z、12:05:47 JST。送ってから 68 秒）。受け手の一覧では送り手が `declared`（Mac が代わりに署名したため。設計どおり）。nonce の記録は `signedBy: 'mac'`、鍵の版 1。
+- T2-8f（Claude の依頼の段）: 依頼 `t2-8a-20261012` の段は、受理が observed（12:04:39）、返答完了が observed（12:05:46、根拠は返信の ID）、配信確認と処理開始は unobserved（外の実行主体）のまま。AC4 の形どおり。
+- 茶々丸がこの返事を送る前に、立花さんが使い方の文（handoff/chachamaru-mvp.md）を茶々丸に渡したかは、この会話からは見えない（茶々丸は手順どおりの形で返した）。
+- まだのもの: T2-8b（Codex → 茶々丸）、T2-8d（茶々丸 → Codex）、T2-8e（返信の後 10 分で依頼の件数が増えないこと。12:06 の時点の茶々丸に関わる予約は 2 件）、T2-9（正式な判定）。

@@ -1,6 +1,6 @@
 import {createHmac,randomBytes} from 'node:crypto';
 import {readPeers} from './peers.ts';
-import {signingInput,LIST_RECIPIENT,type SignedEnvelope} from './signed-envelope.ts';
+import {signingInput,parseSignedEnvelope,LIST_RECIPIENT,type SignedEnvelope} from './signed-envelope.ts';
 import type {SecretReader} from './secrets.ts';
 import type {ExecutorCheck} from './bot-executor.ts';
 
@@ -37,10 +37,13 @@ export async function signForBot(d:BotSigning,method:'send'|'sessions',input:unk
  const peer=roster.status==='ok'?roster.value.peers.find(p=>p.name===d.name):undefined;
  if(!peer)return {result:{status:'sender_unregistered'}};
  const {replyToken,...toSign}=asked as typeof asked&{replyToken?:string};
+ const fields={sender:peer.name,keyVersion:peer.keyVersion,...toSign,signedAt:isoSeconds(d.now()),nonce:randomBytes(16).toString('base64url')};
+ // Checked as the envelope it would become before anything else, so a reply that would be refused anyway never uses up its word.
+ const shape=parseSignedEnvelope({...fields,signature:'0'.repeat(64)});
+ if(!shape.ok)return {result:{status:'envelope_invalid',reason:shape.reason}};
  const refused=await d.executor(peer,replyToken===undefined?undefined:{replyTo:toSign.replyTo,recipient:toSign.recipient,replyToken,id:toSign.id});
  if(refused)return {result:{status:'executor_unverified',reason:refused}};
  const key=await d.secret(peer.receiveKeyEnv);
  if(key===undefined)return {result:{status:'key_unavailable'}};
- const fields={sender:peer.name,keyVersion:peer.keyVersion,...toSign,signedAt:isoSeconds(d.now()),nonce:randomBytes(16).toString('base64url')};
  return {envelope:{...fields,signature:createHmac('sha256',key).update(signingInput(fields)).digest('hex')}};
 }

@@ -5,7 +5,7 @@ import {processInfo,type Ancestor} from './caller.ts';
 import {processFiles} from './native-runtime.ts';
 import type {Peer} from './peers.ts';
 import {reservationOf,reservationFile,DAY} from './request-store.ts';
-import {open,mkdir,lstat,link,unlink} from 'node:fs/promises';
+import {open,mkdir,lstat,link,unlink,readdir} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {join,dirname} from 'node:path';
 
@@ -68,6 +68,12 @@ async function useWord(o:ExecutorOptions,reply:ReplyProof):Promise<string|null>{
   const m=/^(claude|codex|grok):([^:]+):/.exec(reply.recipient!)!,dir=join(dirname(o.reservationDir!),'reply-words-used');
   await mkdir(dir,{recursive:true,mode:0o700});const d=await lstat(dir);
   if(!d.isDirectory()||d.isSymbolicLink()||(d.mode&0o777)!==0o700||d.uid!==process.getuid?.())return 'reply_token_unavailable';
+  // A half file a killed run left (older than a minute) and a mark whose word has expired (older than two days) are cleared here.
+  const now=Date.now();
+  for(const name of await readdir(dir).catch(()=>[] as string[])){
+   const temp=/^[0-9a-f]{64}\.json\.[0-9a-f-]{36}$/.test(name);if(!temp&&!/^[0-9a-f]{64}\.json$/.test(name))continue;
+   const s=await lstat(join(dir,name)).catch(()=>null);if(s?.isFile()&&now-s.mtimeMs>(temp?60_000:2*DAY))await unlink(join(dir,name)).catch(()=>{});
+  }
   const path=join(dir,reservationFile(m[1],'local',m[2],reply.replyTo!));
   // The id is written whole to a private temporary file first and then linked into place, so the mark never exists half written.
   const tmp=path+'.'+randomUUID();let file;

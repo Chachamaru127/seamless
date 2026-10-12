@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createExecutorCheck,createAppVerifier,GROK_BOT_TEAM,GROK_BOT_IDS} from '../src/bot-executor.ts';
 import type {Ancestor} from '../src/caller.ts';
 import type {Peer} from '../src/peers.ts';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,rm,readdir,writeFile,mkdir,utimes} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {requestToBot} from './support/signed-fixture.ts';
@@ -77,7 +77,7 @@ test('the signature requirement names the team and the two identifiers of the ap
 // The routine the Bot's webhook starts runs under a new id each time (M3-4: sand-subagent-<UUID>, a different UUID per run), so a
 // reply from it is the Bot's when it carries the one-time word this Mac sent with the request (src/webhook-send.ts).
 test('a reply from the Bot\'s routine: the word sent with the request, from the app, to the conversation that asked',async t=>{
- const dir=await mkdtemp(join(tmpdir(),'seamless-word-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const base=await mkdtemp(join(tmpdir(),'seamless-word-'));t.after(()=>rm(base,{recursive:true,force:true}));const dir=join(base,'reservations');
  const T=Date.parse('2026-10-12T06:00:00Z'),from={provider:'claude' as const,nativeId:'claude-b',generation:'42@100',cwd:'/w'};
  const WORD='w'.repeat(32),routine={CURSOR_CONVERSATION_ID:'sand-subagent-48e30927-af7f-4990-94ba-8786b6a8a37a'};
  await requestToBot(dir,{id:'ask-1',from,replyWord:WORD,at:T-60_000});
@@ -105,7 +105,7 @@ test('a reply from the Bot\'s routine: the word sent with the request, from the 
 });
 
 test('a word answers its request once: the same reply may be sent again, another reply id is refused, and of two at once only one passes',async t=>{
- const dir=await mkdtemp(join(tmpdir(),'seamless-once-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const base=await mkdtemp(join(tmpdir(),'seamless-once-'));t.after(()=>rm(base,{recursive:true,force:true}));const dir=join(base,'reservations');
  const T=Date.parse('2026-10-12T06:00:00Z'),from={provider:'claude' as const,nativeId:'claude-b',generation:'42@100',cwd:'/w'};
  const WORD='o'.repeat(32),routine={CURSOR_CONVERSATION_ID:'sand-subagent-48e30927-af7f-4990-94ba-8786b6a8a37a'};
  for(const id of ['ask-a','ask-b','ask-c'])await requestToBot(dir,{id,from,replyWord:WORD,at:T-60_000,status:id==='ask-c'?'pending':'submitted'});
@@ -122,4 +122,23 @@ test('a word answers its request once: the same reply may be sent again, another
  assert.equal(await c()(peer(),reply('ask-c','p-1')),null);
  // Without a reply id there is nothing to bind the word to.
  assert.equal(await c()(peer(),{replyTo:'ask-a',replyToken:WORD,recipient:'claude:claude-b:42@100'}),'reply_token_mismatch');
+});
+
+test('the used marks live next to the reservations and nowhere else; a leftover half file from a killed run and marks older than two days are cleared',async t=>{
+ const base=await mkdtemp(join(tmpdir(),'seamless-left-'));t.after(()=>rm(base,{recursive:true,force:true}));const dir=join(base,'reservations');
+ const T=Date.parse('2026-10-12T06:00:00Z'),from={provider:'claude' as const,nativeId:'claude-b',generation:'42@100',cwd:'/w'},WORD='l'.repeat(32);
+ await requestToBot(dir,{id:'ask-l',from,replyWord:WORD,at:T-60_000});
+ const used=join(base,'reply-words-used');await mkdir(used,{mode:0o700});
+ const stale=join(used,'a'.repeat(64)+'.json.11111111-2222-4333-8444-555555555555'),old=join(used,'b'.repeat(64)+'.json'),fresh=join(used,'c'.repeat(64)+'.json');
+ for(const f of [stale,old,fresh])await writeFile(f,'x',{mode:0o600});
+ const ago=(ms:number)=>new Date(Date.now()-ms);
+ await utimes(stale,ago(120_000),ago(120_000));await utimes(old,ago(3*86_400_000),ago(3*86_400_000));
+ const c=check(botTree,{CURSOR_CONVERSATION_ID:'sand-subagent-x'},[HELPER,APP],{reservationDir:dir,now:()=>T}).run;
+ assert.equal(await c(peer(),{replyTo:'ask-l',replyToken:WORD,recipient:'claude:claude-b:42@100',id:'r-l'}),null);
+ const left=(await readdir(used)).sort();
+ assert.ok(!left.includes(stale.split('/').pop()!),'a half file older than a minute is removed');
+ assert.ok(!left.includes(old.split('/').pop()!),'a mark older than two days (its word expired after one) is removed');
+ assert.ok(left.includes(fresh.split('/').pop()!),'a recent mark stays');
+ assert.equal(left.filter(n=>n.includes('.json.')).length,0,'no temporary file of this run is left');
+ assert.deepEqual((await readdir(tmpdir())).filter(n=>n==='reply-words-used'),[],'nothing is made in the shared temporary folder');
 });

@@ -262,6 +262,21 @@ test('a reply from the Bot\'s routine, whose id changes every run, is signed whe
  const [n]=await f.readNonces();assert.ok(!JSON.stringify(n).includes(WORD));
 });
 
+test('a reply whose own fields are not a valid envelope is refused before its word is used, so the corrected reply still goes',async t=>{
+ const f=await externalFixture(t);const BOT='69590697-ebf9-44d5-8f40-64dbc9455660',WORD='v'.repeat(32);
+ await f.writePeers(peerRecord({scope:[f.work],botIds:[BOT]}));
+ await requestToBot(f.reservations,{id:'ask-v',from:{provider:'claude',nativeId:'claude-b',generation:'42@100',cwd:f.work},replyWord:WORD,at:T0-60_000});
+ const {createExecutorCheck}=await import('../src/bot-executor.ts');
+ const HELPER='/Applications/Grok Bot.app/Contents/Frameworks/Grok Bot Helper.app/Contents/MacOS/Grok Bot Helper';
+ const tree=[{pid:500,ppid:400,exe:'/opt/node'},{pid:400,ppid:1,exe:HELPER}];
+ const routine=f.make({botExecutor:createExecutorCheck({pid:500,env:{CURSOR_CONVERSATION_ID:'sand-subagent-x'},reservationDir:f.reservations,now:()=>T0,
+  process:async pid=>{const r=tree.find(x=>x.pid===pid);return r?{pid:r.pid,ppid:r.ppid,executable:null}:null;},executable:async pid=>tree.find(x=>x.pid===pid)?.exe??null,verify:async path=>path===HELPER})});
+ const bad=await botSend(f,unsigned({id:'x'.repeat(257),replyTo:'ask-v',replyToken:WORD}),routine);
+ assert.equal(bad.status,'envelope_invalid',JSON.stringify(bad));
+ const ok=await botSend(f,unsigned({id:'rep-v',replyTo:'ask-v',replyToken:WORD}),routine);
+ assert.equal(ok.status,'submitted',JSON.stringify(ok));
+});
+
 test('a real CLI process that is not the Bot: the request comes on standard input and only the name in the arguments, and it is refused before anything is signed',async t=>{
  const home=await realpath(await mkdtemp(join(tmpdir(),'seamless-bot-cli-')));t.after(()=>rm(home,{recursive:true,force:true}));
  const work=join(home,'work');await mkdir(work,{recursive:true});await mkdir(join(home,'.seamless'),{recursive:true,mode:0o700});

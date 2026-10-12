@@ -624,3 +624,11 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - 私が走らせた `bash scripts/verify.sh`（d8e2066）: exit 0。node 697 件すべて通過、帯 99 件、`peer-secrets: ok（登録なし）`。`node --test experiments/dot-m2/*.test.ts`: 34 件通過。
 - 帯の試験 2 件が、Claude Code 2.1.296 の試験ハーネスの変更（`ui.toast` の代役に `{ value }` を求める）で落ちていた。試験の代役だけを合わせた（本番の hook は無変更）。
 - 点検役の 1 人が、偽の道具を置かずに `peer-setup.sh` を 1 回起動し、実在の Keychain に存在確認を 1 回、実在のクリップボードを約 30 秒読んだと自己申告した。Keychain の `seamless` の項目が 1 つも無いことを私が確かめた（値の書き込みと読み出しは無い）。
+
+## 本線への取り込みと茶々丸の登録、T2-8a（2026-10-12）
+
+- 立花さんが本線へ fast-forward で取り込んだ（main = b9be03d、12:00 ごろ）。本線で `bash scripts/verify.sh` exit 0（node 697 件、帯 99 件、peer-secrets ok 登録なし）。
+- 立花さんが `scripts/peer-setup.sh` を実行した（12:02 ごろ）。Keychain に URL（79 文字）、送信鍵（69 文字）、受信鍵（64 文字、作成）が入り、名簿 `~/.seamless/peers.json` に chachamaru（keyVersion 1、範囲 `/Users/tachibanashuuta/LocalWork`、送信可）が載った。宛先のホストは `api2.cursor.sh` で、Grok Bot のアプリのルーチンの画面から写した値だと立花さんが確かめた（「Yes」）。
+- 新しい版の一覧（`node src/cli.ts serve` の sessions、この会話から）: external に `grok-bot:chachamaru`（表示名 茶々丸、registered、send 可、read 不可、切符あり）。Mac の会話の候補は 18。
+- T2-8a（Claude → 茶々丸、1 通）: 12:04:39 JST に依頼 `t2-8a-20261012` を送った。結果は `submitted`（webhook が 2xx を返した）。段は、受理が observed（予約が submitted）、配信確認と処理開始は unobserved（外の実行主体）、返答完了は unobserved。本文は試験の文だけで、会話の中身は入れていない。製品の版: Claude Code 2.1.295。
+- 送り手の Keychain の読み取り: この会話の子プロセス（`node src/cli.ts serve`）から、確認の画面を出さずに URL と送信鍵を読めた（結果が address_unavailable や key_unavailable にならなかった）。MCP として起動した子プロセスでの確認はまだ。

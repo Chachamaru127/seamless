@@ -273,6 +273,10 @@ test('a reply whose own fields are not a valid envelope is refused before its wo
   process:async pid=>{const r=tree.find(x=>x.pid===pid);return r?{pid:r.pid,ppid:r.ppid,executable:null}:null;},executable:async pid=>tree.find(x=>x.pid===pid)?.exe??null,verify:async path=>path===HELPER})});
  const bad=await botSend(f,unsigned({id:'x'.repeat(257),replyTo:'ask-v',replyToken:WORD}),routine);
  assert.equal(bad.status,'envelope_invalid',JSON.stringify(bad));
+ // A shape only the receiving path refused before (an empty text, a listing recipient) is refused before the word is touched too.
+ for(const [label,over] of [['empty text',{id:'rep-e',text:''}],['listing recipient',{id:'rep-l',recipient:'*'}]] as const){
+  const r=await botSend(f,unsigned({...over,replyTo:'ask-v',replyToken:WORD}),routine);assert.equal(r.status,'envelope_invalid',label+JSON.stringify(r));
+ }
  const ok=await botSend(f,unsigned({id:'rep-v',replyTo:'ask-v',replyToken:WORD}),routine);
  assert.equal(ok.status,'submitted',JSON.stringify(ok));
 });

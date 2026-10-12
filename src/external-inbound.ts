@@ -1,6 +1,6 @@
 import {readPeers,peerStatus,peerOperations,scopeAllows,keyOf,type Peer,type Peers} from './peers.ts';
 import {readLimits,unrestricted,type Limits,type AutoScope} from './limits.ts';
-import {parseSignedEnvelope,parseRecipient,verifySignature,withinWindow,signatureDigest,LIST_RECIPIENT,type SignedEnvelope} from './signed-envelope.ts';
+import {envelopeFor,parseRecipient,verifySignature,withinWindow,signatureDigest,type SignedEnvelope} from './signed-envelope.ts';
 import {claimNonce} from './nonce-store.ts';
 import {Delivery,type NativeAdapter,type Envelope} from './delivery.ts';
 import {Registry} from './registry.ts';
@@ -82,12 +82,10 @@ const refused=(r:unknown):r is Reason=>!!r&&typeof r==='object'&&'reason' in r;
 export async function externalCall(d:ExternalDeps,method:string,input:unknown):Promise<any>{
  if(method==='read')return {status:'operation_not_permitted',reason:'external_read'};
  if(method!=='sessions'&&method!=='send')throw new ContractError('unknown_method');
- const parsed=parseSignedEnvelope(input);
+ const parsed=envelopeFor(method,input);
  if(!parsed.ok)return {status:'envelope_invalid',reason:parsed.reason};
- const env=parsed.envelope;
+ const env=parsed.envelope,to=parsed.to;
  if(env.sender!==d.name)return {status:'sender_mismatch'};
- const to=method==='send'?parseRecipient(env.recipient):null;
- if(method==='send'?to===null||env.text==='':env.recipient!==LIST_RECIPIENT||env.text!==''||env.replyTo!==undefined)return {status:'envelope_invalid',reason:method==='send'?'recipient_or_text':'listing_shape'};
  // Authentication.
  const roster=await readPeers(d.peersPath);
  if(roster.status==='unusable')return {status:'peers_unusable'};

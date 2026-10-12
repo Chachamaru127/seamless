@@ -79,3 +79,13 @@ export function withinWindow(signedAt:string,now:number):boolean{
  return at!==null&&Math.abs(at-now)<=WINDOW_MS;
 }
 export const signatureDigest=(signature:string)=>sha256(signature);
+
+// The whole shape check for one call (`send|sessions --as`, and the Mac's stand-in signing before a reply word is used,
+// src/bot-sign.ts): the envelope's fields, then what the call needs of them. A send names one conversation and carries text; a
+// listing names "*" with no text and no replyTo.
+export function envelopeFor(method:'send'|'sessions',raw:unknown):{ok:true;envelope:SignedEnvelope;to:Recipient|null}|{ok:false;reason:string}{
+ const parsed=parseSignedEnvelope(raw);if(!parsed.ok)return parsed;
+ const env=parsed.envelope,to=method==='send'?parseRecipient(env.recipient):null;
+ if(method==='send'?to===null||env.text==='':env.recipient!==LIST_RECIPIENT||env.text!==''||env.replyTo!==undefined)return {ok:false,reason:method==='send'?'recipient_or_text':'listing_shape'};
+ return {ok:true,envelope:env,to};
+}

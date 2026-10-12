@@ -45,7 +45,9 @@ export async function externalFixture(t:Cleanup,options:{outcome?:'submitted'|'u
  const adapter={read:async()=>({status:'ok',items:[]}),structure:async()=>[],
   send:async(_t:unknown,e:Envelope,authorize?:()=>Promise<boolean>)=>{await beforeWrite();if(authorize&&!await authorize())return {status:'rejected' as const};if(outcome==='rejected')return {status:'rejected' as const};writes++;sent.push(e);if(outcome==='cut')throw new Error('connection reset after the write');return {status:outcome,nativeMessageId:e.id};}};
  const make=(extra:Record<string,unknown>={})=>createAutomatic({home,env,diagnose:(line:string)=>{diagnostics.push(line);},clock:{now:()=>now,sleep:async()=>{}},scan:async()=>({sessions:targets.map(n=>({...n})),codexWorkspace:'observed' as const}),
-  inspect:async n=>{const f=targets.find(x=>x.nativeId===n.nativeId&&x.provider===n.provider);return f?{...f}:null;},scanOptions:{git:async cwd=>({state:'no_git',workspace:cwd})},adapter,...extra});
+  inspect:async n=>{const f=targets.find(x=>x.nativeId===n.nativeId&&x.provider===n.provider);return f?{...f}:null;},scanOptions:{git:async cwd=>({state:'no_git',workspace:cwd})},adapter,
+  // bot-send here stands for the Bot itself; whether a command is the Bot is tested in tests/bot-executor.test.ts and tests/bot-send.test.ts.
+  botExecutor:async()=>null,...extra});
  const automatic=make();
  // A signed envelope with sensible defaults; `key` signs with another key, and a field given in `over` replaces the default before signing.
  const envelope=(over:Partial<SignedFields>&{key?:string}={}):SignedEnvelope=>{

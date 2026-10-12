@@ -30,7 +30,8 @@ export async function runCli(argv:string[],automatic:Automatic=createAutomatic({
  if(mode==='migrate'){if(rawArgs.length!==2&&rawArgs.length!==3||rawArgs[0]!=='--registry'||rawArgs.length===3&&rawArgs[2]!=='--write')throw new ContractError('invalid_arguments');console.log(JSON.stringify(await migrateRegistry(rawArgs[1],rawArgs[2]==='--write',limitsPath)));return;}
  // `bot-send|bot-sessions <registration>`: MVP stand-in for the Bot's own signing (src/bot-sign.ts). The unsigned request comes on
  // standard input (send) and is signed on this Mac, then goes the way `send|sessions --as` goes. There is no bot-read: a Mac conversation is never read for an outside sender.
- // Only the Bot runs these (through its own approved path to this Mac). A Claude, Codex or Grok CLI conversation must not: the result arrives under the Bot's name.
+ // Only the Bot itself gets a signature: the Grok Bot app must be an ancestor (by its code signature) and the Bot's UUID must be the
+ // registration's (src/bot-executor.ts). A Claude, Codex or Grok CLI conversation is refused with executor_unverified.
  if(mode==='bot-send'||mode==='bot-sessions'){
   if(rawArgs.length!==1||!/^[a-z0-9-]{1,63}$/.test(rawArgs[0]))throw new ContractError('invalid_arguments');
   const method=mode==='bot-send'?'send':'sessions';

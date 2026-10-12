@@ -57,6 +57,9 @@ test('a symlink is unusable even when it points at a valid private roster',async
 const required=['name','displayName','product','addressEnv','sendKeyEnv','receiveKeyEnv','keyVersion'];
 const long=(n:number,c='a')=>c.repeat(n);
 const badPeers:Array<[string,unknown]>=[
+ // botIds (2026-10-12, 判断 1): the Bot's own UUIDs, lower-case, at least one when present.
+ ['botIds empty',good({botIds:[]})],['botIds not a list',good({botIds:'69590697-ebf9-44d5-8f40-64dbc9455660'})],['botIds not a UUID',good({botIds:['chachamaru']})],
+ ['botIds upper case',good({botIds:['69590697-EBF9-44D5-8F40-64DBC9455660']})],['botIds repeated',good({botIds:['69590697-ebf9-44d5-8f40-64dbc9455660','69590697-ebf9-44d5-8f40-64dbc9455660']})],
  ['null',null],['array',[]],['string','x'],['number',1],['no version',{peers:[]}],['version 2',{version:2,peers:[]}],['no peers',{version:1}],['peers not an array',{version:1,peers:{}}],
  ['unknown top-level key',{version:1,peers:[],extra:1}],
  ['unknown entry key',roster(good({extra:1}))],
@@ -100,6 +103,7 @@ const okPeers:Array<[string,Record<string,unknown>]>=[
  ['revoked with millis and offset',good({revoked:{at:'2026-10-09T01:02:03.456+09:00'}})],['revoked Z',good({revoked:{at:'2026-10-09T01:02:03Z'}})],
  ['operations {}',good({operations:{}})],['operations send only',good({operations:{send:true}})],['operations read false only',good({operations:{read:false}})],
  ['scope all',good({scope:'all'})],['scope list',good({scope:['/a','/a/b','/c']})],
+ ['botIds one',good({botIds:['69590697-ebf9-44d5-8f40-64dbc9455660']})],['botIds two',good({botIds:['69590697-ebf9-44d5-8f40-64dbc9455660','11111111-2222-4333-8444-555555555555']})],
 ];
 test('well-formed registrations are accepted (the validator is not simply rejecting everything)',()=>{
  for(const [label,p] of okPeers)assert.equal(validPeers(roster(p)),true,label);

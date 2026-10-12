@@ -7,7 +7,7 @@ import {readPrivateJson} from './limits.ts';
 // the one writer is the owner's own setup script (scripts/peer-setup.sh, through scripts/peer-roster-write.ts).
 // It holds the NAMES of environment variables, never their values, and this module never reads process.env.
 export type PeerScope=string[]|'all';
-export type Peer={name:string;displayName:string;product:'grok-bot';addressEnv:string;sendKeyEnv:string;receiveKeyEnv:string;keyVersion:number;revoked?:{at:string};operations?:{read?:false;send?:boolean};scope?:PeerScope};
+export type Peer={name:string;displayName:string;product:'grok-bot';addressEnv:string;sendKeyEnv:string;receiveKeyEnv:string;keyVersion:number;revoked?:{at:string};operations?:{read?:false;send?:boolean};scope?:PeerScope;botIds?:string[]};
 export type Peers={version:1;peers:Peer[]};
 export type PeersRead=
  | {status:'absent';hash:null}
@@ -19,7 +19,9 @@ export type ExternalPeer={id:string;product:'grok-bot';host:'external';displayNa
 export type ExternalList={external:ExternalPeer[];externalStatus?:'unusable'};
 
 const NAME=/^[a-z0-9-]{1,63}$/,ENV=/^[A-Z_][A-Z0-9_]{0,127}$/,ISO=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
-const KEYS=['name','displayName','product','addressEnv','sendKeyEnv','receiveKeyEnv','keyVersion','revoked','operations','scope'];
+const KEYS=['name','displayName','product','addressEnv','sendKeyEnv','receiveKeyEnv','keyVersion','revoked','operations','scope','botIds'];
+// The Bot's own UUIDs as its app hands them to a command (src/bot-executor.ts): lower-case, one or more, no repeats.
+const BOT_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export function defaultPeersPath(home=homedir()):string{return join(home,'.seamless','peers.json');}
 function record(value:unknown,keys:string[]):Record<string,unknown>|null{
  if(!value||typeof value!=='object'||Array.isArray(value))return null;
@@ -36,6 +38,7 @@ function validPeer(value:unknown):value is Peer{
  if(!envs.every(e=>typeof e==='string'&&ENV.test(e))||new Set(envs).size!==3||!Number.isSafeInteger(v.keyVersion)||(v.keyVersion as number)<1)return false;
  if(Object.hasOwn(v,'revoked')){const r=record(v.revoked,['at']);if(!r||typeof r.at!=='string'||!ISO.test(r.at)||Number.isNaN(Date.parse(r.at)))return false;}
  if(Object.hasOwn(v,'operations')){const o=record(v.operations,['read','send']);if(!o||Object.hasOwn(o,'read')&&o.read!==false||Object.hasOwn(o,'send')&&typeof o.send!=='boolean')return false;}
+ if(Object.hasOwn(v,'botIds')&&!(Array.isArray(v.botIds)&&v.botIds.length>0&&v.botIds.every(id=>typeof id==='string'&&BOT_ID.test(id))&&new Set(v.botIds).size===v.botIds.length))return false;
  return !Object.hasOwn(v,'scope')||v.scope==='all'||Array.isArray(v.scope)&&v.scope.length>0&&v.scope.every(validRoot);
 }
 export function validPeers(value:unknown):value is Peers{

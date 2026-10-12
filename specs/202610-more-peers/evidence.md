@@ -775,3 +775,12 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 - 茶々丸の補足: 同じ Grok Bot のアプリから、ほかの Bot も Mac のコマンドを動かす（Bot のサーバーのエージェントのフォルダは 77 個）。アプリの署名だけでは茶々丸とほかの Bot を見分けられない。
 - 分かったこと: 「Grok Bot のアプリから動かされた」は、起動元のアプリの署名（Identifier とチーム ID。表示名ではない）で確かめられる。「どの Bot か」は `CURSOR_CONVERSATION_ID` の UUID で見分けられる。
 - 未確認: 茶々丸の UUID が、ルーチン（webhook で起きた処理。今回はこれ）と、立花さんとのチャットのどちらでも同じか。UUID は環境変数なので、同じアプリの中のほかの Bot がわざと書き換えれば名乗れる（Codex や Claude の会話からは、起動元の署名で断れる）。
+
+## 立花さんの判断 1 の実装（2026-10-12 14:0x JST）: bot-send を茶々丸自身にだけ使わせる
+
+- 作り: `src/bot-executor.ts` を足し、代行署名（`src/bot-sign.ts`）の鍵を読む前に確かめる。署名するのは、(1) 起動元の 8 段以内に、lsof で取った実行ファイルが Grok Bot のアプリか helper の署名（`codesign --verify --strict`、要件はチーム `DCNK4UB866` かつ Identifier `com.anysphere.sand` か `com.anysphere.sand.electron-helper`）を持つものがあり、(2) 環境変数 `CURSOR_CONVERSATION_ID` の UUID が、名簿のその登録の新しい欄 `botIds` にあるとき。表示名、プロセス名、argv[0] は使わない。どちらかが欠ければ `{"status":"executor_unverified","reason":…}`（`bot_id_unset`、`bot_id_missing`、`bot_id_mismatch`、`not_from_bot_app`）を返し、鍵を読まず、署名も配送も記録もしない。
+- 名簿: `src/peers.ts` に `botIds`（小文字の UUID の 1 個以上の並び、重複なし）を足した。
+- 試験（先に書いて落ちるのを確かめてから作った）: `tests/bot-executor.test.ts`（本人、Codex の会話、名前だけ Grok Bot の偽物、同じアプリのほかの Bot、UUID なし、壊れた UUID、`botIds` なし、8 段の上限と循環、codesign の要件）、`tests/peers.test.ts`（`botIds` の良い例 2、悪い例 5）、`tests/bot-send.test.ts`（組み込み: Codex の会話からは UUID を手で入れても断る、ほかの Bot は断る、本人は届く、`bot-sessions` も同じ。実プロセスの試験は「試験の実行役は Grok Bot ではないので断られ、nonce も残らない」に変えた）。関係する試験 156 件と、verify.sh（node 713 件、帯 99 件、peer-secrets ok、exit 0）が通った。
+- 実物の確認（この Mac、読み取りだけ）: 要件は Grok Bot の本体（67 ms）と helper（33 ms）で通り、Cursor（チーム `VDXQ22DGB9`）、Codex、Claude では通らない。
+- 残る穴（Plans.md の先送りの表を更新）: 同じアプリのほかの Bot が UUID をわざと書き換えれば名乗れる。設定スクリプトは `botIds` を書かない（期日: 2 体目の Bot を登録する前）。
+- 名簿の茶々丸の行に `botIds` を入れるのは、本線の取り込みの後（今の本線のコードは知らない欄があると名簿全体を使えないと扱うため、先に入れると茶々丸の送受信が止まる）。

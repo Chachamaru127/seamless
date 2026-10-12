@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm,realpath,writeFile,readFile,mkdir,chmod} from 'node:fs/promises';
+import {mkdtemp,rm,realpath,writeFile,readFile,mkdir,chmod,readdir} from 'node:fs/promises';
 import {readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
@@ -215,23 +215,52 @@ test('neither MCP nor serve nor a call made without the command line can ask for
  assert.match(readFileSync(new URL('../src/bot-sign.ts',import.meta.url),'utf8'),/MVP/);
 });
 
-test('a real CLI process: the unsigned request comes on standard input, the arguments hold only the name, and each run signs with its own nonce',async t=>{
+// 立花さんの判断 1 (2026-10-12): only the Bot itself may have this Mac sign for it. The check (src/bot-executor.ts) is tested there;
+// here it is the real check with a stand-in process tree, wired where the signing happens.
+test('only the Bot itself gets a signature: from a Codex conversation, from another Bot, or without the Bot\'s UUID nothing is signed, delivered or recorded',async t=>{
+ const f=await externalFixture(t);const BOT='69590697-ebf9-44d5-8f40-64dbc9455660';
+ await f.writePeers(peerRecord({scope:[f.work],botIds:[BOT]}));
+ const {createExecutorCheck}=await import('../src/bot-executor.ts');
+ const HELPER='/Applications/Grok Bot.app/Contents/Frameworks/Grok Bot Helper.app/Contents/MacOS/Grok Bot Helper';
+ const CODEX='/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex';
+ const tree=(top:string)=>[{pid:500,ppid:400,exe:'/opt/node'},{pid:400,ppid:300,exe:'/bin/zsh'},{pid:300,ppid:1,exe:top}];
+ const using=(top:string,id:string|undefined)=>f.make({botExecutor:createExecutorCheck({pid:500,env:id===undefined?{}:{CURSOR_CONVERSATION_ID:id},
+  process:async pid=>{const r=tree(top).find(x=>x.pid===pid);return r?{pid:r.pid,ppid:r.ppid,executable:null}:null;},
+  executable:async pid=>tree(top).find(x=>x.pid===pid)?.exe??null,verify:async path=>path===HELPER})});
+ for(const [label,top,id,reason] of [['a Codex conversation, with the Bot\'s UUID set by hand',CODEX,BOT,'not_from_bot_app'],['another Bot of the same app',HELPER,'11111111-2222-4333-8444-555555555555','bot_id_mismatch'],['the app without a UUID',HELPER,undefined,'bot_id_missing']] as const){
+  const auto=using(top,id);
+  assert.deepEqual(await botSend(f,unsigned({id:`x-${reason}`}),auto),{status:'executor_unverified',reason},label);
+  assert.deepEqual(await cli(['bot-sessions','chachamaru'],async()=>'',auto),{status:'executor_unverified',reason},label+' (bot-sessions)');
+ }
+ assert.equal(f.writes(),0);assert.equal(await f.noncesWritten(),0);assert.equal(await f.reserved(),0);
+ // The Bot itself, through the app, with its UUID: signed and delivered as before.
+ const ok=await botSend(f,unsigned(),using(HELPER,BOT));
+ assert.equal(ok.status,'submitted',JSON.stringify(ok));assert.equal(f.writes(),1);
+ // A registration with no botIds signs for nobody.
+ await f.writePeers(peerRecord({scope:[f.work]}));
+ assert.deepEqual(await botSend(f,unsigned({id:'x-unset'}),using(HELPER,BOT)),{status:'executor_unverified',reason:'bot_id_unset'});
+});
+
+test('a real CLI process that is not the Bot: the request comes on standard input and only the name in the arguments, and it is refused before anything is signed',async t=>{
  const home=await realpath(await mkdtemp(join(tmpdir(),'seamless-bot-cli-')));t.after(()=>rm(home,{recursive:true,force:true}));
  const work=join(home,'work');await mkdir(work,{recursive:true});await mkdir(join(home,'.seamless'),{recursive:true,mode:0o700});
- await writeFile(join(home,'.seamless','peers.json'),JSON.stringify({version:1,peers:[peerRecord({scope:[work]})]}),{mode:0o600});
+ const BOT='69590697-ebf9-44d5-8f40-64dbc9455660';
+ await writeFile(join(home,'.seamless','peers.json'),JSON.stringify({version:1,peers:[peerRecord({scope:[work],botIds:[BOT]})]}),{mode:0o600});
  const recv=randomBytes(32).toString('hex'),send=randomBytes(32).toString('hex');
  const cliPath=fileURLToPath(new URL('../src/cli.ts',import.meta.url));
  const run=(args:string[],stdin:string)=>new Promise<{code:number|null;out:string;err:string}>((resolve,reject)=>{
-  const child=spawn(process.execPath,[cliPath,...args],{env:{PATH:process.env.PATH??'',HOME:home,CHACHAMARU_RECV_KEY:recv,CHACHAMARU_SEND_KEY:send,CHACHAMARU_WEBHOOK_URL:'https://bot.invalid/hook'},cwd:dirname(cliPath)});
+  const child=spawn(process.execPath,[cliPath,...args],{env:{PATH:process.env.PATH??'',HOME:home,CHACHAMARU_RECV_KEY:recv,CHACHAMARU_SEND_KEY:send,CHACHAMARU_WEBHOOK_URL:'https://bot.invalid/hook',CURSOR_CONVERSATION_ID:BOT},cwd:dirname(cliPath)});
   let out='',err='';child.stdout.on('data',d=>out+=d);child.stderr.on('data',d=>err+=d);child.on('error',reject);child.on('exit',code=>resolve({code,out,err}));child.stdin.end(stdin);
  });
  const request=JSON.stringify({recipient:'claude:no-such-conversation:1@1',id:'cli-1',text:'x'});
- // Signature, time and roster pass; the conversation does not exist in this home, so nothing is delivered.
+ // The test runner is not the Grok Bot app, so even with the Bot's UUID in the environment nothing is signed (the signing path
+ // itself is tested in process above, with a stand-in process tree).
  const first=await run(['bot-send','chachamaru'],request);
- assert.equal(first.code,0,first.err);assert.equal(JSON.parse(first.out).status,'target_offline');
+ assert.equal(first.code,0,first.err);assert.deepEqual(JSON.parse(first.out),{status:'executor_unverified',reason:'not_from_bot_app'});
  const second=await run(['bot-send','chachamaru'],request);
- assert.equal(JSON.parse(second.out).status,'target_offline','a new run signs again with a new nonce: it is not a replay');
- const listing=await run(['bot-sessions','chachamaru'],'');assert.equal(JSON.parse(listing.out).status,'ok',listing.out+listing.err);
+ assert.equal(JSON.parse(second.out).status,'executor_unverified');
+ const listing=await run(['bot-sessions','chachamaru'],'');assert.deepEqual(JSON.parse(listing.out),{status:'executor_unverified',reason:'not_from_bot_app'},listing.out+listing.err);
+ assert.deepEqual(await readdir(join(home,'.seamless','nonces')).catch(()=>[]),[],'nothing was signed');
  for(const secret of [recv,send])for(const text of [first,second,listing])assert.ok(!text.out.includes(secret)&&!text.err.includes(secret));
  const empty=await run(['bot-send','chachamaru'],'{}');assert.equal(JSON.parse(empty.out).status,'envelope_invalid');
  const bad=await run(['bot-send'],request);assert.notEqual(bad.code,0);assert.match(bad.err,/invalid_arguments/);

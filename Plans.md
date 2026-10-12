@@ -10,7 +10,7 @@
 2026-10-08 Dot の追加依頼: [記事を踏まえた内包案](specs/202610-more-peers/dot-events-integration.md)。記事全文、公式 Events/Tunnel/auth の資料と現行 MCP の隔離試験を確認。独立検討後に本体と分離した非接続試作を作り、17試験PASS/exit 0（AC11a〜cの製品合格には数えない）。AC11a〜c は承認済み。Q5 の候補は Dot 専用 HTTP 入口と OAuth の認可 grant を登録に結び付ける構成。Q5 を確定するまで Dot の本体実装と接続設定は始めない。Claude/Codex の stdio 入口は現行版を維持する。
 
 2026-10-08〜 Grok CLI、Grok Bot、ChatGPT Dot へ広げる: [計画](specs/202610-more-peers/Plans.md)、[作業](specs/202610-more-peers/tasks.md)、[記録](specs/202610-more-peers/evidence.md)。
-最終更新（判定した版）: P1（Grok CLI）判定 PASS（3b9196d、Codex Astra xhigh、2026-10-09）。P2（Grok Bot）は受ける経路（T2-3〜T2-5、50e2985）まで実装し、判定は送る経路（T2-2）と実送信の後の T2-9。P3（Dot）は測定 M1 の第 2 段（T3-14）を進行中。
+最終更新（判定した版）: P1（Grok CLI）判定 PASS（3b9196d、Codex Astra xhigh、2026-10-09）。P2（Grok Bot）判定 PASS（3be0f44、Codex Astra high、2026-10-12。T2-9 と T2-10）。P3（Dot）は測定 M2 で通知が茶々丸dot の会話に出た（2026-10-12）。本体への組み込み（T3-17）は Q5 の決定待ち。
 
 - [実装計画](specs/202610-session-interop/Plans.md)
 - [実測と合否](specs/202610-session-interop/evidence.md)

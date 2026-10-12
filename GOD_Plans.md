@@ -7,7 +7,7 @@
 | 機能 | 状態 | 仕様 | 計画 | 証拠 |
 |---|---|---|---|---|
 | CodexとClaudeの元会話をつなぐ | 実会話とDesktop方式検証完了。実装計画の独立判定APPROVE | [仕様](specs/202610-session-interop/spec.md) | [計画](specs/202610-session-interop/Plans.md) | [証拠](specs/202610-session-interop/evidence.md) |
-| Grok CLI、Grok Bot、ChatGPT Dot へ広げる | P1（Grok CLI）判定 PASS（3b9196d、Codex Astra xhigh、2026-10-09）。一覧、読む、送る（受信箱と Stop hook）、Grok からの送信、帯の受理・未配信を実会話 4 方向で観測。残り: 本線への取り込みの後に直した hook で Claude → Grok を 1 回、push は立花さん。P2 は茶々丸の答え待ち、P3 は Dot の設計判断待ち | [仕様](specs/202610-more-peers/spec.md) | [計画](specs/202610-more-peers/Plans.md) | [証拠](specs/202610-more-peers/evidence.md) |
+| Grok CLI、Grok Bot、ChatGPT Dot へ広げる | P1（Grok CLI）判定 PASS（3b9196d、Codex Astra xhigh、2026-10-09）。P2（Grok Bot「茶々丸」）判定 PASS（3be0f44、Codex Astra high、2026-10-12）: Claude と Codex から茶々丸への依頼と返信を実物で往復（68 秒と 51 秒）、Mac の代行署名は先送りの表のとおり。P3（Dot）は測定 M2 で Mac から茶々丸dot への通知が会話に出た（2026-10-12）。本体への組み込み（T3-17）は Q5 の決定待ち。push は立花さん | [仕様](specs/202610-more-peers/spec.md) | [計画](specs/202610-more-peers/Plans.md) | [証拠](specs/202610-more-peers/evidence.md) |
 | 帯 第5版（目的に相づちが入る、やりとり欄を今の動きに、相手が何をしているか） | 2026-10-08 1 往復の後に着手（本人判断 B）。済み: 目的は相づち（「やっていいよ」「進めて」「A,進める」など）で上書きしない、開いた帯のやりとり欄は依頼ごとに今の状態の一言（読んでいる n 秒、返信あり hh:mm、届いた・未読、受理・未配信）。点の列はパネル「チーム」に残す。相手の最新の発言は出さない（OD2、2026-10-08 本人判断 b） | 草案は specs/202610-multi-vendor/spec.md の D 節（superseded） | 未作成 | 未作成 |
 
 | 両方向のセッション探索 P1 | 66試験PASS、verify実終了0。最終66試験版のHaiku / Opus独立判定PASS。P1共通核完了。当時のP1単独起動。nativeモードの最新検収は製品検証を参照 | [仕様](specs/202610-session-discovery/spec.md) | [計画](specs/202610-session-discovery/Plans.md) | [証拠](specs/202610-session-discovery/evidence.md) |

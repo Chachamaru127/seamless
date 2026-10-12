@@ -725,3 +725,11 @@ AC11a の「受ける意思の確認」は、callback の URL が challenge の�
 
 - `bash scripts/verify.sh` を af54da3 で走らせた: exit 0。node 705 件すべて通過（TC-3b で 8 件増えた）、帯 99 件、`peer-secrets: ok`（茶々丸の登録あり。値は環境変数か Keychain から読み、リポジトリと `~/.seamless` に無い）。af54da3 の後のコミット（2304f2a 以降）は specs だけで、コードは同じ。
 - 54994dd で走らせた分も exit 0（node 697 件、帯 99 件）。
+
+## T2-9 と T2-10 P2 の正式な判定（2026-10-12、Codex gpt-6-astra、high、読み取り専用）
+
+- 判定役: Codex `gpt-6-astra`、推論 high、`codex-headless exec -s read-only`。作ったのは Claude なので逆の家系。P2 のコードの差分は `git diff 3b9196d <版> -- src scripts tests mods`。確かめた 7 項目: 試験が T2-1〜T2-6 と TC-3b を満たすか、記録が T2-8a〜f と TC-1 を満たすか、実物で分かったこと（Codex の会話が茶々丸の名前で送った件）が先送りの表の範囲か、承認として扱わないこと、鍵と住所の露出、既存の経路、配布できる構造。
+- 1 回目（4c33850）: FAIL、確信度 high。コードの指摘 0 件。項目 3 だけ No（evidence.md に「茶々丸が送った」という旧説明が断定形で残り訂正と食い違う、「今日 2 通だけ」の集計の範囲）。→ 382fe9f と 0cb9b42 で直した。
+- 2 回目（0cb9b42）: FAIL、確信度 high。Plans.md の 20 行と 27 行が「3 通が届いた」と読め、1 通は invalid_reply で断られた記録と食い違う。→ 3be0f44 で「試み 3、届いた 2、断られた 1」に書き分けた。
+- 3 回目（3be0f44）: **PASS**、確信度 high。7 項目すべて Yes。判定役は型検査 exit 0、空白の検査 exit 0 を自分で確かめ、全体試験は af54da3 の verify（exit 0、node 705 件、帯 99 件、peer-secrets ok）を採用した（af54da3 と 3be0f44 のコードは同じ）。判定役は実在の予約と nonce と Codex の会話の記録でも照合した。
+- 原文: `reviews/t2-9-judge-4c33850.md`、`reviews/t2-10-rejudge-0cb9b42.md`、`reviews/t2-10-rejudge-3be0f44.md`。

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>seamless 実装ループの進捗（2026-10-20 00:17）</title>
+<style>
+  :root{--paper:#fbf7ef;--paper-2:#fffdf7;--ink:#1c1a16;--muted:#6f685c;--line:#ddd3c2;--soft:#f0e8d8;--acc:#b5451f;--green:#1f5c4d;--amber:#8a641c;--red:#8a2a1c}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;font-size:16px;line-height:1.9}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 32px 96px}
+  .topline{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--ink);padding-bottom:12px}
+  .kicker{margin-top:44px;color:var(--acc);font-size:12px;letter-spacing:.16em;text-transform:uppercase}
+  h1{font-size:32px;line-height:1.35;margin:8px 0 18px}
+  h2{font-size:22px;margin:52px 0 14px;padding-top:18px;border-top:1px solid var(--line)}
+  .lead{font-size:18px}
+  .box{background:var(--paper-2);border:1px solid var(--line);padding:18px 22px;margin:18px 0}
+  .box.hl{border-left:4px solid var(--acc)}
+  .box.warn{border-left:4px solid var(--amber)}
+  table{width:100%;border-collapse:collapse;margin:14px 0 22px;font-size:14px}
+  th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{font-size:12px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--ink)}
+  .ok{color:var(--green);font-weight:700}.mid{color:var(--amber);font-weight:700}.ng{color:var(--red);font-weight:700}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
+  .tile{background:var(--paper-2);border:1px solid var(--line);padding:14px 16px}
+  .tile b{display:block;font-size:11px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+  .tile span{font-size:28px;font-family:ui-monospace,monospace}
+  .bar{display:grid;grid-template-columns:200px 1fr 60px;gap:12px;align-items:center;margin:6px 0;font-size:14px}
+  .bar .t{height:14px;background:var(--soft);position:relative}
+  .bar .f{position:absolute;left:0;top:0;bottom:0;background:var(--acc)}
+  .bar .f.g{background:var(--green)}.bar .f.m{background:#b9ae9a}
+  .bar .v{text-align:right;font-variant-numeric:tabular-nums}
+  code{font-family:ui-monospace,monospace;font-size:.86em;background:var(--soft);padding:2px 6px;border-radius:2px}
+  ul{padding-left:1.4em}li{margin:4px 0}
+  @media (max-width:720px){.tiles{grid-template-columns:1fr 1fr}.bar{grid-template-columns:130px 1fr 50px}}
+  small{color:var(--muted);font-size:12px}
+</style>
+</head>
+<body><div class="wrap">
+<div class="topline"><span>seamless / 実装ループ</span><span>2026-10-20 00:17 JST</span></div>
+<div class="kicker">進捗報告</div>
+<h1>29 件中 26 件が別家系の判定 PASS。<br>残り 2 件は判定待ち、1 件は人の作業。</h1>
+<p class="lead">昨夜 19:30 に始めた自動ループ（施工 DeepSeek 1017 → verify → 判定 Haiku + Codex Astra → 統合ブランチへ取り込み）は、約 5 時間で計画の 19 件と判定役が見つけた派生 9 件のうち 26 件を取り込みました。統合ブランチ <code>loop/integration</code> は main に対して 79 ファイル、約 6,400 行の追加です。</p>
+
+<div class="box hl"><b>ひとことで。</b> 実装の「できた」は施工役の自己申告ではなく、verify.sh の終了コード 0 と、別家系（Codex）の判定で確かめています。判定が FAIL になった回は 10 回あり、うち実装の欠陥が 5 回、私（リーダー）の完了条件の文言が 5 回でした。欠陥はすべて直して通っています。</div>
+
+<h2>01 プロジェクトの目的</h2>
+<p>立花さんが、今開いている AI（Claude Code、Codex、opencode、Cursor、Antigravity、Grok CLI、Grok Bot）にそのまま一言を届け、届いたかを相手の記録で正直に知ることができる配線アプリ seamless を、OSS として出せる状態にする。</p>
+
+<h2>02 全体進捗</h2>
+<div class="tiles">
+<div class="tile"><b>判定 PASS</b><span class="ok">26</span><small> / 29 件</small></div>
+<div class="tile"><b>判定待ち</b><span class="mid">2</span><small> #24、#29</small></div>
+<div class="tile"><b>人の作業</b><span>1</span><small> #20 Reason 比較</small></div>
+<div class="tile"><b>統合の差分</b><span>+6,376</span><small> 行、79 ファイル</small></div>
+</div>
+<div class="bar"><span>実装（v1 の 19 タスク）</span><div class="t"><div class="f g" style="width:95%"></div></div><span class="v">18/19</span></div>
+<div class="bar"><span>派生 Issue（判定役の残件 10 件）</span><div class="t"><div class="f g" style="width:80%"></div></div><span class="v">8/10</span></div>
+<div class="bar"><span>実相手の計測（AC3、AC7、AC10、AC14）</span><div class="t"><div class="f m" style="width:0%"></div></div><span class="v">0%</span></div>
+<div class="bar"><span>公開（H5 名前、H6 規約、push、CI 実走）</span><div class="t"><div class="f m" style="width:0%"></div></div><span class="v">0%</span></div>
+<p>全体では約 65%。100% の定義は「v1 が公開され、第三者が説明どおりに動かし、issue を出せる状態」です。コードは統合ブランチにあり、main にはまだ入れていません（push と公開は H5、H6 の後）。</p>
+
+<h2>03 今やっている作業</h2>
+<ul>
+<li><b>#24 保留理由の観測</b>: 3 回目の判定中。2 回目で判定役が「通常のターンでも『目標実行中』と判定する」欠陥を見つけ、goal 固有の情報だけで判定するよう再施工した。</li>
+<li><b>#29 登録簿の配線の残り</b>: 施工済み（verify 0）。#24 の次に判定。</li>
+<li><b>#20 Reason との比較実測</b>: 人の作業。計測スクリプト（#7）は PASS 済みで、Reason を同じ OS ユーザーに入れて 5 指標を測る段階。</li>
+</ul>
+
+<h2>04 取り込んだもの（判定 PASS の 26 件）</h2>
+<table>
+<tr><th>#</th><th>何ができるようになったか</th><th>判定の回数</th></tr>
+<tr><td>1</td><td>verify.sh が Keychain と Claude plugin に依存しない（hermetic）。GitHub Actions の設定</td><td>3（環境の制約 2 回）</td></tr>
+<tr><td>2 / 21</td><td>対応表を 7 製品の現行版に更新。修正待ちの版は Desktop 接続失敗より優先して止まる</td><td>2 / 1</td></tr>
+<tr><td>3</td><td>Claude の受信口（socket）の欄で届くかを判定。受信口の無い会話は「受信不可」と出す</td><td>1</td></tr>
+<tr><td>4 / 22 / 23</td><td>Codex への書込みを公式の <code>codex queue</code> に切替、送信経路に接続、終了コードの扱いで二重送信を防ぐ</td><td>1 / 2 / 1</td></tr>
+<tr><td>5</td><td>切断時は「不明」、同じ依頼 ID の再呼出しで書込みが増えない（試験で固定）</td><td>1</td></tr>
+<tr><td>6</td><td>段階を 5 つにそろえ、保留中・読取り失敗・拒否を区別</td><td>1</td></tr>
+<tr><td>7</td><td>計測スクリプト（往復、保留、一括、足あと、Reason 比較）</td><td>4（欠陥 2、定義の穴 1）</td></tr>
+<tr><td>8</td><td><code>seamless "一言"</code> の 1 コマンド。候補が 2 件以上なら止まる</td><td>1</td></tr>
+<tr><td>9</td><td><code>who --json</code> の 3 状態（すぐ渡せる / 次の区切り / 起こすと届く）と受信不可の理由</td><td>1</td></tr>
+<tr><td>10</td><td><code>setup</code>（検出、MCP 登録、backup、dry-run）と <code>doctor</code>（Reason の配線や Antigravity の検出）</td><td>1</td></tr>
+<tr><td>11 / 25</td><td>manifest 基盤（製品の定義ファイル）と、それを一覧と送信から実際に使う配線</td><td>1 / 2</td></tr>
+<tr><td>12 / 26</td><td>opencode の plugin アダプタ、その manifest、エラー応答と並行保存の修正</td><td>1 / 3</td></tr>
+<tr><td>13 / 27</td><td>Cursor CLI の hooks アダプタと manifest</td><td>1 / 2</td></tr>
+<tr><td>14 / 28</td><td>Grok CLI を manifest + hook に寄せ、受信箱の本文を配達後に残さない（原子的）</td><td>1 / 2</td></tr>
+<tr><td>15</td><td>Antigravity アダプタ（T3 管理の実行ファイルを探し、無ければ一覧に出さない）</td><td>1</td></tr>
+<tr><td>16</td><td>T3 相性: 状態の HTML template、受信口の無い T3 の会話の表示</td><td>1</td></tr>
+<tr><td>17</td><td>公開面の削減（同梱物から旧方式、band mod、status panel を外す）。同梱物の外を import しない検査で実害を 1 件修正</td><td>5（文言 3、環境 1）</td></tr>
+<tr><td>18</td><td>README EN / JA、LICENSE（MIT 予定）、NOTICE、SECURITY</td><td>1</td></tr>
+<tr><td>19</td><td>npm pack の最終確認と公開手順の文書</td><td>1</td></tr>
+</table>
+
+<h2>05 何のためにやるのか</h2>
+<p>Reason Network と同じ網を作らず、「届いたの正確さ」「持たないもの」「入口の速さ」の 3 軸で勝つための実装を、人が張り付かずに進めるためです。判定役を別家系にしているのは、施工役の自己申告を完了にしないためです。実際、判定役は 26 件の PASS の裏で残件を毎回見つけ、そのうち実害のあるもの 10 件を派生 Issue にして直しました。</p>
+
+<div class="box warn"><b>正直な注意。</b> 判定の FAIL 10 回のうち 5 回は私の完了条件の書き方（製品数の数え間違い、grep の範囲、偽 fs の指定）でした。判定役は文言どおりに判定するので、条件の文言が曖昧だと実装が正しくても止まります。今は Done when の節を直接直してから再判定しています。</div>
+
+<h2>06 判断材料</h2>
+<ul>
+<li><b>本質はどこか</b>: 「人が張り付かない閉ループ」が回ることは確かめられた。残りの価値は、実相手（本物の Claude、Codex、Grok Bot）での往復計測で決まる。</li>
+<li><b>何が変わるか</b>: 前は書類だけ。後は統合ブランチに v1 の実装（7 製品のアダプタ、1 コマンド、段階と保留中、setup / doctor、計測、公開面）が揃っている。</li>
+<li><b>あなたから見た変化</b>: 名前と規約（H5、H6）を決めれば、push と公開 β に進める。実相手の計測（AC3、AC7、AC14）と Reason 比較（#20）は手を動かす必要がある。</li>
+<li><b>仕様への影響</b>: 不変条件は変えていない。判定役の残件で「実相手では未検証」が毎回付くので、週 1 の実測（AC7 の 15 往復）が次の関門。</li>
+</ul>
+
+<h2>07 次に進めるべきタスク</h2>
+<ul>
+<li><b>この回答までに進めた</b>: 26 件 PASS、派生 Issue 10 件（うち 8 件 PASS）、evidence.md に全判定の記録。</li>
+<li><b>次に AI が続ける</b>: #24 と #29 の判定と取り込み。その後、統合ブランチで実相手の計測の準備（AC7 の 15 往復を立花さんが実行できる手順書）。完了条件は「open の Issue が #20 だけ」。</li>
+<li><b>立花さんの判断が必要</b>: 名前と配布名（H5）、規約の確認（H6）、Reason を入れる時期（#20）。</li>
+<li><b>外部条件待ち</b>: GitHub Actions の CI 実走（push 後）。</li>
+</ul>
+
+<small>出典: GitHub Issues #1〜#29（Chachamaru127/seamless、private）、specs/2026-10-universal-wiring/evidence.md、git loop/integration（main との差分）。点数ではなく件数の報告で、判定役の PASS は Done when の範囲に限る。</small>
+</div></body></html>

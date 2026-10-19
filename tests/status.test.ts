@@ -260,7 +260,9 @@ for(const delivery of ['pending','submitted','rejected','unknown','future-status
  const tracked=await status.track(record.id);
  assert.equal(tracked.status,'ok');assert.ok('delivery' in tracked);assert.equal(tracked.delivery,delivery);
  assert.deepEqual(await status.recent(record.recipient),[tracked]);
- assert.deepEqual(Object.keys(tracked).sort(),['at','delivery','id','stages','status','target']);
+ const {state,reason,...visible}=tracked as Record<string,unknown>;
+ assert.deepEqual(Object.keys(visible).sort(),['at','delivery','id','stages','status','target']);
+ if(delivery==='rejected'){assert.equal(state,'refused');assert.equal(reason,'refused_by_peer');}else assert.equal(state,undefined);
 });
 
 test('band status fixtures match the actual once result and stages generator',async()=>{

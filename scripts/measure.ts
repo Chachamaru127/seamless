@@ -8,7 +8,7 @@ import {promisify} from 'node:util';
 import {appendFile,mkdir,mkdtemp,readFile,readdir,lstat,rm,writeFile} from 'node:fs/promises';
 import {realpathSync} from 'node:fs';
 import {homedir,tmpdir} from 'node:os';
-import {basename,dirname,join,resolve} from 'node:path';
+import {basename,dirname,join,resolve,sep} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {Delivery,type NativeAdapter} from '../src/delivery.ts';
@@ -109,9 +109,11 @@ function fakeRegistrations(provider:FakeProvider):{sender:Registration;recipient
 const party=(r:Registration):RequestParty=>({id:r.id,provider:r.provider,nativeId:r.nativeId,generation:r.generation,cwd:r.workspace});
 
 type FakeOutcome={requestId:string;provider:FakeProvider;tracked:Tracked;replyId:string|null;match:boolean;seconds:number;operations:number;falseReached:boolean;at:string};
-async function fakeRun(kind:'roundtrip'|'hold',provider:FakeProvider,text:string,holdSec:number):Promise<FakeOutcome>{
+async function fakeRun(kind:'roundtrip'|'hold',provider:FakeProvider,text:string,limits:{heldAfterSec?:number}):Promise<FakeOutcome>{
  const home=await mkdtemp(join(tmpdir(),'seamless-measure-'));
  const started=Date.now(),at=new Date(started).toISOString(),requestId=`measure-${randomUUID()}`,replyId=`reply-${randomUUID()}`;
+ // One resolved value drives both the fake clock and the stage reader, so --held-after-sec cannot make the two disagree.
+ const holdSec=heldAfterSec(limits);
  const {sender,recipient}=fakeRegistrations(provider);
  try{
   const adapter:NativeAdapter={
@@ -235,7 +237,7 @@ async function runBatch(plan:string,outPath:string|undefined,text:string,waitSec
  const all=fakeOnly?[]:await listCandidates();
  for(const entry of entries){
   if(entry.name==='fake'){
-   for(let i=0;i<entry.count;i++)records.push(fakeRecord(await fakeRun('roundtrip','claude',text,20),'roundtrip','fake'));
+   for(let i=0;i<entry.count;i++)records.push(fakeRecord(await fakeRun('roundtrip','claude',text,{heldAfterSec:20}),'roundtrip','fake'));
    continue;
   }
   const pool=all.filter(c=>providerMatches(entry.name,c));
@@ -265,18 +267,26 @@ async function processTable():Promise<Proc[]>{
  const {stdout}=await exec('ps',['-axo','pid=,ppid=,command='],{maxBuffer:16*1024*1024,timeout:15000});
  return parseProcessTable(stdout);
 }
-function cliScriptPath():string{return join(REPO,'src','cli.ts');}
+function sourceDir():string{return join(REPO,'src');}
 function realPath(path:string):string{try{return realpathSync(path);}catch{return resolve(path);}}
-// A seamless process is a node process whose second argument is this repository's src/cli.ts. Matching the command text
-// for "seamless" would also count curl, editors and any other command that merely names the folder.
-export function isSeamlessCli(command:string,cliPath=cliScriptPath()):boolean{
+// A seamless process is a node process that runs a .ts file under this repository's src/. Any argument may be that file:
+// `node --enable-source-maps /repo/src/cli.ts mcp` and `node /repo/src/grok-hook.ts` both count, while curl, editors and
+// another repository's src/cli.ts do not. Only absolute arguments are compared, because a relative one would resolve
+// against this process's directory rather than the target process's. The comparison uses the real path, so a symlinked
+// checkout still matches its source files.
+export function isSeamlessCli(command:string,srcDir=sourceDir()):boolean{
  const tokens=command.trim().split(/\s+/);
  if(tokens.length<2)return false;
  if(!/^node(?:js)?$/.test(basename(tokens[0]!)))return false;
- return realPath(tokens[1]!)===realPath(cliPath);
+ const root=realPath(srcDir);
+ return tokens.slice(1).some(token=>{
+  if(!token.startsWith('/'))return false;
+  const path=realPath(token);
+  return path.endsWith('.ts')&&path.startsWith(root+sep);
+ });
 }
-export function seamlessProcesses(table:Proc[],cliPath=cliScriptPath()):number[]{
- return table.filter(p=>p.pid!==process.pid&&isSeamlessCli(p.command,cliPath)).map(p=>p.pid);
+export function seamlessProcesses(table:Proc[],srcDir=sourceDir()):number[]{
+ return table.filter(p=>p.pid!==process.pid&&isSeamlessCli(p.command,srcDir)).map(p=>p.pid);
 }
 export function descendants(pids:number[],table:Proc[]):number[]{
  const children=new Map<number,number[]>();
@@ -303,7 +313,8 @@ async function bytesUnder(path:string):Promise<{bytes:number;exists:boolean}>{
  return {bytes,exists:true};
 }
 async function connectionCount(pids:number[]):Promise<{count:number|null;available:boolean}>{
- if(!pids.length)return {count:0,available:true};
+ // No target process means the count was not measured. Returning 0 would read as "measured, nothing open".
+ if(!pids.length)return {count:null,available:true};
  try{
   const {stdout}=await exec('lsof',['-nP','-i','-a','-p',pids.join(',')],{maxBuffer:16*1024*1024,timeout:20000});
   const lines=stdout.split('\n').filter(Boolean);
@@ -323,7 +334,7 @@ async function footprint(home:string){
  const inboxes=[];let inboxBytes=0;
  for(const path of inboxCandidates){const found=await bytesUnder(path);if(found.exists){inboxes.push({path,bytes:found.bytes});inboxBytes+=found.bytes;}}
  const connections=await connectionCount(scoped);
- return {status:'ok',at:new Date().toISOString(),summary:{processes:matched.length,bytes:{store:store.bytes,inbox:inboxBytes},connections:connections.count},processes:{count:matched.length,pids:matched},store:{path:join(home,'.seamless'),bytes:store.bytes},inbox:{bytes:inboxBytes,paths:inboxes},connections:{count:connections.count,available:connections.available,pids:scoped,scope:'seamless processes and their children'}};
+ return {status:'ok',at:new Date().toISOString(),summary:{processes:matched.length,targets:scoped.length,bytes:{store:store.bytes,inbox:inboxBytes},connections:connections.count},processes:{count:matched.length,pids:matched},store:{path:join(home,'.seamless'),bytes:store.bytes},inbox:{bytes:inboxBytes,paths:inboxes},connections:{count:connections.count,available:connections.available,pids:scoped,scope:'node processes running this repository src/*.ts and their children'}};
 }
 
 // ---------- compare ----------
@@ -381,7 +392,7 @@ async function commandRoundtrip(args:string[]):Promise<number>{
  const started=Date.now();
  let record:MeasureRecord;
  if(provider){
-  const outcome=await fakeRun('roundtrip',provider,text,20);
+  const outcome=await fakeRun('roundtrip',provider,text,{heldAfterSec:20});
   record=fakeRecord(outcome,'roundtrip',flag(flags,'fake')?'fake':`fake:${provider}`);
  }else{
   const target=str(flags,'target');
@@ -405,7 +416,7 @@ async function commandHold(args:string[]):Promise<number>{
  let record:MeasureRecord;
  if(provider){
   // A fake measurement never opens the real home: the wait used by the record is the wait used by the stage reader.
-  const outcome=await fakeRun('hold',provider,text,holdSec);
+  const outcome=await fakeRun('hold',provider,text,{heldAfterSec:holdSec});
   record=fakeRecord(outcome,'hold',`fake:${provider}`);
  }else{
   const target=str(flags,'target');

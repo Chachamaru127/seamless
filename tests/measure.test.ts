@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
-import {mkdtemp,readFile,rm} from 'node:fs/promises';
+import {mkdir,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -13,8 +13,8 @@ const REPO=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const SCRIPT=join(REPO,'scripts','measure.ts');
 const CLI=join(REPO,'src','cli.ts');
 
-async function measure(args:string[]):Promise<{stdout:string;stderr:string;json:Record<string,unknown>}>{
- const {stdout,stderr}=await exec(process.execPath,[SCRIPT,...args],{maxBuffer:16*1024*1024,timeout:180000});
+async function measure(args:string[],env?:NodeJS.ProcessEnv):Promise<{stdout:string;stderr:string;json:Record<string,unknown>}>{
+ const {stdout,stderr}=await exec(process.execPath,[SCRIPT,...args],{maxBuffer:16*1024*1024,timeout:180000,env:env??process.env});
  const line=stdout.trim().split('\n').filter(Boolean).pop();
  assert.ok(line,`no JSON on stdout: ${stderr}`);
  return {stdout,stderr,json:JSON.parse(line) as Record<string,unknown>};
@@ -33,12 +33,18 @@ test('a fake roundtrip reports the request id and the matching reply id as JSON'
  assert.equal(json.match,true);
 });
 
-test('a fake hold reports held and the product reason, with the same wait in the reader',async()=>{
+test('a fake hold reports held and the product reason, with the same wait in the reader',async t=>{
  const claude=await measure(['hold','--fake','--held-after-sec','1']);
  assert.equal(claude.json.status,'ok');assert.equal(claude.json.command,'hold');
  assert.equal(claude.json.state,'held');assert.equal(claude.json.reason,'claude_hold');
  const codex=await measure(['hold','--target','fake:codex','--held-after-sec','1']);
  assert.equal(codex.json.state,'held');assert.equal(codex.json.reason,'codex_goal');
+ // A real home whose limits say 20s must not decide the fake stage: the injected value reaches the reader as well as the clock.
+ const home=await mkdtemp(join(tmpdir(),'seamless-measure-home-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ await mkdir(join(home,'.seamless'),{recursive:true});
+ await writeFile(join(home,'.seamless','limits.json'),JSON.stringify({version:1,exclude:[],scope:null,operations:null,heldAfterSec:20})+'\n',{mode:0o600});
+ const injected=await measure(['hold','--fake','--held-after-sec','1'],{...process.env,HOME:home});
+ assert.equal(injected.json.state,'held');
 });
 
 test('batch --plan fake:2 writes a record file without the message body',async t=>{
@@ -56,23 +62,35 @@ test('batch --plan fake:2 writes a record file without the message body',async t
  for(const record of records)assert.equal(JSON.stringify(record).includes('MEASURE-BODY'),false);
 });
 
-test('footprint targets only node processes running this repository cli.ts, and their children',()=>{
+test('footprint targets node processes running this repository src/*.ts, wherever the option sits, and their children',()=>{
  const table=parseProcessTable([
-  ` 101 1 node ${CLI} send`,
-  ` 102 1 node /some/other/repo/src/cli.ts send`,
-  ` 103 1 curl https://example.com/seamless/src/cli.ts`,
-  ` 104 101 node ${CLI} status`,
-  ` 105 101 /usr/bin/helper --child`,
-  ` 106 1 node ${join(REPO,'scripts','measure.ts')} footprint`,
+  ` 101 1 node --enable-source-maps ${CLI} mcp`,
+  ` 102 1 node ${join(REPO,'src','grok-hook.ts')}`,
+  ` 103 1 curl https://x/seamless/`,
+  ` 104 1 node /other/src/cli.ts send`,
+  ` 105 101 node ${CLI} status`,
+  ` 106 101 /usr/bin/helper --child`,
+  ` 107 1 node ${join(REPO,'scripts','measure.ts')} footprint`,
  ].join('\n'));
- const matched=seamlessProcesses(table,CLI);
- assert.deepEqual(matched,[101,104]);
+ const matched=seamlessProcesses(table);
+ assert.deepEqual(matched,[101,102,105]);
  const scoped=descendants(matched,table).filter(pid=>pid!==process.pid);
- assert.ok(scoped.includes(105));
- for(const unrelated of [102,103,106])assert.equal(scoped.includes(unrelated),false);
- assert.equal(isSeamlessCli(`node ${CLI} send`,CLI),true);
- assert.equal(isSeamlessCli(`node --enable-source-maps ${CLI} send`,CLI),false);
- assert.equal(isSeamlessCli(`python3 ${CLI}`,CLI),false);
+ assert.ok(scoped.includes(106));
+ for(const unrelated of [103,104,107])assert.equal(scoped.includes(unrelated),false);
+ assert.equal(isSeamlessCli(`node --enable-source-maps ${CLI} mcp`),true);
+ assert.equal(isSeamlessCli(`node ${join(REPO,'src','grok-hook.ts')}`),true);
+ assert.equal(isSeamlessCli(`python3 ${CLI}`),false);
+ assert.equal(isSeamlessCli(`node /other/src/cli.ts`),false);
+});
+
+test('footprint reports the process count, the store and inbox bytes, and a scoped connection count',async()=>{
+ const {json}=await measure(['footprint']);
+ assert.equal(json.status,'ok');
+ const summary=json.summary as {processes:number;bytes:{store:number;inbox:number};connections:number|null};
+ assert.equal(typeof summary.processes,'number');
+ assert.equal(typeof summary.bytes.store,'number');
+ assert.equal(typeof summary.bytes.inbox,'number');
+ assert.ok(summary.connections===null||typeof summary.connections==='number');
 });
 
 test('compare --dry prints the five metrics as an empty table',async()=>{

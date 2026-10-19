@@ -16,7 +16,7 @@ BASE="loop/integration"
 LOCK="$LOG_DIR/lock"; PAUSED="$LOG_DIR/paused"; STREAK="$LOG_DIR/blocked-streak"
 
 if [ -f "$PAUSED" ]; then echo "loop: 休止中（$PAUSED を人が外すまで取らない）: $(cat "$PAUSED")"; exit 0; fi
-if ! mkdir "$LOCK" 2>/dev/null; then echo "loop: 別の実行がロック中（$LOCK）。今回は取らない"; exit 0; fi
+if ! mkdir "$LOCK" 2>/dev/null; then echo "loop: 別の実行がロック中（${LOCK}）。今回は取らない"; exit 0; fi
 trap 'rmdir "$LOCK" 2>/dev/null' EXIT
 git show-ref --verify --quiet "refs/heads/$BASE" || git branch "$BASE" main
 
@@ -60,28 +60,28 @@ echo "loop: 取る Issue #$num $title"
 gh issue edit "$num" --add-label "loop:in-progress" --remove-label "loop:ready" >/dev/null
 git stash list >/dev/null
 if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "loop: 作業ツリーに未コミットの変更がある。止める（S8）"; gh issue comment "$num" --body "ループ: 作業ツリーが汚れているため着手できず。人の確認待ち（S8）。"; gh issue edit "$num" --add-label "loop:ready" --remove-label "loop:in-progress" >/dev/null; echo "作業ツリーが汚れている（$STAMP）" > "$PAUSED"; exit 1
+  echo "loop: 作業ツリーに未コミットの変更がある。止める（S8）"; gh issue comment "$num" --body "ループ: 作業ツリーが汚れているため着手できず。人の確認待ち（S8）。"; gh issue edit "$num" --add-label "loop:ready" --remove-label "loop:in-progress" >/dev/null; echo "作業ツリーが汚れている（${STAMP}）" > "$PAUSED"; exit 1
 fi
 branch="loop/$num"
 git switch -q "$branch" 2>/dev/null || git switch -q -c "$branch" "$BASE"
 
 req="$LOG_DIR/$STAMP-issue-$num-request.md"
 cat > "$req" <<EOF
-# 施工依頼（Issue #$num）
+# 施工依頼（Issue #${num}）
 $title
 
 $body
 
 ## 契約
 - 目的: 上の Done when を満たす。Done when 以外の範囲を広げない。
-- 対象の版: ブランチ $branch（$BASE からの作業ブランチ）。
+- 対象の版: ブランチ ${branch}（$BASE からの作業ブランチ）。
 - 承認済みの操作: このリポジトリの中のファイルの追加と変更、\`bash scripts/verify.sh\` の実行、\`node --test\` の実行。
 - 禁止: \`~/\` 直下の設定ファイル、Keychain、本物の Claude / Codex / Grok Bot への送信、外部への通信、git commit / push、\`.local/\` の変更、specs/ の変更（tasks.md の進捗欄も変えない）。
 - 終わり方: Done when を満たしたら止める。最後に \`bash scripts/verify.sh\` を走らせ、その終了コードと、変更したファイルの一覧を出力の末尾に書く。途中の報告だけで終えない。
 - 判定の線: 完了は verify.sh の終了コード 0 と、Done when の各条件が Yes になること。自己申告は完了にしない。
 EOF
 out="$LOG_DIR/$STAMP-issue-$num-opencode.log"
-echo "loop: opencode を起動（ログ $out）"
+echo "loop: opencode を起動（ログ ${out}）"
 opencode run --model ollama-cloud/deepseek-v4.1-flash:1017 --agent build --auto "$(cat "$req")" > "$out" 2>&1
 oc_exit=$?
 echo "loop: opencode exit=$oc_exit"
@@ -95,17 +95,17 @@ if [ "$v_exit" = 0 ] && [ "$changed" -gt 0 ]; then
   git add -A
   git commit -q -m "loop #$num: $title
 
-verify.sh exit=0（ループ $STAMP）。施工: opencode deepseek-v4.1-flash:1017。
+verify.sh exit=0（ループ ${STAMP}）。施工: opencode deepseek-v4.1-flash:1017。
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
   sha=$(git rev-parse --short HEAD)
-  gh issue comment "$num" --body "ループ $STAMP: 施工 opencode（deepseek-v4.1-flash:1017）exit=$oc_exit、verify.sh exit=0。commit $sha（ブランチ $branch、未 push）。判定待ち（team-review、別家系、同じ commit で Done when を確かめる）。PASS で閉じて $BASE へ merge。" >/dev/null
+  gh issue comment "$num" --body "ループ $STAMP: 施工 opencode（deepseek-v4.1-flash:1017）exit=${oc_exit}、verify.sh exit=0。commit ${sha}（ブランチ ${branch}、未 push）。判定待ち（team-review、別家系、同じ commit で Done when を確かめる）。PASS で閉じて $BASE へ merge。" >/dev/null
   gh issue edit "$num" --add-label "loop:review" --remove-label "loop:in-progress" >/dev/null
   rm -f "$STREAK"
-  echo "loop: #$num を判定待ちにした（$sha）"
+  echo "loop: #$num を判定待ちにした（${sha}）"
 else
   tail -40 "$vout" > "$LOG_DIR/$STAMP-issue-$num-verify-tail.log"
-  gh issue comment "$num" --body "ループ $STAMP: 施工 exit=$oc_exit、verify.sh exit=$v_exit、変更ファイル $changed 件。verify の末尾:
+  gh issue comment "$num" --body "ループ $STAMP: 施工 exit=${oc_exit}、verify.sh exit=${v_exit}、変更ファイル $changed 件。verify の末尾:
 \`\`\`
 $(tail -40 "$vout")
 \`\`\`
@@ -113,12 +113,12 @@ $(tail -40 "$vout")
   gh issue edit "$num" --add-label "loop:blocked" --remove-label "loop:in-progress" >/dev/null
   if [ "$changed" -gt 0 ]; then
     git add -A
-    git commit -q -m "loop #$num wip: verify.sh exit=$v_exit（ループ $STAMP、未判定）
+    git commit -q -m "loop #$num wip: verify.sh exit=${v_exit}（ループ ${STAMP}、未判定）
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
   fi
   echo "loop: #$num を blocked にした（ブランチ $branch に wip commit）"
   c=$(( $(cat "$STREAK" 2>/dev/null || echo 0) + 1 )); echo "$c" > "$STREAK"
-  if [ "$c" -ge 3 ]; then echo "連続 $c 回 blocked（$STAMP）" > "$PAUSED"; echo "loop: 連続 3 回 blocked。休止の印を置いた（S8）"; fi
+  if [ "$c" -ge 3 ]; then echo "連続 $c 回 blocked（${STAMP}）" > "$PAUSED"; echo "loop: 連続 3 回 blocked。休止の印を置いた（S8）"; fi
 fi
 git switch -q main 2>/dev/null || true

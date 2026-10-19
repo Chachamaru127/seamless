@@ -15,7 +15,7 @@ export const MAX_MANIFEST_BYTES = 65_536;
 export const MANIFEST_DIR = fileURLToPath(new URL('../manifests', import.meta.url));
 export const MANIFEST_APPROVAL_MARK = 'limits.markUnapproved' as const;
 
-export const MANIFEST_PROVIDERS = ['claude', 'codex', 'grok', 'grok-bot'] as const;
+export const MANIFEST_PROVIDERS = ['claude', 'codex', 'grok', 'grok-bot', 'opencode'] as const;
 export const MANIFEST_IDENTITY_KINDS = ['pid_session', 'thread', 'roster'] as const;
 export const MANIFEST_DISCOVERY_KINDS = ['sessions_json', 'rollout', 'desktop_ipc', 'roster', 'plugin', 'hook'] as const;
 export const MANIFEST_WRITE_CHANNELS = ['unix_socket', 'command', 'desktop_ipc', 'https_webhook', 'inbox_file', 'plugin_api'] as const;

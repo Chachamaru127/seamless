@@ -45,11 +45,14 @@ test('the v1 products are listed through their manifests alone', async () => {
   const registry = await loadManifestRegistry();
   const peers = registry.peers();
 
-  assert.deepEqual(peers.map((peer) => peer.id), ['claude-code', 'codex', 'grok-bot', 'grok-cli']);
-  assert.deepEqual(peers.map((peer) => peer.provider), ['claude', 'codex', 'grok-bot', 'grok']);
-  assert.deepEqual(peers.map((peer) => peer.displayName), ['Claude Code', 'Codex', 'Grok Bot', 'Grok CLI']);
-  assert.deepEqual(peers.map((peer) => peer.write), ['unix_socket', 'command', 'https_webhook', 'inbox_file']);
-  assert.deepEqual(peers.map((peer) => peer.discovery), ['sessions_json', 'rollout', 'roster', 'sessions_json']);
+  // Five product manifests: the four that existed when #26 was written (Claude Code, Codex, Grok Bot, Grok CLI) and
+  // opencode, which T07 declared but did not add. Issue #26 counted three plus opencode because Grok CLI's manifest
+  // landed afterwards; no product was removed to keep that number.
+  assert.deepEqual(peers.map((peer) => peer.id), ['claude-code', 'codex', 'grok-bot', 'grok-cli', 'opencode']);
+  assert.deepEqual(peers.map((peer) => peer.provider), ['claude', 'codex', 'grok-bot', 'grok', 'opencode']);
+  assert.deepEqual(peers.map((peer) => peer.displayName), ['Claude Code', 'Codex', 'Grok Bot', 'Grok CLI', 'opencode']);
+  assert.deepEqual(peers.map((peer) => peer.write), ['unix_socket', 'command', 'https_webhook', 'inbox_file', 'plugin_api']);
+  assert.deepEqual(peers.map((peer) => peer.discovery), ['sessions_json', 'rollout', 'roster', 'sessions_json', 'plugin']);
 
   // The adapter is named by the manifest and resolves to the product's own file under src/.
   const source = dirname(MANIFEST_DIR);
@@ -62,6 +65,7 @@ test('the v1 products are listed through their manifests alone', async () => {
     ['codex', 'codex.ts'],
     ['grok-bot', 'webhook-send.ts'],
     ['grok-cli', 'grok.ts'],
+    ['opencode', 'opencode.ts'],
   ]);
 
   // The listing keeps the stages the product's own records can prove, and the product's native states.
@@ -82,6 +86,22 @@ test('the v1 products are listed through their manifests alone', async () => {
   assert.equal(grok.limits?.maxText, 8000);
   // The one hook file a Grok install names: hooks/grok-cli/seamless-hook.sh, not a path into src/.
   assert.equal(grok.install.hook, 'hooks/grok-cli/seamless-hook.sh');
+  // opencode has no socket or command: the plugin writes the peers file, calls the official session.prompt, and its
+  // receipt in delivered/ is the only stage it can prove. The manifest names the plugin install, not a hook.
+  const opencode = registry.get('opencode')!;
+  assert.equal(opencode.identity.id, 'sessionId');
+  assert.equal(opencode.identity.record, '~/.seamless/peers/opencode-<sessionId>.json');
+  assert.equal(opencode.discovery.kind, 'plugin');
+  assert.equal(opencode.discovery.source, '~/.seamless/peers');
+  assert.equal(opencode.write.channel, 'plugin_api');
+  assert.equal(opencode.write.target, 'session.prompt');
+  assert.deepEqual(opencode.evidence.stages, ['reached']);
+  assert.equal(opencode.states.idle, 'ready');
+  assert.equal(opencode.states.busy, 'next_turn');
+  assert.deepEqual(opencode.permissions.operations, ['read', 'send']);
+  assert.equal(opencode.limits?.maxText, 8000);
+  assert.equal(opencode.install.hook, null);
+  assert.equal(opencode.install.steps.includes('add packages/opencode-plugin/index.ts to ~/.config/opencode/opencode.json'), true);
 });
 
 test('a manifest installs one hook file that exists and can run', async () => {

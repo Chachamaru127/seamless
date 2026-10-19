@@ -6,8 +6,8 @@ import {fileURLToPath} from 'node:url';
 // only detected: doctor reports the executable and the hooks, and this adapter lists the product as `unverified` when
 // the executable exists. Without an executable there is nothing to list.
 //
-// The declaration is src/manifests/antigravity.json. The core manifest loader (src/core/manifest.ts) knows four
-// providers (claude, codex, grok, grok-bot), so a phase 2 product cannot be registered there yet; the file is kept
+// The declaration is src/manifests/antigravity.json. The core manifest loader (src/core/manifest.ts) does not know the
+// antigravity provider, so a phase 2 product cannot be registered there yet; the file is kept
 // outside that registry (src/manifests/phase2/) and is read by this adapter instead. When the provider set grows, the
 // same data moves into the core registry without changing what this adapter lists.
 export const ANTIGRAVITY_MANIFEST_PATH = fileURLToPath(new URL('../manifests/antigravity.json', import.meta.url));

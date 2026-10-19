@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "product": "opencode",
+  "provider": "opencode",
+  "displayName": "opencode",
+  "adapter": "../adapters/opencode.ts",
+  "identity": {
+    "kind": "pid_session",
+    "id": "sessionId",
+    "generation": "version@created",
+    "record": "~/.seamless/peers/opencode-<sessionId>.json"
+  },
+  "discovery": {
+    "kind": "plugin",
+    "source": "~/.seamless/peers",
+    "fields": ["sessionId", "generation", "state", "title", "directory", "updatedAt"]
+  },
+  "write": {
+    "channel": "plugin_api",
+    "target": "session.prompt"
+  },
+  "evidence": {
+    "source": "~/.seamless/opencode-inbox/<sessionId>/delivered",
+    "stages": ["reached"]
+  },
+  "states": {
+    "idle": "ready",
+    "busy": "next_turn"
+  },
+  "permissions": {
+    "operations": ["read", "send"],
+    "approvalMark": "limits.markUnapproved"
+  },
+  "install": {
+    "hook": null,
+    "steps": ["node src/cli.ts setup", "add packages/opencode-plugin/index.ts to ~/.config/opencode/opencode.json"]
+  },
+  "limits": {
+    "maxText": 8000
+  }
+}

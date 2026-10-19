@@ -215,23 +215,30 @@ export function validReceipt(value: unknown): value is Receipt {
 export async function ensureInbox(sessionId: string, home = homedir()): Promise<string> {
   return ensureDirs(sessionId, home);
 }
-// The state that holds a request, or null. `handed/` names carry the injecting process's pid after the key.
-export async function envelopeState(sessionId: string, sender: Pick<Party, 'id' | 'nativeId'>, id: string, home = homedir()): Promise<{ state: InboxState; name: string } | null> {
+const MOVED_STATES: readonly InboxState[] = ['handed', 'delivered', 'failed', 'unknown'];
+async function stateIn(sessionId: string, sender: Pick<Party, 'id' | 'nativeId'>, id: string, states: readonly InboxState[], home: string): Promise<{ state: InboxState; name: string } | null> {
   let dir: string;
   try { dir = inboxDir(sessionId, home); } catch { return null; }
   const key = keyOf(sender, id);
-  for (const state of INBOX_STATES) {
+  for (const state of states) {
     const name = (await names(join(dir, state))).find((entry) => entry === `${key}.json` || entry.startsWith(`${key}.`) && entry.endsWith('.json'));
     if (name) return { state, name };
   }
   return null;
 }
+// The state that holds a request, or null. `handed/` names carry the injecting process's pid after the key.
+export async function envelopeState(sessionId: string, sender: Pick<Party, 'id' | 'nativeId'>, id: string, home = homedir()): Promise<{ state: InboxState; name: string } | null> {
+  return stateIn(sessionId, sender, id, INBOX_STATES, home);
+}
 // seamless's side puts a request in pending/. A request already present in any state is never put again (invariant 6).
+// The duplicate decision is the one atomic create below: two concurrent puts race on the same pending name and exactly
+// one link wins. The read before it covers only the states a request moves on to, so a second put of a request that is
+// already handed or delivered does not write a fresh pending copy.
 export async function putEnvelope(envelope: Envelope, home = homedir()): Promise<{ status: 'written' } | { status: 'exists'; state: InboxState } | { status: 'invalid' }> {
   if (!validEnvelope(envelope)) return { status: 'invalid' };
   const dir = await ensureDirs(envelope.recipient.nativeId, home);
-  const present = await envelopeState(envelope.recipient.nativeId, envelope.sender, envelope.id, home);
-  if (present) return { status: 'exists', state: present.state };
+  const moved = await stateIn(envelope.recipient.nativeId, envelope.sender, envelope.id, MOVED_STATES, home);
+  if (moved) return { status: 'exists', state: moved.state };
   const written = await publishPrivate(join(dir, 'pending', `${keyOf(envelope.sender, envelope.id)}.json`), JSON.stringify(envelope));
   if (!written) {
     const now = await envelopeState(envelope.recipient.nativeId, envelope.sender, envelope.id, home);
@@ -397,16 +404,26 @@ export function renderEnvelope(envelope: Envelope): string {
 }
 
 type PromptResult = { promptId: string | null };
+// The message id a successful prompt answer carries. An error answer is not a delivery even when it also carries an id:
+// the session refused the prompt, so there is no message to point at.
+function responsePromptId(raw: unknown): string | null {
+  if (!isRecord(raw)) return null;
+  if (Object.hasOwn(raw, 'error') && raw.error) return null;
+  const data = isRecord(raw.data) ? raw.data : null;
+  if (data && Object.hasOwn(data, 'error') && data.error) return null;
+  const info = data && isRecord(data.info) ? data.info : isRecord(raw.info) ? raw.info : null;
+  if (!info) return null;
+  if (Object.hasOwn(info, 'error') && info.error) return null;
+  return typeof info.id === 'string' && info.id.length > 0 ? info.id : null;
+}
 async function promptSession(api: OpenCodePluginApi, sessionId: string, text: string): Promise<PromptResult> {
   if (api.session?.prompt) {
     const raw = await api.session.prompt({ sessionID: sessionId, text });
-    const id = isRecord(raw) && isRecord(raw.data) && isRecord(raw.data.info) && typeof raw.data.info.id === 'string' ? raw.data.info.id : null;
-    return { promptId: id };
+    return { promptId: responsePromptId(raw) };
   }
   if (api.client?.session?.prompt) {
     const raw = await api.client.session.prompt({ path: { id: sessionId }, body: { parts: [{ type: 'text', text }] } });
-    const id = isRecord(raw) && isRecord(raw.data) && isRecord(raw.data.info) && typeof raw.data.info.id === 'string' ? raw.data.info.id : null;
-    return { promptId: id };
+    return { promptId: responsePromptId(raw) };
   }
   throw new Error('prompt_unavailable');
 }
@@ -478,10 +495,16 @@ async function drainOnce(api: OpenCodePluginApi, sessionId: string, options: Plu
     const match = /^([0-9a-f]{64})\.json$/.exec(name);
     const handed = join(dir, 'handed', `${match![1]}.${options.pid ?? process.pid}.json`);
     try { await rename(join(dir, 'pending', name), handed); } catch { continue; }
-    let promptId: string | null;
+    let prompt: PromptResult;
     try {
-      ({ promptId } = await promptSession(api, sessionId, renderEnvelope(envelope)));
+      prompt = await promptSession(api, sessionId, renderEnvelope(envelope));
     } catch {
+      await rename(handed, join(dir, 'unknown', `${match![1]}.json`)).catch(() => {});
+      continue;
+    }
+    // An answer without a message id (an error object, or a shape this plugin cannot read) is not a delivery: it leaves
+    // no receipt and the session is not marked busy. `unknown` is final, so the request is never injected twice.
+    if (!prompt.promptId) {
       await rename(handed, join(dir, 'unknown', `${match![1]}.json`)).catch(() => {});
       continue;
     }
@@ -490,7 +513,7 @@ async function drainOnce(api: OpenCodePluginApi, sessionId: string, options: Plu
       sessionId,
       generation: peer.generation,
       at: (options.now ?? Date.now)(),
-      promptId,
+      promptId: prompt.promptId,
       envelope,
     };
     await publishPrivate(join(dir, 'delivered', `${match![1]}.json`), JSON.stringify(receipt));

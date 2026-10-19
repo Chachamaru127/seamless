@@ -76,6 +76,9 @@ summary="判定 ${STAMP}（版 ${sha}）: 図面検査 Haiku 5.5 → $(head -c 3
 判定役 Codex gpt-6-astra → ${verdict:-不明}
 $(head -c 1200 "$judge")"
 gh issue comment "$num" --body "$summary" >/dev/null
+if [ -n "${NO_MERGE:-}" ]; then
+  echo "NO_MERGE: 判定だけ（$verdict）"; exit 0
+fi
 if [ "$verdict" = "PASS" ]; then
   git switch -q "$BASE" && git merge -q --no-ff "$branch" -m "merge loop/$num: ${title}（判定 PASS、${sha}）
 

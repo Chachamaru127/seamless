@@ -50,14 +50,14 @@ test('the v1 products are listed through their manifests alone', async () => {
   const registry = await loadManifestRegistry();
   const peers = registry.peers();
 
-  // Five product manifests: the four that existed when #26 was written (Claude Code, Codex, Grok Bot, Grok CLI) and
-  // opencode, which T07 declared but did not add. Issue #26 counted three plus opencode because Grok CLI's manifest
-  // landed afterwards; no product was removed to keep that number.
-  assert.deepEqual(peers.map((peer) => peer.id), ['claude-code', 'codex', 'grok-bot', 'grok-cli', 'opencode']);
-  assert.deepEqual(peers.map((peer) => peer.provider), ['claude', 'codex', 'grok-bot', 'grok', 'opencode']);
-  assert.deepEqual(peers.map((peer) => peer.displayName), ['Claude Code', 'Codex', 'Grok Bot', 'Grok CLI', 'opencode']);
-  assert.deepEqual(peers.map((peer) => peer.write), ['unix_socket', 'command', 'https_webhook', 'inbox_file', 'plugin_api']);
-  assert.deepEqual(peers.map((peer) => peer.discovery), ['sessions_json', 'rollout', 'roster', 'sessions_json', 'plugin']);
+  // The product manifests: the four that existed when #26 was written (Claude Code, Codex, Grok Bot, Grok CLI), opencode
+  // from T07 and Cursor from T08 (#27). An earlier count in #26 was short by Grok CLI; the list below is read from the
+  // directory, not counted by hand.
+  assert.deepEqual(peers.map((peer) => peer.id), ['claude-code', 'codex', 'cursor', 'grok-bot', 'grok-cli', 'opencode']);
+  assert.deepEqual(peers.map((peer) => peer.provider), ['claude', 'codex', 'cursor', 'grok-bot', 'grok', 'opencode']);
+  assert.deepEqual(peers.map((peer) => peer.displayName), ['Claude Code', 'Codex', 'Cursor CLI', 'Grok Bot', 'Grok CLI', 'opencode']);
+  assert.deepEqual(peers.map((peer) => peer.write), ['unix_socket', 'command', 'inbox_file', 'https_webhook', 'inbox_file', 'plugin_api']);
+  assert.deepEqual(peers.map((peer) => peer.discovery), ['sessions_json', 'rollout', 'hook', 'roster', 'sessions_json', 'plugin']);
 
   // The adapter is named by the manifest and resolves to the product's own file under src/.
   const source = dirname(MANIFEST_DIR);
@@ -68,6 +68,7 @@ test('the v1 products are listed through their manifests alone', async () => {
   assert.deepEqual(registry.adapters().map(({ product, module }) => [product, module.split('/').at(-1)]), [
     ['claude-code', 'claude.ts'],
     ['codex', 'codex.ts'],
+    ['cursor', 'cursor.ts'],
     ['grok-bot', 'webhook-send.ts'],
     ['grok-cli', 'grok.ts'],
     ['opencode', 'opencode.ts'],
@@ -107,6 +108,24 @@ test('the v1 products are listed through their manifests alone', async () => {
   assert.equal(opencode.limits?.maxText, 8000);
   assert.equal(opencode.install.hook, null);
   assert.equal(opencode.install.steps.includes('add packages/opencode-plugin/index.ts to ~/.config/opencode/opencode.json'), true);
+  // Cursor is the hooks product: sessionStart/stop/afterAgentResponse write the peer file, and the request waits in the
+  // inbox until a stop hook hands it over. Both peer states are listed as next_turn, as cursorState() decides.
+  const cursor = registry.get('cursor')!;
+  assert.equal(cursor.identity.id, 'sessionId');
+  assert.equal(cursor.identity.generation, 'generation');
+  assert.equal(cursor.identity.record, '~/.seamless/peers/cursor-<sessionId>.json');
+  assert.equal(cursor.discovery.kind, 'hook');
+  assert.equal(cursor.discovery.source, '~/.seamless/peers');
+  assert.equal(cursor.write.channel, 'inbox_file');
+  assert.equal(cursor.write.target, 'pending');
+  assert.deepEqual(cursor.evidence.stages, ['reached']);
+  assert.equal(cursor.evidence.source, '~/.seamless/cursor-inbox/<sessionId>/delivered');
+  assert.deepEqual(cursor.states, { idle: 'next_turn', busy: 'next_turn' });
+  assert.equal(cursor.limits?.maxText, 8000);
+  assert.equal(cursor.install.hook, 'hooks/cursor/seamless-hook.sh');
+  assert.equal(cursor.install.steps.includes('add hooks/cursor/seamless-hook.sh to sessionStart, afterAgentResponse and stop in ~/.cursor/hooks.json'), true);
+  // The ports are the adapter's own exports; the core names no product.
+  assert.deepEqual(cursor.exports, { list: 'listCursorPeers', send: 'sendCursorEnvelope' });
 });
 
 test('a manifest installs one hook file that exists and can run', async () => {
@@ -333,6 +352,23 @@ test('a manifest discovery port puts its peers in who: opencode idle and busy', 
   assert.deepEqual(
     listing.peers.filter((p: any) => String(p.id).startsWith('opencode:')).map((p: any) => [p.id, p.state, p.displayName]),
     [['opencode:a', 'ready', 'Idle one'], ['opencode:b', 'next_turn', 'Busy one']],
+  );
+});
+
+test('a manifest discovery port puts its peers in who: cursor idle and busy', async (t) => {
+  const runtimeHome = await home(t);
+  await mkdir(join(runtimeHome, '.seamless', 'peers'), { recursive: true, mode: 0o700 });
+  const peer = (sessionId: string, state: 'idle' | 'busy', event: string) => ({
+    schemaVersion: 1, provider: 'cursor', sessionId, generation: sessionId, directory: '/', state, updatedAt: 1, lastEvent: event,
+  });
+  await writeFile(join(runtimeHome, '.seamless', 'peers', 'cursor-a.json'), JSON.stringify(peer('a', 'idle', 'sessionStart')), { mode: 0o600 });
+  await writeFile(join(runtimeHome, '.seamless', 'peers', 'cursor-b.json'), JSON.stringify(peer('b', 'busy', 'afterAgentResponse')), { mode: 0o600 });
+
+  // The inbox write lands at the next turn whether the session is idle or working, so both rows say next_turn.
+  const listing = await whoListing(emptySessions, { home: runtimeHome });
+  assert.deepEqual(
+    listing.peers.filter((p: any) => String(p.id).startsWith('cursor:')).map((p: any) => [p.id, p.state]),
+    [['cursor:a', 'next_turn'], ['cursor:b', 'next_turn']],
   );
 });
 

@@ -198,10 +198,14 @@ export type CodexQueueRun=(command:string,args:string[],timeoutMs:number)=>Promi
 // `body` is the text the ceiling measures when `text` carries a larger wire form (the envelope JSON). Without it the ceiling
 // would count the envelope, refusing a short message for its metadata.
 export type CodexWriteOptions={limits?:Pick<Limits,'codexMessageMaxChars'>;body?:string;command?:string;timeoutMs?:number;run?:CodexQueueRun;ipc:()=>Promise<Receipt>};
+// Only a run that provably never reached the queue may cross over to Desktop IPC; a second write after the queue accepted
+// the reservation would double-send (invariant 6). A numeric exit code alone does not prove that: the queue can accept and
+// then fail. The two proofs are a spawn error for a command that could not run, and exit code 2 with usage on standard error.
 function failedBeforeSubmit(error:unknown):boolean{
- const e=error as (NodeJS.ErrnoException&{killed?:boolean;signal?:string})|null|undefined;
+ const e=error as (NodeJS.ErrnoException&{killed?:boolean;signal?:string;stderr?:unknown})|null|undefined;
  if(!e||e.killed||e.signal)return false;
- return typeof e.code==='number'||e.code==='ENOENT'||e.code==='EACCES'||e.code==='ENOTDIR';
+ if(typeof e.code==='string')return e.code==='ENOENT'||e.code==='EACCES'||e.code==='ENOTDIR';
+ return e.code===2&&typeof e.stderr==='string'&&/\busage\b/i.test(e.stderr);
 }
 export async function writeCodexMessage(nativeId:string,text:string,messageId:string,options:CodexWriteOptions):Promise<Receipt>{
  if([...(options.body??text)].length>codexMessageMaxChars(options.limits??{}))return {status:'rejected',reason:'too_long'};

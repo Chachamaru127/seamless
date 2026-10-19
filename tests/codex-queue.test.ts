@@ -49,11 +49,21 @@ test('the default ceiling is the Open decision 2 value, counted in code points',
 });
 
 test('a failure the queue returned before submitting falls back to Desktop IPC once',async()=>{
- for(const error of [Object.assign(new Error('exit 1'),{code:1}),Object.assign(new Error('spawn codex'),{code:'ENOENT'})]){
+ const cases=[...['ENOENT','EACCES','ENOTDIR'].map(code=>Object.assign(new Error(`spawn codex ${code}`),{code})),Object.assign(new Error('exit 2'),{code:2,stderr:'error: unexpected argument\n\nUsage: codex queue --thread <ID> --message <TEXT>\n'})];
+ for(const error of cases){
   const {calls,run}=fakeRun();let ipcWrites=0;
   const receipt=await writeCodexMessage('thread-1','hello','m1',{run:async(command,args,timeoutMs)=>{await run(command,args,timeoutMs);throw error;},ipc:async()=>{ipcWrites++;return {status:'submitted',nativeMessageId:'m1'};}});
   assert.deepEqual(receipt,{status:'submitted',nativeMessageId:'m1'});
   assert.equal(calls.length,1);assert.equal(ipcWrites,1);
+ }
+});
+
+test('a numeric exit code without usage is unknown and never falls back to IPC',async()=>{
+ for(const error of [Object.assign(new Error('exit 1'),{code:1}),Object.assign(new Error('exit 2'),{code:2,stderr:'queue rejected: thread not found\n'}),Object.assign(new Error('exit 2 without stderr'),{code:2}),Object.assign(new Error('exit 127'),{code:127})]){
+  const {run}=fakeRun();let ipcWrites=0;
+  const receipt=await writeCodexMessage('thread-1','hello','m1',{run:async()=>{throw error;},ipc:async()=>{ipcWrites++;return {status:'submitted',nativeMessageId:'m1'};}});
+  assert.deepEqual(receipt,{status:'unknown'});
+  assert.equal(ipcWrites,0);
  }
 });
 

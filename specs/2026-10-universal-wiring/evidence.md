@@ -80,3 +80,4 @@
 | 2026-10-20 01:00 | #24 T04b 保留理由の観測（1 回目） | a850cce | 並列 wave 2b（worktree） | 0 | — | FAIL（項目 1: 受信側 bypassPermissions だけで claude_hold にする。ただし公式文書どおりの hold 条件で、Done when の文言が狭すぎた） | 文言を直して再判定 |
 | 2026-10-20 01:12 | #24 T04b（2 回目） | a850cce | 並列 wave 2b | 0 | — | FAIL（項目 2: Codex の goal 観測が activeTurnId だけで真を返す。通常ターンでも codex_goal になる） | 観測を goal 固有の情報に限る指示を Done when に書いて再施工 |
 | 2026-10-20 01:12 | #27 T08b Cursor manifest（1 回目） | d9671b5 | 並列 wave 2c | 0（843 pass） | — | FAIL（項目 1: 「5 製品」の文言。cursor を足して 6 製品が正） | 文言を直して再判定 |
+| 2026-10-20 01:25 | #27 T08b Cursor manifest（2 回目） | d9671b5 | 並列 wave 2c | 0（843 pass） | — | PASS（3 項目 Yes。1 は「6 製品」に文言を直した） | 閉じて merge（fbbfa27） |

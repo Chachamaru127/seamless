@@ -1,5 +1,7 @@
 import { palette } from './appearance'
 import { durationOf, printable } from './text'
+// The evidence reader's stage name; kept inline because the band copy cannot import from src.
+const REACHED_STAGE = "reached"
 
 export type Exchange = {
   id: string
@@ -59,19 +61,19 @@ function outbound(value: unknown, now?: number): Exchange {
   const when = (stage: string) => seenAt.get(stage) ?? null
   let state = UNKNOWN
   if (observed.has('processing') || observed.has('replied')) state = { color: palette.green, label: observed.has('replied') ? '既読 · 返信あり' : '既読' }
-  else if (observed.has('reached')) state = { color: palette.orange, label: '届いた · 未読' }
+  else if (observed.has(REACHED_STAGE)) state = { color: palette.orange, label: '届いた · 未読' }
   else if (r.delivery === 'rejected') state = { color: palette.red, label: '届かなかった' }
   // A Grok CLI envelope is handed over only at the end of the peer's next turn: until then it waits, and is not said to be on its way.
   const inbox = r.inbox === 'pending' ? 'pending' as const : r.inbox === 'handed' || r.inbox === 'unknown' ? 'unknown' as const : r.inbox === 'orphaned' ? 'orphaned' as const : undefined
   const activeAt = timestamp(r.peerActiveAt)
   const idle = inbox === 'pending' && now !== undefined && activeAt !== null && now - activeAt >= 5 * 60_000
-  if (!observed.has('reached') && !observed.has('processing') && !observed.has('replied') && r.delivery !== 'rejected') {
+  if (!observed.has(REACHED_STAGE) && !observed.has('processing') && !observed.has('replied') && r.delivery !== 'rejected') {
     if (inbox === 'unknown') state = { color: palette.orange, label: GROK_UNKNOWN }
     else if (inbox === 'orphaned') state = { color: palette.orange, label: GROK_ORPHANED }
     else if (inbox === 'pending') state = { color: palette.muted, label: idle ? `${GROK_WAITING} · ${GROK_IDLE}` : GROK_WAITING }
   }
   return { id: string(r.id), direction: 'outbound', at: timestamp(r.at), ...state,
-    times: { reached: when('reached'), processing: when('processing'), replied: when('replied') }, rejected: state.color === palette.red,
+    times: { reached: when(REACHED_STAGE), processing: when('processing'), replied: when('replied') }, rejected: state.color === palette.red,
     ...(inbox ? { inbox } : {}), ...(idle ? { idle } : {}) }
 }
 

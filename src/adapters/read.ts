@@ -1,6 +1,11 @@
 import type { Registration } from '../protocol.ts';
 import { ContractError } from '../protocol.ts';
 export const MAX_READ_LIMIT=100;
+// The five stages of spec.md, in order. `reached` is only ever established from evidence read out of the peer's own
+// records, so its name lives with the readers here and never in the write path.
+export const REACHED_STAGE="reached" as const;
+export const STAGE_ORDER=['accepted',REACHED_STAGE,'processing','replied','unknown'] as const;
+export type StageName=typeof STAGE_ORDER[number];
 export type ReadRole='user'|'assistant'|'peer'|'tool';
 export type ReadItem={nativeItemId:string;role:ReadRole;text:string;at:string|null;peer?:{namespace:string;declaredSender?:string;messageId?:string;replyTo?:string;envelope?:Envelope}};
 export type Party={id:string;nativeId:string;generation:string};

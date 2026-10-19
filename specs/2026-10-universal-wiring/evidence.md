@@ -70,3 +70,5 @@
 | 2026-10-19 23:35 | #22 T03b、#28 T10b | a7a3790、0c82cbb | 並列 wave 1 | 判定時 1（並列 verify の不安定。順番に走らせると 0） | — | FAIL（#22: limits 未渡し。#28: 偽の fs 試験なし、全ファイル検査なし） | 直し方を追記して再施工。判定時の verify は順番に走らせる形に変更 |
 | 2026-10-19 23:50 | #26 T07b opencode manifest 他 | dba1b47 | 並列 wave 1 | 0（822 pass） | — | PASS（4 項目 Yes。1 は「5 製品」に文言を直して 3 回目） | 閉じて merge（7003cc8）。残件: 保存と取り出しが重なる隙間は #25 で |
 | 2026-10-19 23:55 | #17 T13 公開面（3 回目） | d5061a6 | 並列 wave 1 | 0 | — | FAIL（項目 3: grep が docs/ specs/ の説明文に当たる。残件に実害: 同梱物の src/mcp.ts が除外した status-panel.ts を参照） | Done when を公開物に限定し、依存の検査（pack-check）を足して再施工 |
+| 2026-10-20 00:05 | #22 T03b queue を送信経路へ | fdadc22 | 再施工（worktree、190 秒） | 0（824 pass） | — | PASS（5 項目 Yes） | 閉じて merge（2f683b3） |
+| 2026-10-20 00:05 | #28 T10b 受信箱の原子性 | 47937cb | 再施工（worktree、340 秒） | 0（823 pass） | — | PASS（3 項目 Yes） | 閉じて merge（f8bb818） |

@@ -156,7 +156,8 @@ test('nonexistent exclusion path is compared as written',async t=>{
 });
 test('sessions reports the number of Codex candidates omitted by any scope scan',async t=>{
  const f=await fixture(t),cwd=await realpath(f.home);f.caller.cwd=cwd;
- const automatic=createAutomatic({home:f.home,caller:async()=>({status:'ok',caller:f.caller}),scanOptions:{version:async()=>'26.928.40906+12694',rows:async()=>Array.from({length:53},(_,i)=>({id:String(i),cwd,archived:0,updated_at_ms:i})),owner:async()=> 'g'}});
+ // The Claude folders are pinned empty: the count is about Codex rows, not whatever profile this machine runs under.
+ const automatic=createAutomatic({home:f.home,caller:async()=>({status:'ok',caller:f.caller}),scanOptions:{version:async()=>'26.928.40906+12694',rows:async()=>Array.from({length:53},(_,i)=>({id:String(i),cwd,archived:0,updated_at_ms:i})),owner:async()=> 'g',claude:{env:{}}}});
  const result=await automatic('sessions',{scope:'any'});assert.equal(result.status,'ok');assert.equal(result.codexTruncated,3);assert.equal(result.candidates.length,50);
 });
 

@@ -39,3 +39,9 @@
 | 2026-10-19 | 改訂 3（a8065c8） | 図面検査 2 回目 | claude-haiku-5-5 | FAIL（20 件。改訂 4 で反映。AC の意味は変えず、文言、対応、不変条件 8 のルート改訂 2） | drafts/review-haiku-v3-r2.md |
 
 承認した版: spec.md と Plans.md の承認（2026-10-19「1. 承認」）は改訂 3（commit a8065c8）に対するもの。改訂 4 は文言の整合と、ルート spec.md の不変条件 8 の改訂 2（同じ Mac の対象製品に opencode、Cursor CLI、Antigravity CLI を追加）。不変条件 8 の改訂 2 は、本人の「opencode / Cursor CLI / Antigravity CLI を入れて」の指示を製品の不変条件に反映したもので、承認済みの範囲内と扱う。
+
+## 実装ループの判定
+
+| 日付 | Issue | 版 | 施工 | verify | 図面検査（Haiku 5.5） | 判定（Codex gpt-6-astra） | 結果 |
+|---|---|---|---|---|---|---|---|
+| 2026-10-19 19:52 | #1 T12 hermetic CI | d61cb9b | opencode deepseek-v4.1-flash:1017（2 回。2 回目で CI に @types/node） | 0（720 pass） | 項目 2、3 Yes。1 はリーダーの実行証拠で判定 | PASS（3 項目 Yes） | 閉じて loop/integration へ merge（45b790d）。残件: GitHub Actions 上の実走は未確認（push 後） |

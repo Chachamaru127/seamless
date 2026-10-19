@@ -55,3 +55,4 @@
 | 2026-10-19 21:27 | #7 T15（2 回目） | 6747c89 | opencode deepseek-v4.1-flash:1017（170 秒） | 0（745 pass） | （記録なし） | FAIL（項目 5 No: 今度は厳しすぎて node のオプション付き起動と grok-hook を除外） | 対象の定義を Issue に書いて 3 回目へ。3 回目も FAIL なら人の確認 |
 | 2026-10-19 21:35 | #7 T15（3 回目） | 930d211 | opencode deepseek-v4.1-flash:1017（170 秒） | 0（746 pass） | （記録なし） | FAIL（項目 5 No。ただし反例はリーダーの定義の穴で、施工は定義どおり） | 定義を「node のオプションを読み飛ばした最初の引数の realpath」に確定して 4 回目 |
 | 2026-10-19 21:43 | #7 T15 計測スクリプト（4 回目） | fe54a77 | opencode deepseek-v4.1-flash:1017（130 秒） | 0（747 pass） | （記録なし） | PASS（6 項目 Yes） | 閉じて merge。残件: `batch --out` で既存ファイルを指定すると上書き（Done when 外。README の注意で足りる） |
+| 2026-10-19 21:52 | #9 T20 who --json 3 状態 | 24d2bf9 | opencode deepseek-v4.1-flash:1017（440 秒） | 0（756 pass） | 食い違いなし | PASS（5 項目 Yes） | 閉じて merge。残件: ready は記録の socket 欄と idle の判定で、接続成功は native-runtime の照合に任せる |

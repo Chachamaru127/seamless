@@ -28,9 +28,11 @@ export type CompatibilityOptions={compatibility?:readonly CompatibilityEntry[];a
 export type VersionStatus='verified'|'checking'|'fix_required'|'unverified'|'unverified_desktop'|'invalid';
 export function defaultConnection(product:CompatibilityProduct):CompatibilityConnection{return product==='claude-code'||product==='codex'?'desktop':'cli';}
 export function versionStatus(product:CompatibilityEntry['product'],version:string|null|undefined,options:CompatibilityOptions={},connection:CompatibilityEntry['connection']=defaultConnection(product)):VersionStatus{
+ const entries=version?(options.compatibility??COMPATIBILITY).filter(e=>e.product===product&&e.version===version&&e.connection===connection):[];
+ // The table wins over the connection: a fix_required row stops use on every path, including a failed Desktop connection.
+ if(entries.length===1&&entries[0].status==='fix_required')return 'fix_required';
  if(connection==='desktop'&&options.desktopConnection==='failed')return 'unverified_desktop';
  if(!version)return 'unverified';
- const entries=(options.compatibility??COMPATIBILITY).filter(e=>e.product===product&&e.version===version&&e.connection===connection);
  if(!entries.length)return 'unverified';
  if(entries.length!==1)return 'invalid';
  const status=entries[0].status;

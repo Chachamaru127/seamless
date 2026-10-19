@@ -63,6 +63,17 @@ for(const version of ['2.1.287','9.9.9'])test(`Claude identity rejects unverifie
 });
 
 import type {CompatibilityEntry} from '../src/compat.ts';
+test('a fix_required version stops use even when the Desktop connection fails',()=>{
+ const compatibility:CompatibilityEntry[]=[{product:'codex',version:'fix',connection:'desktop',status:'fix_required',checkedAt:null,checks:[]}];
+ for(const strictVersions of [false,true]){
+  const options={compatibility,desktopConnection:'failed' as const,strictVersions};
+  assert.equal(versionStatus('codex','fix',options),'fix_required');
+  assert.equal(isVersionAllowed('codex','fix',options),false);
+  assert.equal(isVersionAllowed('codex','fix',{...options,allowChecking:true}),false);
+ }
+ assert.equal(versionStatus('codex','fix',{compatibility,desktopConnection:'ok'}),'fix_required');
+ assert.equal(isVersionAllowed('codex','fix',{compatibility}),false);
+});
 for(const strictVersions of [false,true])test(`version matrix strict=${strictVersions} preserves checking override and invalid denial`,()=>{
  for(const status of ['verified','checking','fix_required','future_state','absent']){
   const compatibility:CompatibilityEntry[]=status==='absent'?[]:[{product:'codex',version:'v',connection:'desktop',status:status as CompatibilityEntry['status'],checkedAt:null,checks:[]}];

@@ -96,3 +96,10 @@
 ## 2026-10-20 00:50 本人判断（H5、H6、#20 の順序）
 
 H5: seamless + @chachamaru127/seamless、MIT、repo を public に。H6: 公式経路は文書引用、内部依存 2 件は本人が目視。#20: AC7 の 15 往復の後。判断記録 D7〜D9。
+| 2026-10-20 01:20 | #30 H5 package 設定 | 11943a6 | 並列 wave 4（worktree） | 0 | — | PASS（4 項目 Yes） | 閉じて merge（2f47e7a） |
+| 2026-10-20 01:20 | #31 H6 文書 | 3b537ac | 並列 wave 4 | 0 | — | PASS（4 項目 Yes） | README の見出しの衝突をリーダーが解消して merge。統合ブランチの verify 0 |
+| 2026-10-20 01:20 | #32 AC7 手順書 | 63d4781 | 並列 wave 4 | 0 | — | PASS（4 項目 Yes） | 閉じて merge（5b9b1a5） |
+
+## 2026-10-20 01:25 の状態
+
+open は #20（Reason 比較、人）と #33（規約の目視、人）だけ。統合ブランチ loop/integration は一時ホームの verify 0。公開に残るのは、#33 → AC7 の実測（docs/measure-ac7.md）→ #20 → push（CI 実走）→ 公開 β。

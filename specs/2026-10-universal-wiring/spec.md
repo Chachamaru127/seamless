@@ -91,12 +91,12 @@
 - H2: 決定済み（2026-10-19）: Codex Desktop の内部接続を読取りに使い続ける。
 - H3: 決定済み（2026-10-19）: Reason の比較導入は同じ OS ユーザー。backup 確認、順番に計測、終わったら退会と設定の除去。
 - H4: 決定済み（2026-10-19）: オンライン機能を持たない。
-- H5: 名前、配布名、ライセンス（MIT 予定）、公開日。公開前に決める。AC1 の「導入」の表記は H5 の後に確定する。
-- H6: Grok Bot webhook、Cursor hooks、Antigravity hooks の利用規約の確認。公開前。
+- H5: 決定済み（2026-10-20 立花さん）: 名前は `seamless`、npm は `@chachamaru127/seamless`、MIT。GitHub は今の repo を public に切り替える。公開日は実相手の計測（AC7）と H6 の後。
+- H6: 決定済み（2026-10-20 立花さん）: 公式経路（Claude の socket と env、Codex queue、opencode plugin、Cursor hooks）は公開文書の該当箇所を README に引用。内部依存 2 件（Grok Bot webhook、Antigravity）の利用規約は本人が目視で確認し、結果を docs/release.md の欄に書く。専門家の確認は phase 2（玄関口）で。
 - H7: GitHub Issues と 30 分ごとの自動ループで実装を進める（2026-10-19 立花さん指示）。ループは、検証コマンドの終了コード 0 で作業ブランチに commit し Issue を「判定待ち」にするまで。Issue を閉じるのは、その Issue の Done when を同じ版で確かめた別家系の判定（team-review）の後で、閉じた後に統合ブランチへ取り込む。依存先が閉じていない Issue は取らない。push、PR、公開は H5 と H6 の後。条件付き自走の運用契約（CI/CD 未整備なら commit の直前で止まる）に対して、本人がこの範囲（作業ブランチへの commit まで）を明示的に許した扱いとする。
 
 ## 未決（AI が決めない）
 
-1. H5 名前と配布の時期。
-2. H6 規約の確認。
+1. 決定済み（H5）。
+2. 決定済み（H6）。#20 の順序も決定: AC7 の 15 往復の後に Reason 比較。
 3. 解決（2026-10-19 本人「T3 Code 経由で入っている」）: 実行ファイルは T3 Code が管理する `~/.t3-ja/tools/antigravity-acp/` 配下（ACP 版 1.1.1）、会話と設定は `~/.t3-ja/userdata/providers/antigravity/<hash>/`。PATH には無い。発見と hooks の有無は T09 で確かめる。

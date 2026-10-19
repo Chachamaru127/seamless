@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "product": "grok-bot",
+  "provider": "grok-bot",
+  "displayName": "Grok Bot",
+  "adapter": "../webhook-send.ts",
+  "identity": {
+    "kind": "roster",
+    "id": "name",
+    "generation": "keyVersion",
+    "record": "~/.seamless/peers.json"
+  },
+  "discovery": {
+    "kind": "roster",
+    "source": "~/.seamless/peers.json",
+    "fields": ["name", "keyVersion", "scope"]
+  },
+  "write": {
+    "channel": "https_webhook",
+    "target": "replyToken"
+  },
+  "evidence": {
+    "source": "~/.seamless/reservations",
+    "stages": ["replied"]
+  },
+  "states": {
+    "registered": "wake_needed",
+    "asleep": "wake_needed",
+    "revoked": "unreachable",
+    "scope_unset": "unreachable"
+  },
+  "permissions": {
+    "operations": ["read", "send"],
+    "approvalMark": "limits.markUnapproved"
+  },
+  "install": {
+    "hook": null,
+    "steps": ["node src/cli.ts setup"]
+  }
+}

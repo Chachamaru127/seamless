@@ -1,0 +1,31 @@
+# NOTICE
+
+seamless
+Copyright (c) 2026 seamless contributors
+
+This project is unofficial. It is not affiliated with, endorsed by, or supported by Anthropic, OpenAI, xAI,
+Anysphere, Google, Orca, or Reason Network.
+
+Claude, Claude Code, Codex, ChatGPT, Grok, Cursor, Antigravity, Gemini, Orca, and Reason Network are names and
+trademarks of their respective owners. They are used here only to describe which products seamless can talk to.
+
+## Third-party material
+
+The source under `src/`, `scripts/`, `hooks/`, and `packages/` is original to this project and imports only the
+Node.js standard library.
+
+Directories such as `mods/` and `experiments/` may contain third-party material that keeps its own copyright
+and licence. For example, `mods/seamless-band/` includes work distributed under the MIT License:
+
+    MIT License
+
+    Copyright (c) 2026 Tzafrir Rehan
+
+Read the licence file next to any such directory before copying or redistributing it. Those directories are
+not part of the published package.
+
+## Interfaces
+
+seamless talks to AI products through interfaces that are partly private or undocumented, including Claude
+session sockets, Codex `queue` and Desktop IPC, and Grok session files. No code from those products is included
+here. The compatibility table in `specs/202610-everyday-use/compat.md` records what was observed and when.

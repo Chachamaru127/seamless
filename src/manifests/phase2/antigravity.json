@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "phase": 2,
+  "product": "antigravity",
+  "provider": "antigravity",
+  "displayName": "Antigravity CLI",
+  "status": "unverified",
+  "adapter": "../adapters/antigravity.ts",
+  "identity": {
+    "kind": "pid_session",
+    "id": "session_id",
+    "generation": "pid@opened_at",
+    "record": "~/.t3-ja/userdata/providers/antigravity/<hash>/"
+  },
+  "discovery": {
+    "kind": "hook",
+    "source": "~/.gemini/antigravity-cli/settings.json",
+    "fields": ["hooks"]
+  },
+  "write": {
+    "channel": "inbox_file",
+    "target": "~/.seamless/antigravity-inbox"
+  },
+  "evidence": {
+    "source": "~/.seamless/antigravity-inbox/<session>/delivered",
+    "stages": ["reached", "processing", "replied"]
+  },
+  "states": {
+    "unverified": "unreachable",
+    "absent": "unreachable"
+  },
+  "permissions": {
+    "operations": ["read"],
+    "approvalMark": "limits.markUnapproved"
+  },
+  "install": {
+    "hook": null,
+    "steps": ["node src/cli.ts setup"]
+  }
+}

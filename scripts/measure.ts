@@ -6,8 +6,9 @@
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {appendFile,mkdir,mkdtemp,readFile,readdir,lstat,rm,writeFile} from 'node:fs/promises';
+import {realpathSync} from 'node:fs';
 import {homedir,tmpdir} from 'node:os';
-import {dirname,join} from 'node:path';
+import {basename,dirname,join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {Delivery,type NativeAdapter} from '../src/delivery.ts';
@@ -15,7 +16,7 @@ import {Registry} from '../src/registry.ts';
 import {createStatus,type StatusClock,type StructureItem} from '../src/status.ts';
 import type {Registration} from '../src/protocol.ts';
 import type {RequestParty} from '../src/request-store.ts';
-import {heldAfterSec,readLimits} from '../src/limits.ts';
+import {DEFAULT_HELD_AFTER_SEC,heldAfterSec,readLimits} from '../src/limits.ts';
 
 const REPO=join(dirname(fileURLToPath(import.meta.url)),'..');
 const exec=promisify(execFile);
@@ -24,19 +25,19 @@ const USAGE=`seamless measure (T15)
 
 使い方:
   node scripts/measure.ts roundtrip (--target <id> | --fake | --target fake:codex) [--wait <秒>] [--text <本文>] [--log <file>]
-  node scripts/measure.ts hold (--target <id> | --fake | --target fake:codex) [--wait <秒>] [--text <本文>] [--log <file>]
+  node scripts/measure.ts hold (--target <id> | --fake | --target fake:codex) [--wait <秒>] [--held-after-sec <秒>] [--text <本文>] [--log <file>]
   node scripts/measure.ts batch --plan <名前:回数,...> [--out <file>] [--wait <秒>] [--text <本文>]
   node scripts/measure.ts footprint [--home <dir>]
   node scripts/measure.ts compare [--dry] [--file <記録ファイル>]
 
 副コマンド:
   roundtrip  1 往復の依頼 ID と返信 ID の一致を JSON で出す
-  hold       保留中 (held) と理由を出す
+  hold       保留中 (held) と理由を出す（判定に使う待ち秒は --held-after-sec か limits）
   batch      計画に沿って複数回往復し、本文を含まない記録ファイルを作る
   footprint  seamless のプロセス数、保存先と受信箱のバイト数、seamless のプロセスに限った接続数を出す
   compare    5 指標の表を出す（--dry は空の表）
 
-偽の相手: --fake は一時のホームで本物の予約と段階判定を通す。本物の製品には送らない。
+偽の相手: --fake は一時ディレクトリで本物の予約と段階判定を通す。実ホームの設定は読まず、本物の製品にも送らない。
 本物の相手: src/cli.ts と同じ経路（作業中の会話から実行する）。--target は who --json の id。
 `;
 
@@ -128,7 +129,7 @@ async function fakeRun(kind:'roundtrip'|'hold',provider:FakeProvider,text:string
   const delivery=new Delivery(new Registry([sender,recipient]),sender.id,adapter,{tracking:{keyPath:join(home,'key')},fixedTarget:recipient,reservationDir:join(home,'reservations')});
   const sent=await delivery.send({target:recipient.id,id:requestId,text}) as {status?:string};
   const clock:StatusClock={now:()=>kind==='hold'?started+holdSec*1000+5000:Date.now(),sleep:async()=>{}};
-  const status=createStatus({dir:join(home,'reservations'),adapter,caller:party(sender),canRead:async()=>true,clock});
+  const status=createStatus({dir:join(home,'reservations'),adapter,caller:party(sender),canRead:async()=>true,clock,heldAfterSec:holdSec});
   const tracked=await status.track(requestId) as Tracked;
   const stages=tracked.stages??[];
   const replied=stages.find(s=>s.stage==='replied'&&s.status==='observed');
@@ -251,9 +252,8 @@ async function runBatch(plan:string,outPath:string|undefined,text:string,waitSec
 }
 
 // ---------- footprint ----------
-type Proc={pid:number;ppid:number;command:string};
-async function processTable():Promise<Proc[]>{
- const {stdout}=await exec('ps',['-axo','pid=,ppid=,command='],{maxBuffer:16*1024*1024,timeout:15000});
+export type Proc={pid:number;ppid:number;command:string};
+export function parseProcessTable(stdout:string):Proc[]{
  const out:Proc[]=[];
  for(const line of stdout.split('\n')){
   const match=/^\s*(\d+)\s+(\d+)\s+(.+)$/.exec(line);
@@ -261,11 +261,24 @@ async function processTable():Promise<Proc[]>{
  }
  return out;
 }
-// The executable or script path under seamless, not an unrelated command that merely names the folder.
-function seamlessCommand(command:string):boolean{
- return /[/\\]seamless[/\\](?:src|scripts|dist|packages|hooks)[/\\]/.test(command)||/(?:^|[/\\])(?:seamless-(?:hook|mcp|serve)|grok-hook)(?:\.sh)?(?:\s|$)/.test(command);
+async function processTable():Promise<Proc[]>{
+ const {stdout}=await exec('ps',['-axo','pid=,ppid=,command='],{maxBuffer:16*1024*1024,timeout:15000});
+ return parseProcessTable(stdout);
 }
-function descendants(pids:number[],table:Proc[]):number[]{
+function cliScriptPath():string{return join(REPO,'src','cli.ts');}
+function realPath(path:string):string{try{return realpathSync(path);}catch{return resolve(path);}}
+// A seamless process is a node process whose second argument is this repository's src/cli.ts. Matching the command text
+// for "seamless" would also count curl, editors and any other command that merely names the folder.
+export function isSeamlessCli(command:string,cliPath=cliScriptPath()):boolean{
+ const tokens=command.trim().split(/\s+/);
+ if(tokens.length<2)return false;
+ if(!/^node(?:js)?$/.test(basename(tokens[0]!)))return false;
+ return realPath(tokens[1]!)===realPath(cliPath);
+}
+export function seamlessProcesses(table:Proc[],cliPath=cliScriptPath()):number[]{
+ return table.filter(p=>p.pid!==process.pid&&isSeamlessCli(p.command,cliPath)).map(p=>p.pid);
+}
+export function descendants(pids:number[],table:Proc[]):number[]{
  const children=new Map<number,number[]>();
  for(const p of table){const list=children.get(p.ppid);if(list)list.push(p.pid);else children.set(p.ppid,[p.pid]);}
  const seen=new Set<number>(),queue=[...pids];
@@ -303,7 +316,7 @@ async function connectionCount(pids:number[]):Promise<{count:number|null;availab
 }
 async function footprint(home:string){
  const table=await processTable();
- const matched=table.filter(p=>p.pid!==process.pid&&seamlessCommand(p.command)).map(p=>p.pid);
+ const matched=seamlessProcesses(table);
  const scoped=descendants(matched,table).filter(pid=>pid!==process.pid);
  const store=await bytesUnder(join(home,'.seamless'));
  const inboxCandidates=[join(home,'.seamless','grok-inbox'),join(home,'.grok','seamless-inbox'),join(home,'.cursor','seamless-inbox'),join(home,'.antigravity','seamless-inbox')];
@@ -383,20 +396,21 @@ async function commandRoundtrip(args:string[]):Promise<number>{
  return record.error?1:0;
 }
 async function commandHold(args:string[]):Promise<number>{
- const flags=parseFlags(args,['target','wait','text','log'],['fake']);
+ const flags=parseFlags(args,['target','wait','text','log','held-after-sec'],['fake']);
  const provider=fakeTarget(flags);
  const text=str(flags,'text')??'seamless measurement: hold check.';
+ const injected=str(flags,'held-after-sec');
+ let holdSec=DEFAULT_HELD_AFTER_SEC;
+ if(injected!==undefined){holdSec=Number(injected);if(!Number.isInteger(holdSec)||holdSec<1||holdSec>3600)throw new MeasureError('invalid_arguments','--held-after-sec');}
  let record:MeasureRecord;
  if(provider){
-  const limits=await readLimits();
-  const holdSec=heldAfterSec(limits.status==='ok'?limits.value:{});
+  // A fake measurement never opens the real home: the wait used by the record is the wait used by the stage reader.
   const outcome=await fakeRun('hold',provider,text,holdSec);
   record=fakeRecord(outcome,'hold',`fake:${provider}`);
  }else{
   const target=str(flags,'target');
   if(!target)throw new MeasureError('invalid_arguments','--target or --fake');
-  const limits=await readLimits();
-  const holdSec=heldAfterSec(limits.status==='ok'?limits.value:{});
+  if(injected===undefined){const limits=await readLimits();holdSec=heldAfterSec(limits.status==='ok'?limits.value:{});}
   const waitRaw=str(flags,'wait');
   record=await realHold(target,text,waitRaw===undefined?holdSec:Number(waitRaw));
  }

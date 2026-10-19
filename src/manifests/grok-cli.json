@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "product": "grok-cli",
+  "provider": "grok",
+  "displayName": "Grok CLI",
+  "adapter": "../adapters/grok.ts",
+  "identity": {
+    "kind": "pid_session",
+    "id": "session_id",
+    "generation": "pid@opened_at",
+    "record": "~/.grok/active_sessions.json"
+  },
+  "discovery": {
+    "kind": "sessions_json",
+    "source": "~/.grok/active_sessions.json",
+    "fields": ["session_id", "pid", "cwd", "opened_at"]
+  },
+  "write": {
+    "channel": "inbox_file",
+    "target": "pending"
+  },
+  "evidence": {
+    "source": "~/.seamless/grok-inbox/<session>/delivered",
+    "stages": ["reached", "processing", "replied"]
+  },
+  "states": {
+    "running": "next_turn",
+    "offline": "wake_needed",
+    "unreachable": "unreachable"
+  },
+  "permissions": {
+    "operations": ["read", "send"],
+    "approvalMark": "limits.markUnapproved"
+  },
+  "install": {
+    "hook": "hooks/grok-cli/seamless-hook.sh",
+    "steps": ["node src/cli.ts setup"]
+  },
+  "limits": {
+    "maxText": 8000
+  }
+}

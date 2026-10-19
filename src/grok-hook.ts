@@ -3,7 +3,7 @@ import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {readGrokLedger,grokGeneration,grokRowAlive,SEAMLESS_ENVELOPE_MARK,type GrokOptions} from './adapters/grok.ts';
-import {conversationDir,inboxSafe,keyOf,readJson,validEnvelope,publishFile,type GrokEnvelope,type GrokReceipt} from './grok-inbox.ts';
+import {conversationDir,inboxSafe,keyOf,readJson,requestOf,validEnvelope,publishFile,type GrokEnvelope,type GrokReceipt} from './grok-inbox.ts';
 // The Stop hook of a Grok CLI conversation (specs/202610-more-peers T1-4). Grok runs it as its own child at the end of each
 // turn (measured 2026-10-08: the hook's parent is the TUI process listed in Grok's ledger). It hands at most one envelope
 // addressed to this very process (its generation) to Grok as additionalContext, which Grok reads as hook feedback and acts on
@@ -67,7 +67,9 @@ export async function runGrokHook(input:any,o:HookOptions={}):Promise<{output:st
   const output=JSON.stringify({hookSpecificOutput:{hookEventName:'Stop',additionalContext:renderEnvelope(envelope)}});
   (o.emit??(text=>process.stdout.write(text)))(output);
   if(o.dieAfter==='handed')throw new Error('fault_after_handed');
-  const receipt:GrokReceipt={envelope,sessionId,generation,hookAt:now(),reason:input.reason,promptId:typeof input.promptId==='string'?input.promptId:null,hookName:o.hookName!==undefined?o.hookName:process.env.GROK_HOOK_NAME??null,hookPid:self};
+  const receipt:GrokReceipt={envelope:requestOf(envelope),sessionId,generation,hookAt:now(),reason:input.reason,promptId:typeof input.promptId==='string'?input.promptId:null,hookName:o.hookName!==undefined?o.hookName:process.env.GROK_HOOK_NAME??null,hookPid:self};
+  // The receipt is the request without its text: after this point no file in the inbox holds the body. Removing the
+  // handed file is the delivery's last step; a crash after the receipt leaves only metadata behind.
   await publishFile(join(dir,'delivered',key+'.json'),JSON.stringify(receipt));
   await unlink(handed).catch(()=>{});
   return {output,delivered:envelope.id,reason:'delivered'};

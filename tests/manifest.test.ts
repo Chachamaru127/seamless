@@ -41,15 +41,15 @@ async function home(t: test.TestContext): Promise<string> {
   return dir;
 }
 
-test('the three v1 products are listed through their manifests alone', async () => {
+test('the v1 products are listed through their manifests alone', async () => {
   const registry = await loadManifestRegistry();
   const peers = registry.peers();
 
-  assert.deepEqual(peers.map((peer) => peer.id), ['claude-code', 'codex', 'grok-bot']);
-  assert.deepEqual(peers.map((peer) => peer.provider), ['claude', 'codex', 'grok-bot']);
-  assert.deepEqual(peers.map((peer) => peer.displayName), ['Claude Code', 'Codex', 'Grok Bot']);
-  assert.deepEqual(peers.map((peer) => peer.write), ['unix_socket', 'command', 'https_webhook']);
-  assert.deepEqual(peers.map((peer) => peer.discovery), ['sessions_json', 'rollout', 'roster']);
+  assert.deepEqual(peers.map((peer) => peer.id), ['claude-code', 'codex', 'grok-bot', 'grok-cli']);
+  assert.deepEqual(peers.map((peer) => peer.provider), ['claude', 'codex', 'grok-bot', 'grok']);
+  assert.deepEqual(peers.map((peer) => peer.displayName), ['Claude Code', 'Codex', 'Grok Bot', 'Grok CLI']);
+  assert.deepEqual(peers.map((peer) => peer.write), ['unix_socket', 'command', 'https_webhook', 'inbox_file']);
+  assert.deepEqual(peers.map((peer) => peer.discovery), ['sessions_json', 'rollout', 'roster', 'sessions_json']);
 
   // The adapter is named by the manifest and resolves to the product's own file under src/.
   const source = dirname(MANIFEST_DIR);
@@ -61,6 +61,7 @@ test('the three v1 products are listed through their manifests alone', async () 
     ['claude-code', 'claude.ts'],
     ['codex', 'codex.ts'],
     ['grok-bot', 'webhook-send.ts'],
+    ['grok-cli', 'grok.ts'],
   ]);
 
   // The listing keeps the stages the product's own records can prove, and the product's native states.
@@ -72,6 +73,29 @@ test('the three v1 products are listed through their manifests alone', async () 
   const bot = registry.get('grok-bot')!;
   assert.deepEqual(bot.evidence.stages, ['replied']);
   assert.equal(bot.identity.generation, 'keyVersion');
+  // Grok CLI is the hooks product: one inbox file per request, the Stop hook at the next turn, a metadata-only receipt.
+  const grok = registry.get('grok-cli')!;
+  assert.equal(grok.identity.record, '~/.grok/active_sessions.json');
+  assert.equal(grok.write.channel, 'inbox_file');
+  assert.deepEqual(grok.evidence.stages, ['reached', 'processing', 'replied']);
+  assert.equal(grok.states.offline, 'wake_needed');
+  assert.equal(grok.limits?.maxText, 8000);
+  // The one hook file a Grok install names: hooks/grok-cli/seamless-hook.sh, not a path into src/.
+  assert.equal(grok.install.hook, 'hooks/grok-cli/seamless-hook.sh');
+});
+
+test('a manifest installs one hook file that exists and can run', async () => {
+  const registry = await loadManifestRegistry();
+  const root = dirname(dirname(MANIFEST_DIR));
+  for (const manifest of registry.list()) {
+    if (manifest.install.hook === null) continue;
+    const hook = join(root, manifest.install.hook);
+    const info = await stat(hook);
+    assert.equal(info.isFile(), true, `${manifest.product} hook is a file`);
+    assert.equal((info.mode & 0o111) !== 0, true, `${manifest.product} hook is executable`);
+    // The product-facing hook is a file of its own; the work stays in the product's module under src/.
+    assert.equal(hook.startsWith(join(root, 'hooks') + '/'), true, `${manifest.product} hook lives under hooks/`);
+  }
 });
 
 test('one added manifest registers a new product without touching the core', () => {

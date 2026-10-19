@@ -9,14 +9,18 @@ import {createHash,randomUUID} from 'node:crypto';
 //   pending    accepted by seamless, not yet taken by a hook
 //   handed     taken by a hook (file name carries the hook's pid) and being returned to Grok; if that hook dies here the
 //              outcome is unknown, and it is never put back
-//   delivered  the hook wrote its receipt (request id, conversation, generation, hook time, Stop reason, hook name)
+//   delivered  the hook wrote its receipt (request id, sender, recipient, conversation, generation, hook time, Stop reason,
+//              hook name). The receipt carries the request's metadata only: once an envelope is delivered, its text is
+//              removed from the inbox and is not kept anywhere under ~/.seamless (spec.md, "持たないもの").
 //   failed     the envelope could not be read, or is not this conversation's; the next one is delivered instead
 //   unknown    a handed envelope whose hook died; shown as "成否不明" and never delivered again
 export const STATES=['pending','handed','delivered','failed','unknown'] as const;
 export type InboxState=typeof STATES[number];
 export const MAX_GROK_TEXT=8000;
 export type GrokEnvelope={schemaVersion:1;id:string;sender:{id:string;nativeId:string;generation:string};recipient:{id:string;nativeId:string;generation:string};text:string;replyTo?:string;humanApproval?:false;acceptedAt:number};
-export type GrokReceipt={envelope:GrokEnvelope;sessionId:string;generation:string;hookAt:number;reason:string;promptId:string|null;hookName:string|null;hookPid:number};
+// What a delivered request leaves behind: everything needed to prove that it reached this conversation, without the body.
+export type GrokRequest=Omit<GrokEnvelope,'text'>;
+export type GrokReceipt={envelope:GrokRequest;sessionId:string;generation:string;hookAt:number;reason:string;promptId:string|null;hookName:string|null;hookPid:number};
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const MAX_FILE=65_536;
 export const inboxRoot=(home=homedir())=>join(home,'.seamless','grok-inbox');
@@ -66,9 +70,16 @@ export async function stateOf(home:string,sessionId:string,sender:InboxSender,id
  return null;
 }
 export function validEnvelope(v:any):v is GrokEnvelope{
+ return validRequest(v)&&typeof (v as GrokEnvelope).text==='string'&&[...(v as GrokEnvelope).text].length<=MAX_GROK_TEXT;
+}
+// The same request without its body. A receipt is written in this shape, so a delivered envelope's text does not survive it.
+export function validRequest(v:any):v is GrokRequest{
  const party=(p:any)=>p&&typeof p==='object'&&['id','nativeId','generation'].every(k=>typeof p[k]==='string'&&p[k].length>0&&p[k].length<=4096);
- return !!v&&typeof v==='object'&&v.schemaVersion===1&&typeof v.id==='string'&&v.id.length>0&&v.id.length<=256&&typeof v.text==='string'&&[...v.text].length<=MAX_GROK_TEXT
+ return !!v&&typeof v==='object'&&v.schemaVersion===1&&typeof v.id==='string'&&v.id.length>0&&v.id.length<=256
   &&party(v.sender)&&party(v.recipient)&&(v.replyTo===undefined||typeof v.replyTo==='string'&&v.replyTo.length>0)&&(!Object.hasOwn(v,'humanApproval')||v.humanApproval===false)&&Number.isFinite(v.acceptedAt);
+}
+export function requestOf(e:GrokEnvelope):GrokRequest{
+ return {schemaVersion:e.schemaVersion,id:e.id,sender:e.sender,recipient:e.recipient,...(e.replyTo?{replyTo:e.replyTo}:{}),...(Object.hasOwn(e,'humanApproval')?{humanApproval:false}:{}),acceptedAt:e.acceptedAt};
 }
 // Puts an envelope in pending/. A request already present in any state is never put again.
 export async function putEnvelope(home:string,envelope:GrokEnvelope):Promise<{status:'written'}|{status:'exists';state:InboxState}>{
@@ -83,14 +94,22 @@ export async function readJson<T>(path:string,valid:(v:any)=>v is T):Promise<T|n
  const raw=await readPrivate(path);if(raw===null)return null;
  try{const v=JSON.parse(raw);return valid(v)?v:null;}catch{return null;}
 }
-function validReceipt(v:any):v is GrokReceipt{
- return !!v&&typeof v==='object'&&validEnvelope(v.envelope)&&typeof v.sessionId==='string'&&typeof v.generation==='string'&&Number.isFinite(v.hookAt)&&typeof v.reason==='string'&&(v.promptId===null||typeof v.promptId==='string')&&(v.hookName===null||typeof v.hookName==='string')&&Number.isSafeInteger(v.hookPid);
+// A receipt written by this version holds the request metadata; one written before the body was dropped holds the whole
+// envelope. Both are read, and only the metadata is returned, so an older inbox cannot leak a body through this path.
+type StoredReceipt={envelope:GrokEnvelope|GrokRequest;sessionId:string;generation:string;hookAt:number;reason:string;promptId:string|null;hookName:string|null;hookPid:number};
+function validReceipt(v:any):v is StoredReceipt{
+ return !!v&&typeof v==='object'&&(validRequest(v.envelope)||validEnvelope(v.envelope))&&typeof v.sessionId==='string'&&typeof v.generation==='string'&&Number.isFinite(v.hookAt)&&typeof v.reason==='string'&&(v.promptId===null||typeof v.promptId==='string')&&(v.hookName===null||typeof v.hookName==='string')&&Number.isSafeInteger(v.hookPid);
 }
 // Receipts the hook wrote for this conversation, oldest first. Unreadable ones are left out.
 export async function receipts(home:string,sessionId:string):Promise<GrokReceipt[]>{
  let dir:string;try{dir=join(conversationDir(home,sessionId),'delivered');}catch{return [];}
  let names:string[]=[];try{names=(await readdir(dir)).filter(n=>/^[0-9a-f]{64}\.json$/.test(n));}catch{return [];}
  const out:GrokReceipt[]=[];
- for(const n of names){const r=await readJson(join(dir,n),validReceipt);if(r&&r.sessionId===sessionId)out.push(r);}
+ for(const n of names){
+  const r=await readJson(join(dir,n),validReceipt);
+  if(!r||r.sessionId!==sessionId)continue;
+  const envelope:any=r.envelope;
+  out.push({...r,envelope:typeof envelope.text==='string'?requestOf(envelope as GrokEnvelope):envelope as GrokRequest});
+ }
  return out.sort((a,b)=>a.hookAt-b.hookAt);
 }

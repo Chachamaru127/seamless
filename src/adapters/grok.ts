@@ -136,10 +136,11 @@ export async function readGrokStructure(target:Registration,options:GrokOptions=
  }
  return items.filter(n=>n.at!==null).sort((a,b)=>Date.parse(a.at!)-Date.parse(b.at!));
 }
-// Envelopes this conversation (this generation) was handed by its hook: what it has received.
+// Envelopes this conversation (this generation) was handed by its hook: what it has received. A delivered request keeps
+// its metadata (id, parties, replyTo) but not its body, so text is always empty here (spec.md, "持たないもの").
 export async function grokInbound(recipient:Registration,options:GrokOptions={}){
  const home=options.home??homedir(),inbox=await import('../grok-inbox.ts');
- return (await inbox.receipts(home,recipient.nativeId)).filter(r=>r.generation===recipient.generation).map(r=>({id:r.envelope.id,sender:r.envelope.sender,recipient:r.envelope.recipient,text:r.envelope.text,...(r.envelope.replyTo?{replyTo:r.envelope.replyTo}:{})}));
+ return (await inbox.receipts(home,recipient.nativeId)).filter(r=>r.generation===recipient.generation).map(r=>({id:r.envelope.id,sender:r.envelope.sender,recipient:r.envelope.recipient,text:'',...(r.envelope.replyTo?{replyTo:r.envelope.replyTo}:{})}));
 }
 export async function grokReceived(target:Registration,options:GrokOptions={}){
  const home=options.home??homedir(),inbox=await import('../grok-inbox.ts');

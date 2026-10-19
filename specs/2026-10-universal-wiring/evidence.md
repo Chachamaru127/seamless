@@ -83,3 +83,12 @@
 | 2026-10-20 01:25 | #27 T08b Cursor manifest（2 回目） | d9671b5 | 並列 wave 2c | 0（843 pass） | — | PASS（3 項目 Yes。1 は「6 製品」に文言を直した） | 閉じて merge（fbbfa27） |
 | 2026-10-20 01:40 | #19 T18 npm pack と公開手順 | 5bd5d83 | 並列 wave 3 | 0（842 pass） | — | PASS | 閉じて merge（3f8e7f1）。残件: docs/release.md:190 の「queue 未接続」の記述が古い（#22 で接続済み）、`private: true` と `bin` 未設定は H5 の後に外す |
 | 2026-10-20 00:20 | #24 T04b 保留理由の観測（3 回目） | 18ff101 | 再施工（worktree） | 0 | — | PASS（4 項目 Yes。通常ターンは unknown_reason） | 閉じて merge |
+| 2026-10-20 00:35 | #29 T11c 登録簿の配線の残り | 2fa609a | 並列 wave 3（worktree、580 秒） | 0（844 pass） | — | PASS（4 項目 Yes） | 閉じて merge。これで open は #20（人の作業）だけ |
+
+## ループの集計（2026-10-19 19:30 〜 2026-10-20 00:35）
+
+- Issue 29 件（計画 19 + 判定役の残件から派生 10）。判定 PASS 28 件、人の作業 1 件（#20）。
+- 判定 FAIL 10 回: 実装の欠陥 5 回（#7 ×2、#17、#24、#28）、リーダーの完了条件の文言 5 回（#2、#7、#17、#26、#27）。すべて直して PASS。
+- 判定の無効回 1 回（並列 wave 1。判定 script の worktree 対応版が main に無かった）。
+- 施工役: opencode（Ollama Cloud deepseek-v4.1-flash:1017）。1 件 90〜600 秒。出力 0 バイトで固まった回が 1 回（見張り 20 分で対処）。
+- 統合ブランチ loop/integration は main に対し 79 ファイル以上、約 6,400 行の追加。main には書類と script だけ。push、PR、公開は H5、H6 の後。

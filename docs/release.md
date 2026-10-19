@@ -1,28 +1,41 @@
 # 公開の手順と公開面（release）
 
-状態: 2026-10-19 起草（Issue #17 / T13）。最終確認は T18（H5 と H6 の後）。正本は `specs/2026-10-universal-wiring/spec.md` の AC12 と Plans.md 1 章 5、8 章。
+状態: 2026-10-19 起草（Issue #17 / T13）。2026-10-20 に T18（Issue #19）で同梱物を最終確認し、公開手順と停止条件を確定した。H5 と H6 は未決で、その 2 つが閉じるまで公開しない。正本は `specs/2026-10-universal-wiring/spec.md` の AC12 と Plans.md 1 章 5、8 章。
 
 この文書は 3 つを決める。何を `npm pack` に入れるか、どの内部依存を公開物に載せるか、公開前に誰が何を確認するか。
 
 ## 1. 同梱物の正本
 
-同梱物の正本は `package.json` の `files`（許可したものだけを入れる）。`.npmignore` は `files` を外したときに同じ面を保つための同じ除外で、npm は `files` がある間は読まない。
+同梱物の正本は `package.json` の `files`（許可したものだけを入れる）。加えて npm は `package.json`、`README*`、`LICENSE*`（`LICENCE*` も）を `files` に関係なく必ず入れる。`.npmignore` は `files` を外したときに同じ面を保つための同じ除外で、npm は `files` がある間は読まない。
 
-| 入れる | 中身 | 理由 |
+| 入れる | 中身 | 入る理由 |
 |---|---|---|
-| `src/` | 実行する TypeScript（アダプタ、manifest、CLI、MCP、配送、状態） | 製品本体 |
+| `src/` | 実行する TypeScript（アダプタ、manifest、CLI、MCP、配送、状態） | 製品本体。`!src/status-panel.ts` と `!src/status-panel.html` の 2 枚だけ除く |
 | `hooks/` | Cursor と Grok CLI の hook 1 枚ずつ | 製品側に置く配線 |
 | `packages/opencode-plugin/` | opencode の plugin | `src/adapters/opencode.ts` が import する実行時依存 |
-| `README.md` | 入口の説明 | T14 で書き直す |
+| `README.md`、`README.ja.md` | 入口の説明 | `files` の `README.md` と、npm が必ず入れる `README*` |
+| `LICENSE` | MIT の本文 | npm が必ず入れる `LICENSE*` |
 | `package.json` | 定義 | npm が必ず入れる |
 
-`LICENSE` / `NOTICE` / `SECURITY.md` は T14 で足す。npm は `LICENSE*` を自動で入れるが、`NOTICE` と `SECURITY.md` は `files` に足す必要がある（T18 で確定）。
+`NOTICE` と `SECURITY.md` はどちらも自動では入らない。2026-10-20 の tarball にも入っていない（1.1 の一覧に無い）。同梱される `README.md` と `README.ja.md` は両方へリンクするので、tarball の中ではその 2 つのリンクが切れる。直し方は `files` に 2 行足すことだが、`package.json` は T18 の触るファイルではない。T18 は決めずに 6 章の停止条件へ送った。
 
-### 今の予定一覧（2026-10-19 時点、T18 で更新）
+### 1.1 確定一覧（2026-10-20、T18）
 
-`npm pack --dry-run --json --ignore-scripts` の出力。T18 はこの一覧と実物を `diff` で突き合わせる。
+57 ファイル、展開後 471,913 バイト。`npm pack --dry-run --json --ignore-scripts` の `files[].path` を `LC_ALL=C sort` したもの。リポジトリの根元で次の 1 行を走らせて、実物と突き合わせる。出力が空で終了 0 なら一致。T18（Issue #19）の Done when は、この 1 行が終了 0 になること。
+
+```sh
+npm pack --dry-run --json --ignore-scripts \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const f of JSON.parse(s)[0].files)console.log(f.path)})' \
+  | LC_ALL=C sort \
+  | diff - <(awk '/^<!-- pack-list:start -->$/{f=1;next} /^<!-- pack-list:end -->$/{f=0} f' docs/release.md)
+```
+
+`awk` は下の目印の間だけを取り出す。`diff` の左が実物、右がこの文書の予定。
 
 ```text
+<!-- pack-list:start -->
+LICENSE
+README.ja.md
 README.md
 hooks/cursor/seamless-hook.sh
 hooks/grok-cli/seamless-hook.sh
@@ -59,6 +72,7 @@ src/manifests/claude.json
 src/manifests/codex.json
 src/manifests/grok-bot.json
 src/manifests/grok-cli.json
+src/manifests/opencode.json
 src/manifests/phase2/antigravity.json
 src/mcp.ts
 src/native-runtime.ts
@@ -77,9 +91,10 @@ src/status-exchanges.ts
 src/status.ts
 src/text.ts
 src/webhook-send.ts
+<!-- pack-list:end -->
 ```
 
-54 ファイル、展開後 447,205 バイト（2026-10-19、T13 の修正後）。
+一覧は 2026-10-20 に確定した（T18）。根拠は 3 つ。(1) 2 章の 4 つ（`mods/`、`experiments/`、`status-panel`、旧 `--registry` の登録例）が入っていない。(2) `node scripts/pack-check.ts` が、同梱する各 `.ts` の相対 import を一覧の中で解決する。(3) 3 章の公開面スキャンが 0 件。`package.json` の `files` か `src/` を変えたら `diff` が落ちるので、そのときにこの一覧を更新する。T18 の実測は、`diff` が出力なしで終了 0、`entryCount` 57、`unpackedSize` 471,913。
 
 ## 2. 同梱物から外すもの
 
@@ -87,7 +102,7 @@ Plans.md 1 章 5 の 4 つ。どれもリポジトリと試験には残す。
 
 | 対象 | 同梱物から外すもの | 内部と試験に残るもの | 外す理由 |
 |---|---|---|---|
-| 旧 `--registry` 方式 | 登録例（`specs/`）、旧手順（現在の README。T14 で書き直す）、`tests/` | `src/registry.ts`、`--registry` / `--caller` / `migrate` の経路、その試験 | 既定の自動方式と共通の型と配送を使うため、コードだけを先に切れない。公開ビルドの分離は T18 で行う |
+| 旧 `--registry` 方式 | 登録例（`specs/`）、旧手順（T14 で書き直した README から削除済み）、`tests/` | `src/registry.ts`、`--registry` / `--caller` / `migrate` の経路、その試験 | 既定の自動方式と共通の型と配送を使うため、コードだけを先に切れない。公開物は `src/registry.ts` を含む（1.1） |
 | Claude Desktop の band mod | `mods/seamless-band/`、`.claude-plugin/` | 同左（別 plugin として配布） | 独立した plugin。上流ライセンスは NOTICE に収録する（T14） |
 | status panel | `src/status-panel.ts`、`src/status-panel.html`、`codex-plugin/` | 同左、`scripts/mcp-panel.ts`（内部の起動口）、`tests/status-panel.test.ts` | Codex の右パネルは実験。v1 の公開面は CLI と MCP の 4 道具に絞る |
 | Dot の実験 | `experiments/` | 同左 | 非接続の試作。Dot は v1 の対象外（spec.md の対象外） |
@@ -101,9 +116,12 @@ Plans.md 1 章 5 の 4 つ。どれもリポジトリと試験には残す。
 
 `node scripts/pack-check.ts` が `npm pack --dry-run --json` の一覧を読み、各 `.ts` の相対 import を解決して、一覧の外なら終了 1。`bash scripts/verify.sh` も typecheck の次にこれを走らせる。
 
-残る既知の差は 1 つ。`package.json` は `private: true` で、`src/*.ts` をそのまま実行する。ビルド済み JS と `bin` は T18 で入れる。
+残る既知の差は 2 つ。どちらも `package.json` を触るので T18 では閉じず、6 章の停止条件に送った。
 
-同梱物の一覧を先に固定するのは、この差を T18 で閉じるためで、公開を先に進めるためではない。
+1. `private: true` で `bin` とビルド済み JS が無い。同梱する実行コードは変換していない `.ts` だけで、`npm i -g` しても `seamless` というコマンドはできない。
+2. `NOTICE` と `SECURITY.md` が `files` に無く、同梱 README から張られたリンクが tarball の中で切れる。
+
+同梱物の一覧を先に固定するのは、この 2 つを閉じたときに差分がここへ 1 行で出るようにするためで、公開を先に進めるためではない。
 
 ## 3. 秘密とアカウント情報の検査
 
@@ -124,10 +142,10 @@ git grep -n -e "grok-bot-vm" -e "Bot ID" -e "accountRef"
 npm pack --dry-run --json --ignore-scripts
 ```
 
-2026-10-19 の実測:
+2026-10-20 の実測:
 
-- 同梱物（上の 54 ファイル）: 0 件。
-- リポジトリ全体で目印が現れるのは 4 か所だけ。`specs/`（要件文そのもの、5 行）、`docs/reports/`（Reason 比較の社内資料、3 行）、`scripts/peer-secrets.sh`（この検査の目印、2 行）、この文書（同じ目印、3 行）。
+- 同梱物（1.1 の 57 ファイル）: 0 件。`peer-secrets.sh` の公開面スキャンと同じ手順（一覧の各ファイルを `grep -aqF` で 3 目印に当てる）を、Keychain を読まない形で単独に走らせた結果。
+- リポジトリ全体で目印が現れるのは 4 か所だけ。`specs/`（要件文そのもの、5 行）、`docs/reports/`（Reason 比較の社内資料、3 行）、`scripts/peer-secrets.sh`（この検査の目印、2 行）、この文書（同じ目印、3 行）。合計 13 行。
 - したがってリポジトリ全体の grep は、検査器と要件文が目印を書く以上 0 にならない。Done when の意図は「公開物にアカウント固有情報が無い」なので、0 にできる範囲を公開物とする。`specs/` は本 Issue の禁止事項で編集しない。`docs/` と `scripts/` は同梱しない。
 
 公開物に限った確認は次の 1 行で、0 件になる。
@@ -142,7 +160,7 @@ git grep -n -e "grok-bot-vm" -e "Bot ID" -e "accountRef" -- . ':!specs' ':!docs'
 npm pack --dry-run --json --ignore-scripts | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const f of JSON.parse(s)[0].files)console.log(f.path)})' | grep -E "^(mods|experiments)/|status-panel"
 ```
 
-0 件（`grep` の終了 1）なら良い。2026-10-19 は 0 件。
+0 件（`grep` の終了 1）なら良い。2026-10-20 は 0 件。
 
 ## 4. 内部依存の一覧（AC12）
 
@@ -183,10 +201,30 @@ H6 は、外部へ出る経路と製品側の hooks を、各社の規約で確�
 | Cursor の hooks | Cursor の利用規約と hooks の文書 | hook からの注入と自動実行が許されるか。会話への書き込みの扱い | 未確認 | | |
 | Antigravity の hooks | Google Antigravity の利用規約と hooks / 設定の文書 | hook の自動実行と、T3 Code 管理の実行ファイルの利用が許されるか | 未確認 | | |
 
-## 5. 公開までの順番（T18）
+## 5. 公開までの順番（T18 で確定）
 
-1. H5（名前、配布名、ライセンス、公開日）を決める。
-2. H6 の 3 行を埋める。埋まらないまま公開日が来たら公開を延期する（S7）。
-3. T14 で README（EN / JA）、LICENSE、NOTICE、SECURITY.md を書き、4 章の内部依存の一覧を README か NOTICE に載せる（AC12 の「公開物の説明に載せる」）。
-4. T18 で、この文書の予定一覧と `npm pack --dry-run` を `diff` し、ビルド済み JS、`bin`、2 章の既知の差を閉じる。
-5. `npm publish` はループから実行しない。H5 と H6 の後に、人が実行する。
+1. H5（名前、配布名、ライセンス、公開日）を決める。`LICENSE` は `MIT License` の案で置いてある（T14）。MIT 以外にするなら `LICENSE` と README 2 枚の計 3 か所を差し替える。
+2. H6 の 3 行（4.3）を埋める。埋まらないまま公開日が来たら延期する（spec.md S7）。
+3. 6 章の停止条件を空にする。1 つでも残っている間は `npm publish` を実行しない。
+4. 次の 4 つを上から順に走らせ、すべて期待どおりにする。
+
+| # | コマンド | 期待する結果 | 2026-10-20 の実測 |
+|---|---|---|---|
+| 1 | `bash scripts/verify.sh` | 終了 0 | 0（試験 842 件、失敗 0） |
+| 2 | 1.1 の `diff` 1 行 | 出力なし、終了 0 | 一致（終了 0） |
+| 3 | `bash scripts/peer-secrets.sh` | `peer-secrets: ok`、終了 0 | 未実行。名簿があれば Keychain を読むのでループでは走らせない。人が実行する |
+| 4 | 3.3 の `grep` | 0 件（`grep` の終了 1） | 0 件 |
+
+5. `npm publish` はループから実行しない。H5 と H6 の後、上の 4 つが揃った時点で人が実行する。実行の直前にもう一度 `npm pack --dry-run` を見て、1.1 の一覧と一致することを確かめる。
+
+## 6. 公開の停止条件（2026-10-20 時点）
+
+`npm publish` を止めている理由。閉じたら日付と閉じ方をここに書く。上から順に閉じる必要はない。
+
+| # | 止めている理由 | 今の状態 | 閉じる条件 | 閉じる人 |
+|---|---|---|---|---|
+| 1 | `package.json` が `private: true` で、`bin` もビルド済み JS も無い。同梱する実行コードは変換していない `.ts` だけで、`npm i -g` の後に `seamless` というコマンドはできない | 未対応（`package.json`） | `private` を外し、`bin` と、入れた Node でそのまま動く入口を入れる。入口を入れたら 1.1 の一覧を更新する | `package.json` を触る次の Issue |
+| 2 | `NOTICE` と `SECURITY.md` が tarball に入らず、同梱 README 2 枚から張られたリンクが切れる。AC12 の内部依存の一覧（4 章の 2 種の分類）はこの文書にだけあり、同梱物には無い（README は短い段落 1 つ、`NOTICE` は「Interfaces」の段落 1 つ） | 未対応（`package.json` の `files`） | `files` に `NOTICE` と `SECURITY.md` を足すか、4 章の表を README へ移す。足したら 1.1 を更新する | `package.json` を触る次の Issue |
+| 3 | Codex の送信経路が `thread-follower-start-turn` をまだ呼ぶ（#22、4.2） | 未対応 | `codex queue --thread` へ切り替えるか、H2 の範囲を書込みまで広げる | 立花さん（H2 の範囲） |
+| 4 | H5（名前、配布名、ライセンス、公開日） | 未決 | 決める。決めたら 1 行目と `LICENSE` に反映する | 立花さん |
+| 5 | H6 の 3 行（4.3） | 未確認 | 各社の規約を読み、日付、出典 URL、版を書く | 立花さん |

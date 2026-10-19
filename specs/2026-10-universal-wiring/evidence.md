@@ -81,3 +81,4 @@
 | 2026-10-20 01:12 | #24 T04b（2 回目） | a850cce | 並列 wave 2b | 0 | — | FAIL（項目 2: Codex の goal 観測が activeTurnId だけで真を返す。通常ターンでも codex_goal になる） | 観測を goal 固有の情報に限る指示を Done when に書いて再施工 |
 | 2026-10-20 01:12 | #27 T08b Cursor manifest（1 回目） | d9671b5 | 並列 wave 2c | 0（843 pass） | — | FAIL（項目 1: 「5 製品」の文言。cursor を足して 6 製品が正） | 文言を直して再判定 |
 | 2026-10-20 01:25 | #27 T08b Cursor manifest（2 回目） | d9671b5 | 並列 wave 2c | 0（843 pass） | — | PASS（3 項目 Yes。1 は「6 製品」に文言を直した） | 閉じて merge（fbbfa27） |
+| 2026-10-20 01:40 | #19 T18 npm pack と公開手順 | 5bd5d83 | 並列 wave 3 | 0（842 pass） | — | PASS | 閉じて merge（3f8e7f1）。残件: docs/release.md:190 の「queue 未接続」の記述が古い（#22 で接続済み）、`private: true` と `bin` 未設定は H5 の後に外す |

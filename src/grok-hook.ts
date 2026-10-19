@@ -74,7 +74,8 @@ export async function runGrokHook(input:any,o:HookOptions={}):Promise<{output:st
   if(o.dieAfter==='handed')throw new Error('fault_after_handed');
   const receipt:GrokReceipt={envelope:requestOf(envelope),sessionId,generation,hookAt:now(),reason:input.reason,promptId:typeof input.promptId==='string'?input.promptId:null,hookName:o.hookName!==undefined?o.hookName:process.env.GROK_HOOK_NAME??null,hookPid:self};
   // The receipt is the request without its text. It is renamed over the handed file, so from here on no file in the inbox
-  // holds the body: a hook that dies before the last step leaves only a receipt behind, never an envelope.
+  // holds the body: a hook that dies before the last step leaves only a receipt behind, never an envelope. The envelope's
+  // removal is that same last rename, not an unlink, so a delete that fails cannot leave the body behind either.
   await replaceFile(handed,JSON.stringify(receipt));
   if(o.dieAfter==='receipt')throw new Error('fault_after_receipt');
   // The delivery's last step: one rename into delivered/. A crash before it is finished by the next hook (recover).

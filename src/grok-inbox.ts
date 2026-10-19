@@ -62,6 +62,8 @@ export async function publishFile(path:string,contents:string):Promise<boolean>{
 }
 // Written in full to a private temporary file, then renamed over the target: a reader sees either the old content or the
 // complete new content, never a mixture. Used to drop an envelope's body before the file is moved out of handed/.
+// The body goes with this write, not with a delete: delivery never unlinks the envelope, so an unlink that fails cannot
+// leave the body behind. The temporary file holds the same body-less contents, so a leftover cannot keep the body either.
 export async function replaceFile(path:string,contents:string):Promise<void>{
  const tmp=path+'.'+randomUUID()+'.tmp';let f;
  try{f=await open(tmp,'wx',0o600);await f.writeFile(contents);await f.sync();await f.close();f=undefined;await rename(tmp,path);}

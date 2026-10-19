@@ -67,7 +67,7 @@ export function statusResult(record:RequestRecord,destination:StructureItem[],so
 }
 export type ReadOutcome={items:StructureItem[];readable:boolean;attempted:boolean};
 // The product's own reason for waiting is attached only when the receiving side was observed to hold: Claude's inbound
-// setting (or a bypass permission mode), Codex Desktop's running turn. No observation, including a failed read, is
+// setting (or a bypass permission mode), Codex Desktop's own goal record. No observation, including a failed read, is
 // unknown_reason. A state is separate from the five stages: refused comes from the reservation, read_failed from opening
 // the peer's record, and held only after that record was readable and stayed silent past the configured wait.
 export type HoldObservation=(target:Registration)=>Promise<boolean|null>;

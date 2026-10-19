@@ -160,11 +160,32 @@ export async function observeCodexSession(nativeId:string,options:CodexOptions={
  const r=await withState(nativeId,options,false,(_state,meta)=>meta);
  return failed(r)?null:r;
 }
-// Desktop records a running turn (the `/goal` and steer wait) in the conversation state. Any explicit running marker is
-// the observed target; a snapshot that cannot be read proves nothing and returns null.
-export function codexGoalRunning(state:Frame):boolean{
- if(typeof state.activeTurnId==='string'&&state.activeTurnId)return true;
- return [...turns(state)].some(turn=>typeof turn.status==='string'&&['inProgress','running','active'].includes(turn.status));
+// Only Desktop's own goal record says that a goal is executing. An ordinary running turn is not that record: `activeTurnId`
+// and a turn status of inProgress are true for every turn, goal or not, so neither names a goal. A snapshot without any goal
+// field proves nothing and answers null, which the caller reports as unknown_reason rather than guessing from the product name.
+type GoalMark='running'|'idle'|null;
+const GOAL_RECORDS=['goal','activeGoal','currentGoal','objective'] as const,GOAL_STATES=['goalState','goalStatus'] as const;
+const GOAL_RUNNING=new Set(['inprogress','running','active','executing','started']);
+const GOAL_IDLE=new Set(['completed','complete','done','cancelled','canceled','failed','stopped','idle','paused','finished']);
+function goalStatusMark(value:unknown):GoalMark{
+ if(typeof value!=='string')return null;
+ const word=value.toLowerCase();
+ return GOAL_RUNNING.has(word)?'running':GOAL_IDLE.has(word)?'idle':null;
+}
+function goalMark(value:unknown):GoalMark{
+ if(typeof value==='string')return goalStatusMark(value);
+ if(!value||typeof value!=='object'||Array.isArray(value))return null;
+ const record=value as Frame;
+ if(record.active===false||record.running===false)return 'idle';
+ return goalStatusMark(record.status)??goalStatusMark(record.state)??(record.active===true||record.running===true?'running':null);
+}
+export function codexGoalRunning(state:Frame):boolean|null{
+ const marks:GoalMark[]=[];
+ for(const key of GOAL_RECORDS)if(state[key]!==undefined&&state[key]!==null)marks.push(goalMark(state[key]));
+ for(const key of GOAL_STATES)if(state[key]!==undefined&&state[key]!==null)marks.push(goalMark(state[key]));
+ if(Array.isArray(state.goals))for(const goal of state.goals)marks.push(goalMark(goal));
+ for(const turn of turns(state))for(const key of GOAL_RECORDS)if(turn[key]!==undefined&&turn[key]!==null)marks.push(goalMark(turn[key]));
+ return marks.includes('running')?true:marks.includes('idle')?false:null;
 }
 export async function observeCodexGoal(nativeId:string,options:CodexOptions={}):Promise<boolean|null>{
  const result=await withState(nativeId,options,false,state=>({state}));

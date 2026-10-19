@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdir,mkdtemp,rm,writeFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,rm,writeFile,chmod} from 'node:fs/promises';
+import {createServer,type Socket} from 'node:net';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Delivery,type NativeAdapter,type Receipt} from '../src/delivery.ts';
 import {Registry} from '../src/registry.ts';
 import {createStatus,type HoldObservation,type StructureItem} from '../src/status.ts';
 import {claudeInboundHolds} from '../src/adapters/claude.ts';
-import {codexGoalRunning} from '../src/adapters/codex.ts';
+import {codexGoalRunning,observeCodexGoal} from '../src/adapters/codex.ts';
 import {DEFAULT_HELD_AFTER_SEC,heldAfterSec,unrestricted,validLimits} from '../src/limits.ts';
 import type {Registration} from '../src/protocol.ts';
 import type {RequestParty} from '../src/request-store.ts';
@@ -63,13 +64,51 @@ test('a readable peer record that never names the request is held with an observ
  assert.equal(await reason('codex',{codexGoal:async()=>false}),'unknown_reason');
  assert.equal(await reason('codex',{codexGoal:async()=>null}),'unknown_reason');
  assert.equal(await reason('codex',{codexGoal:async()=>{throw Error('ipc');}}),'unknown_reason');
+ // An ordinary turn (activeTurnId and inProgress, no goal record) is not an observed goal, so the reason stays unknown.
+ assert.equal(await reason('codex',{codexGoal:async()=>codexGoalRunning({turns:[{turnId:'T1',status:'inProgress'}],activeTurnId:'T1'})}),'unknown_reason');
+ assert.equal(await reason('codex',{codexGoal:async()=>codexGoalRunning({turns:[],goal:{objective:'見本に合わせる',status:'inProgress'}})}),'codex_goal');
+ assert.equal(await reason('codex',{codexGoal:async()=>codexGoalRunning({goal:{objective:'見本に合わせる',status:'completed'}})}),'unknown_reason');
 });
-test('only an explicit running marker in the IPC state counts as a goal',()=>{
- assert.equal(codexGoalRunning({turns:[]}),false);
- assert.equal(codexGoalRunning({turns:[{turnId:'T1'}]}),false);
- assert.equal(codexGoalRunning({turns:[{turnId:'T1',status:'completed'}]}),false);
- assert.equal(codexGoalRunning({turns:[{turnId:'T1',status:'inProgress'}]}),true);
- assert.equal(codexGoalRunning({turns:[],activeTurnId:'T2'}),true);
+test('only a goal-specific record in the IPC state counts as a goal',()=>{
+ // No goal field in this version: an ordinary running turn proves nothing, so the answer is no observation.
+ assert.equal(codexGoalRunning({turns:[]}),null);
+ assert.equal(codexGoalRunning({turns:[{turnId:'T1'}]}),null);
+ assert.equal(codexGoalRunning({turns:[],activeTurnId:'T2'}),null);
+ assert.equal(codexGoalRunning({turns:[{turnId:'T1',status:'inProgress'}]}),null);
+ assert.equal(codexGoalRunning({turns:[{turnId:'T1',status:'inProgress'}],activeTurnId:'T1'}),null);
+ // A goal record that says it is executing is the only thing that names a goal.
+ assert.equal(codexGoalRunning({turns:[],goal:{objective:'見本に合わせる',status:'inProgress'}}),true);
+ assert.equal(codexGoalRunning({turns:[],goalState:'running'}),true);
+ assert.equal(codexGoalRunning({turns:[],goals:[{objective:'見本に合わせる',status:'active'}]}),true);
+ assert.equal(codexGoalRunning({turns:[{turnId:'T1',goal:{objective:'見本に合わせる',status:'running'}}]}),true);
+ // A goal record that has finished, or only its text, is not an executing goal.
+ assert.equal(codexGoalRunning({turns:[],goal:{objective:'見本に合わせる',status:'completed'}}),false);
+ assert.equal(codexGoalRunning({turns:[],goal:'見本に合わせる'}),null);
+});
+test('the IPC observation names a goal only when the snapshot carries a goal record',async t=>{
+ const id='01a0f59d-0000-7000-8000-000000000024',owner='OWN',client='C';
+ const dir=await mkdtemp(join(tmpdir(),'seamless-goal-ipc-'));await chmod(dir,0o700);
+ t.after(()=>rm(dir,{recursive:true,force:true}));
+ let snapshot:Record<string,unknown>={turns:[{turnId:'T1',status:'inProgress'}],activeTurnId:'T1'};
+ const write=(s:Socket,frame:unknown)=>{const body=Buffer.from(JSON.stringify(frame)),head=Buffer.alloc(4);head.writeUInt32LE(body.length);s.write(Buffer.concat([head,body]));};
+ const server=createServer(s=>{let buf=Buffer.alloc(0);s.on('data',d=>{buf=Buffer.concat([buf,d]);
+  while(buf.length>=4&&buf.length>=buf.readUInt32LE(0)+4){const size=buf.readUInt32LE(0),frame=JSON.parse(buf.subarray(4,size+4).toString());buf=buf.subarray(size+4);
+   if(frame.method==='initialize')write(s,{type:'response',requestId:frame.requestId,resultType:'success',result:{clientId:client}});
+   else if(frame.method==='thread-owner-discovery')write(s,{type:'response',requestId:frame.requestId,resultType:'success',handledByClientId:owner,result:{}});
+   else if(frame.method==='thread-stream-following-changed'&&frame.params.following)
+    write(s,{type:'broadcast',method:'thread-stream-state-changed',version:11,sourceClientId:owner,targetClientIds:[client],params:{hostId:'local',conversationId:id,change:{type:'snapshot',revision:1,conversationState:{id,...snapshot}}}});
+  }});});
+ const path=join(dir,'ipc.sock');await new Promise<void>(resolve=>server.listen(path,resolve));
+ t.after(()=>new Promise<void>(resolve=>server.close(()=>resolve())));
+ const options={socketPath:path,timeoutMs:2000,version:async()=>'26.928.40906+12694'};
+ // A normal turn (activeTurnId and inProgress) carries no goal field: nothing about a goal was observed.
+ assert.equal(await observeCodexGoal(id,options),null);
+ snapshot={turns:[],goal:{objective:'見本に合わせる',status:'inProgress'}};
+ assert.equal(await observeCodexGoal(id,options),true);
+ snapshot={turns:[],goal:{objective:'見本に合わせる',status:'completed'}};
+ assert.equal(await observeCodexGoal(id,options),false);
+ // A failed observation (no IPC to read) is null, never a guessed reason.
+ assert.equal(await observeCodexGoal(id,{...options,socketPath:join(dir,'missing.sock')}),null);
 });
 test('a peer record that cannot be opened is read_failed, not held',async t=>{
  const f=await fixture(t,'codex',async()=>({status:'submitted'}),async()=>{throw Error('unreadable');});

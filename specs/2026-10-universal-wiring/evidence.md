@@ -45,3 +45,4 @@
 | 日付 | Issue | 版 | 施工 | verify | 図面検査（Haiku 5.5） | 判定（Codex gpt-6-astra） | 結果 |
 |---|---|---|---|---|---|---|---|
 | 2026-10-19 19:52 | #1 T12 hermetic CI | d61cb9b | opencode deepseek-v4.1-flash:1017（2 回。2 回目で CI に @types/node） | 0（720 pass） | 項目 2、3 Yes。1 はリーダーの実行証拠で判定 | PASS（3 項目 Yes） | 閉じて loop/integration へ merge（45b790d）。残件: GitHub Actions 上の実走は未確認（push 後） |
+| 2026-10-19 20:33 | #2 T01 対応表 | 8b39ec7 | opencode deepseek-v4.1-flash:1017（1 回目は出力 0 バイトで打ち切り、見張りを付けて再実行、210 秒） | 0（723 pass） | 1 回目 FAIL（Done when「5 列」の文言。6 列は既存の checks 列）→ 文言を直して 2 回目 PASS | PASS（3 項目 Yes） | 閉じて merge（b7a7199）。残件: fix_required より先に Desktop 失敗の分岐があり、fix_required でも unverified_desktop になる → #21 を起こした。desktopConnection の配線は #9 へ |

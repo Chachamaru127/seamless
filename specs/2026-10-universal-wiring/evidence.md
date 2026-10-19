@@ -57,3 +57,4 @@
 | 2026-10-19 21:43 | #7 T15 計測スクリプト（4 回目） | fe54a77 | opencode deepseek-v4.1-flash:1017（130 秒） | 0（747 pass） | （記録なし） | PASS（6 項目 Yes） | 閉じて merge。残件: `batch --out` で既存ファイルを指定すると上書き（Done when 外。README の注意で足りる） |
 | 2026-10-19 21:52 | #9 T20 who --json 3 状態 | 24d2bf9 | opencode deepseek-v4.1-flash:1017（440 秒） | 0（756 pass） | 食い違いなし | PASS（5 項目 Yes） | 閉じて merge。残件: ready は記録の socket 欄と idle の判定で、接続成功は native-runtime の照合に任せる |
 | 2026-10-19 22:00 | #10 T06 setup / doctor | 5a2ed2b | opencode deepseek-v4.1-flash:1017（300 秒） | 0（764 pass） | 食い違いなし | PASS（4 項目 Yes） | 閉じて merge。残件: socket パスの文字列だけで online と判定（接続は native-runtime が照合）、登録比較が type を見ない（軽微。T11 の manifest 移行で一緒に直す） |
+| 2026-10-19 22:10 | #11 T11 manifest 基盤 | bdd193c | opencode deepseek-v4.1-flash:1017（330 秒） | 0（798 pass） | 食い違いなし | PASS（4 項目 Yes） | 閉じて merge。残件: 登録簿が実際の一覧と送信から呼ばれていない → #25 を起こした |

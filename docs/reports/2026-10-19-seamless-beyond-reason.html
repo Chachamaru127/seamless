@@ -219,7 +219,7 @@ Reason Network は「自分の網」を作る製品です。seamless は、あ�
 <h3>1. v1 の公開範囲</h3>
 <dl>
 <dt>何を決めるか</dt><dd>最初の公開を「Claude Code、Codex、opencode、Grok Bot（webhook まで）+ Grok CLI」に限るか。</dd>
-<dt>推奨</dt><dd>決定（2026-10-19）: 限る。opencode v2.0.32 が手元にあるので v1 に入れる。常駐 hub、チーム、遠隔、Channels のカスタム channel、A2A、Grok Bot の玄関口は出さない。</dd>
+<dt>推奨</dt><dd>決定（2026-10-19）: v1 は Claude Code、Codex、opencode、Cursor CLI、Antigravity CLI、Grok CLI、Grok Bot（webhook まで）。常駐 hub、チーム、遠隔、Channels のカスタム channel、A2A、Grok Bot の玄関口は出さない。Antigravity は実行ファイルが見つかるまで条件つき（S5）。</dd>
 <dt>許可すると何が起きるか</dt><dd>週 1 で 15 往復の実測に入る。公開面を削る作業が始まる。</dd>
 <dt>今回はしないこと</dt><dd>公開そのもの、npm への登録、Reason のインストール。</dd>
 <dt>後から戻せるか</dt><dd>戻せる。範囲は後から広げられる。狭めるのは公開後だと難しい。</dd>
@@ -248,7 +248,7 @@ Reason Network は「自分の網」を作る製品です。seamless は、あ�
 </dl>
 </div>
 
-<p>決定済み（2026-10-19）: オンライン機能は製品として持たない（H4、H6 は不要）。後回し: 名前と配布（H5）。</p>
+<p>決定済み（2026-10-19）: オンライン機能は持たない（H4）。GitHub Issues #1〜#20 と 30 分ループで実装（H7。施工は DeepSeek 1017）。計画の書類は specs/2026-10-universal-wiring/（spec、Plans、tasks、evidence）。残る判断: 名前と配布（H5）、規約（H6）、Antigravity の実行ファイルの場所（未決 3）。</p>
 
 <h2>08 進捗</h2>
 <p><b>プロジェクトの目的:</b> 立花さんが、今開いている AI にそのまま一言を届け、届いたかを正直に知ることができる配線アプリ seamless を OSS として出す。</p>

@@ -90,6 +90,32 @@ test('a Claude record without a socket, or with no record at all, is unreachable
   ]);
 });
 
+test('AC16: T3 Code claude processes are listed as unreachable: no_inbox_socket, with a socketless record and with none at all', async t => {
+  const home = await claudeHome(t);
+  // A T3 Code thread starts `claude --output-format stream-json`; its sessions JSON (when one exists) names no socket.
+  const { messagingSocketPath: _socket, ...noSocket } = record({ pid: 10142, sessionId: 't3-10142' });
+  await writeFile(join(home, '.claude', 'sessions', '10142.json'), JSON.stringify(noSocket));
+
+  const mk = (id: string, provider: 'claude' | 'codex', nativeId: string): Registration => ({ id, provider, nativeId, generation: 'g1', host: 'local', displayName: id, role: 'work', workspace: '/w', operations: ['read', 'send'], grants: [] });
+  const caller = mk('codex:caller', 'codex', 'caller'), socketless = mk('claude:t3-10142', 'claude', 't3-10142'), missing = mk('claude:t3-88557', 'claude', 't3-88557');
+  for (const peer of [socketless, missing]) {
+    for (const operation of ['read', 'send'] as const) {
+      caller.grants.push({ peer: peer.id, operation, direction: 'outbound' });
+      peer.grants.push({ peer: caller.id, operation, direction: 'inbound' });
+    }
+  }
+  const ctx: Extract<GitContext, { state: 'git' }> = { state: 'git', workspace: '/w', repository: '/repo', worktree: '/w', headState: 'attached', branch: 'refs/heads/main', head: 'abc', dirty: false };
+  const observation = (r: Registration): Observation => ({ nativeId: r.nativeId, generation: r.generation, status: 'online', observedAt: 100000, contextObservedAt: 100000, source: 'fixture', cwd: '/w', context: ctx });
+  const registry = new Registry([caller, socketless, missing], async r => observation(r));
+
+  const out = await new Discovery(registry, caller.id, { wallNow: () => 100000, home }).who({ operation: 'send' });
+  assert.equal(out.status, 'ok');
+  assert.deepEqual(out.peers.map(p => [p.id, p.state, p.reason ?? null]), [
+    ['claude:t3-10142', 'unreachable', 'no_inbox_socket'],
+    ['claude:t3-88557', 'unreachable', 'no_inbox_socket'],
+  ]);
+});
+
 test('a failed Desktop connection is passed through as unverified_desktop and shown as unreachable', async t => {
   const home = await mkdtemp(join(tmpdir(), 'seamless-who-desktop-'));
   t.after(() => rm(home, { recursive: true, force: true }));

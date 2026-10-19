@@ -7,13 +7,25 @@ Cursor CLI、Antigravity CLI、Grok CLI、そして本人が登録した Grok Bo
 ことだけを返します。受理、相手への到達、処理中、返事、不明の 5 段階です。判断は足しません。本文を保存せず、
 履歴データベースも常駐プロセスも持ちません。通信は、本人が登録した外の実行主体への webhook だけです。
 
-Node.js 22.22 以降を使います。以下のコマンドはすべて、チェックアウトの根から実行します。
+Node.js 22.22 以降を使います。
 
-## 試す
+## 導入
 
-アカウントも起動中の AI 製品も要りません。`verify.sh` はファイルを変えず、`setup --dry-run` は何も書きません。
-バージョン管理の Node shim が、導入時と違うホームを拒否することがあります。下の PATH の前置きは macOS の
-Homebrew の Node を先にします。別の素の Node があるなら前置きは外してください。
+```sh
+npx @chachamaru127/seamless setup
+```
+
+`bin` の `seamless` は `src/cli.ts` を指し、同梱物は TypeScript のソースで、ビルドはありません。
+2026-10-20 の実測では、この入口は install 後に動きません。Node は `node_modules` の下にあるファイルの
+型注釈を取り除かず（`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`）、`npx` も
+`npm i -g @chachamaru127/seamless` もパッケージをそこへ置くためです。ビルド済みの入口に替えるまで
+（docs/release.md 6 章 1）、下のチェックアウトからの形を使ってください。
+
+## 試す（チェックアウトから）
+
+アカウントも起動中の AI 製品も要らず、install も要りません。`verify.sh` はファイルを変えず、`setup --dry-run`
+は何も書きません。バージョン管理の Node shim が、導入時と違うホームを拒否することがあります。下の PATH の
+前置きは macOS の Homebrew の Node を先にします。別の素の Node があるなら前置きは外してください。
 
 ```sh
 bash scripts/verify.sh

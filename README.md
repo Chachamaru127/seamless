@@ -8,13 +8,25 @@ path, then reports what it could observe: accepted, reached the other side, bein
 unknown. It adds no judgement of its own. It keeps no message bodies, no history database, and no daemon, and
 it opens no network connection except a webhook to an outside executor you registered yourself.
 
-Node.js 22.22 or later. Every command below runs from the checkout root.
+Node.js 22.22 or later.
 
-## Try it
+## Install
 
-Nothing here needs an account or a running AI product. `verify.sh` changes no file, and `setup --dry-run`
-writes nothing. A version manager's Node shim can refuse a home it was not installed under. The `PATH` prefix
-below puts a Homebrew Node first on macOS; with any other plain Node, drop the prefix.
+```sh
+npx @chachamaru127/seamless setup
+```
+
+`bin` maps `seamless` to `src/cli.ts`, and the package ships its TypeScript sources with no build step. As
+measured on 2026-10-20, that entry does not run once installed: Node refuses to strip type annotations for a
+file under `node_modules` (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), and both `npx` and
+`npm i -g @chachamaru127/seamless` put the package there. Until a built entry replaces it (docs/release.md
+section 6, item 1), use the checkout form below.
+
+## Try it (from a checkout)
+
+Nothing here needs an account or a running AI product, and no install is needed. `verify.sh` changes no file,
+and `setup --dry-run` writes nothing. A version manager's Node shim can refuse a home it was not installed
+under. The `PATH` prefix below puts a Homebrew Node first on macOS; with any other plain Node, drop the prefix.
 
 ```sh
 bash scripts/verify.sh

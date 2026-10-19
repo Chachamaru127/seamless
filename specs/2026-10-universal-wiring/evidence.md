@@ -74,3 +74,5 @@
 | 2026-10-20 00:05 | #28 T10b 受信箱の原子性 | 47937cb | 再施工（worktree、340 秒） | 0（823 pass） | — | PASS（3 項目 Yes） | 閉じて merge（f8bb818） |
 | 2026-10-20 00:20 | #23 T03c 終了コードの扱い | ea23efe | 並列 wave 2a（worktree） | 0（838 pass） | — | PASS（3 項目 Yes） | 閉じて merge（b784edc）。残件: stderr の「usage」判定は実 CLI で未検証 |
 | 2026-10-20 00:20 | #25 T11b 登録簿の配線（1 回目） | dee523b | 並列 wave 2a（worktree、440 秒） | 0（841 pass） | — | FAIL（項目 1: 試験が外すのは既存の codex manifest で、偽の manifest ではない） | Done when を「既存または偽の manifest」に直して再判定 |
+| 2026-10-20 00:40 | #25 T11b 登録簿の配線（2 回目） | dee523b | 並列 wave 2a | 0（841 pass） | — | PASS（4 項目 Yes。1 は「既存または偽の manifest」に文言を直した） | 閉じて merge（0d46ea5）。残件 3 件 → #29 |
+| 2026-10-20 00:40 | #17 T13 公開面（4 回目） | dba25a3 | 再施工（worktree） | 0 | — | FAIL（項目 2: peer-secrets.sh の 0 件は判定役の環境では確かめられない） | リーダーが worktree で peer-secrets.sh を実行して証拠に添え、再判定 |

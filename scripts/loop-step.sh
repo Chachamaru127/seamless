@@ -82,8 +82,16 @@ $body
 EOF
 out="$LOG_DIR/$STAMP-issue-$num-opencode.log"
 echo "loop: opencode を起動（ログ ${out}）"
-opencode run --model ollama-cloud/deepseek-v4.1-flash:1017 --agent build --auto "$(cat "$req")" > "$out" 2>&1
-oc_exit=$?
+# 見張り: 施工役が 20 分で終わらなければ止める（出力が 0 バイトのまま固まることがあった。2026-10-19 #2）
+opencode run --model ollama-cloud/deepseek-v4.1-flash:1017 --agent build --auto "$(cat "$req")" > "$out" 2>&1 &
+oc_pid=$!
+waited=0
+while kill -0 "$oc_pid" 2>/dev/null; do
+  sleep 10; waited=$((waited+10))
+  if [ "$waited" -ge 1200 ]; then echo "loop: 施工役が 20 分で終わらないので止める" | tee -a "$out"; kill "$oc_pid" 2>/dev/null; sleep 2; kill -9 "$oc_pid" 2>/dev/null; break; fi
+done
+wait "$oc_pid" 2>/dev/null; oc_exit=$?
+echo "loop: 施工の出力 $(wc -c < "$out") バイト、経過 ${waited} 秒"
 echo "loop: opencode exit=$oc_exit"
 
 vout="$LOG_DIR/$STAMP-issue-$num-verify.log"

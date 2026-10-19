@@ -1,5 +1,5 @@
 import {constants} from 'node:fs';
-import {mkdir,open,link,unlink,readdir,lstat} from 'node:fs/promises';
+import {mkdir,open,link,unlink,rename,readdir,lstat} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
@@ -7,8 +7,9 @@ import {createHash,randomUUID} from 'node:crypto';
 // the Stop hook of that conversation's own TUI moves one envelope per Stop through handed/ to delivered/.
 // Every move is a rename inside one directory tree, so an envelope is in exactly one state at a time.
 //   pending    accepted by seamless, not yet taken by a hook
-//   handed     taken by a hook (file name carries the hook's pid) and being returned to Grok; if that hook dies here the
-//              outcome is unknown, and it is never put back
+//   handed     taken by a hook (file name carries the hook's pid) and being returned to Grok. The hook replaces the
+//              envelope's content with its receipt before the last rename, so a hook that dies after handing over but
+//              before writing the receipt leaves a body in unknown/; one that dies later leaves only a receipt here.
 //   delivered  the hook wrote its receipt (request id, sender, recipient, conversation, generation, hook time, Stop reason,
 //              hook name). The receipt carries the request's metadata only: once an envelope is delivered, its text is
 //              removed from the inbox and is not kept anywhere under ~/.seamless (spec.md, "持たないもの").
@@ -59,6 +60,15 @@ export async function publishFile(path:string,contents:string):Promise<boolean>{
  catch(e){if((e as NodeJS.ErrnoException).code==='EEXIST')return false;throw e;}
  finally{await f?.close();await unlink(tmp).catch(()=>{});}
 }
+// Written in full to a private temporary file, then renamed over the target: a reader sees either the old content or the
+// complete new content, never a mixture. Used to drop an envelope's body before the file is moved out of handed/.
+// The body goes with this write, not with a delete: delivery never unlinks the envelope, so an unlink that fails cannot
+// leave the body behind. The temporary file holds the same body-less contents, so a leftover cannot keep the body either.
+export async function replaceFile(path:string,contents:string):Promise<void>{
+ const tmp=path+'.'+randomUUID()+'.tmp';let f;
+ try{f=await open(tmp,'wx',0o600);await f.writeFile(contents);await f.sync();await f.close();f=undefined;await rename(tmp,path);}
+ finally{await f?.close();await unlink(tmp).catch(()=>{});}
+}
 // The state that holds a request, or null. handed/ names carry the hook pid after the key.
 export async function stateOf(home:string,sessionId:string,sender:InboxSender,id:string):Promise<{state:InboxState;name:string}|null>{
  const dir=conversationDir(home,sessionId),key=keyOf(sender,id);
@@ -97,8 +107,16 @@ export async function readJson<T>(path:string,valid:(v:any)=>v is T):Promise<T|n
 // A receipt written by this version holds the request metadata; one written before the body was dropped holds the whole
 // envelope. Both are read, and only the metadata is returned, so an older inbox cannot leak a body through this path.
 type StoredReceipt={envelope:GrokEnvelope|GrokRequest;sessionId:string;generation:string;hookAt:number;reason:string;promptId:string|null;hookName:string|null;hookPid:number};
+function receiptFields(v:any):boolean{
+ return !!v&&typeof v==='object'&&typeof v.sessionId==='string'&&typeof v.generation==='string'&&Number.isFinite(v.hookAt)&&typeof v.reason==='string'&&(v.promptId===null||typeof v.promptId==='string')&&(v.hookName===null||typeof v.hookName==='string')&&Number.isSafeInteger(v.hookPid);
+}
+// A receipt of this version: the request's metadata, and no body. This is the shape a handed file holds between its last
+// two steps, so a hook that died there can be finished by the next one without reading an envelope again.
+export function validGrokReceipt(v:any):v is GrokReceipt{
+ return receiptFields(v)&&validRequest(v.envelope)&&!Object.hasOwn(v.envelope,'text');
+}
 function validReceipt(v:any):v is StoredReceipt{
- return !!v&&typeof v==='object'&&(validRequest(v.envelope)||validEnvelope(v.envelope))&&typeof v.sessionId==='string'&&typeof v.generation==='string'&&Number.isFinite(v.hookAt)&&typeof v.reason==='string'&&(v.promptId===null||typeof v.promptId==='string')&&(v.hookName===null||typeof v.hookName==='string')&&Number.isSafeInteger(v.hookPid);
+ return receiptFields(v)&&(validRequest(v.envelope)||validEnvelope(v.envelope));
 }
 // Receipts the hook wrote for this conversation, oldest first. Unreadable ones are left out.
 export async function receipts(home:string,sessionId:string):Promise<GrokReceipt[]>{

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "product": "cursor",
+  "provider": "cursor",
+  "displayName": "Cursor CLI",
+  "adapter": "../adapters/cursor.ts",
+  "identity": {
+    "kind": "pid_session",
+    "id": "sessionId",
+    "generation": "generation",
+    "record": "~/.seamless/peers/cursor-<sessionId>.json"
+  },
+  "discovery": {
+    "kind": "hook",
+    "source": "~/.seamless/peers",
+    "fields": ["sessionId", "generation", "state", "directory", "updatedAt", "lastEvent"]
+  },
+  "write": {
+    "channel": "inbox_file",
+    "target": "pending"
+  },
+  "evidence": {
+    "source": "~/.seamless/cursor-inbox/<sessionId>/delivered",
+    "stages": ["reached"]
+  },
+  "states": {
+    "idle": "next_turn",
+    "busy": "next_turn"
+  },
+  "permissions": {
+    "operations": ["read", "send"],
+    "approvalMark": "limits.markUnapproved"
+  },
+  "install": {
+    "hook": "hooks/cursor/seamless-hook.sh",
+    "steps": ["node src/cli.ts setup", "add hooks/cursor/seamless-hook.sh to sessionStart, afterAgentResponse and stop in ~/.cursor/hooks.json"]
+  },
+  "limits": {
+    "maxText": 8000
+  },
+  "exports": {
+    "list": "listCursorPeers",
+    "send": "sendCursorEnvelope"
+  }
+}

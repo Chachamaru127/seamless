@@ -1,5 +1,5 @@
 import {PEER_NAMESPACES,type CodexQueueRun} from './adapters/codex.ts';
-import {lstat,readFile,readdir,realpath} from 'node:fs/promises';
+import {lstat,readFile,realpath} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {join,dirname} from 'node:path';
 import {execFile} from 'node:child_process';
@@ -13,22 +13,29 @@ import type {Registration,Observation} from './protocol.ts';
 import type {Observer} from './registry.ts';
 import type {NativeAdapter,Envelope,Receipt} from './delivery.ts';
 import {loadAdapterPort,loadManifestRegistry,type ManifestRegistry,type ProductManifest} from './core/manifest.ts';
+import {claudeSessionDirs,claudeSessionFiles} from './adapters/claude.ts';
 const exec=promisify(execFile);
 const nativePeerNamespaces=PEER_NAMESPACES.filter(name=>!name.endsWith('_test'));
 export type NativeIdentity={version?:string|null;nativeId:string;generation:string;cwd:string;socket:string;owner?:string;pid?:number};
 export type RuntimeOptions=CompatibilityOptions&{home?:string;manifests?:ManifestRegistry;codexOwner?:(nativeId:string)=>Promise<string|null>;markUnapproved?:()=>Promise<boolean>;desktopVersion?:()=>Promise<string|null>;claudeVersion?:(nativeId:string)=>Promise<string>;claudeIdentity?:(nativeId:string)=>Promise<NativeIdentity|null>;codexIdentity?:(nativeId:string)=>Promise<NativeIdentity|null>;grokIdentity?:(nativeId:string,generation?:string)=>Promise<NativeIdentity|null>;grokVersion?:()=>Promise<string|null>;processStart?:(pid:number)=>Promise<number|null>;read? :NativeAdapter['read'];afterGrokPut?:()=>void;codexQueue?:CodexQueueRun;limits?:Pick<Limits,'codexMessageMaxChars'>};
 export async function command(file:string,args:string[]){return (await exec(file,args,{encoding:'utf8',timeout:5000,maxBuffer:1048576,env:{...process.env,TZ:'UTC',LC_ALL:'C',PATH:'/bin:/usr/sbin:/usr/bin'}})).stdout;}
 export async function ownedSocket(path:string,strict=true){const [s,p]=await Promise.all([lstat(path),lstat(dirname(path))]);const uid=process.getuid?.();return s.isSocket()&&s.uid===uid&&(!strict||(s.mode&0o777)===0o600)&&p.isDirectory()&&p.uid===uid&&(p.mode&0o022)===0;}
-export type ClaudeInspection=CompatibilityOptions&{command?:typeof command;socket?:typeof ownedSocket};
-// The session record Claude Code writes for its own process, checked for shape only.
-export async function claudeSessionRecord(pid:number,home=homedir()):Promise<any|null>{
+export type ClaudeInspection=CompatibilityOptions&{command?:typeof command;socket?:typeof ownedSocket;env?:NodeJS.ProcessEnv};
+// The session record Claude Code writes for its own process, checked for shape only. A caller started under another
+// config folder (CLAUDE_CONFIG_DIR) inherits that value into seamless, so the folder it names is searched when the
+// default one has no record for the pid. A record already found in the default folder is never replaced by another.
+export async function claudeSessionRecord(pid:number,home=homedir(),env:NodeJS.ProcessEnv=process.env):Promise<any|null>{
  try{
   if(!Number.isSafeInteger(pid)||pid<=0)return null;
-  const path=join(home,'.claude','sessions',`${pid}.json`),s=await lstat(path);
-  if(!s.isFile()||s.uid!==process.getuid?.()||(s.mode&0o022)!==0||s.size>65536)return null;
-  const m=JSON.parse(await readFile(path,'utf8'));
-  if(m.pid!==pid||typeof m.sessionId!=='string'||!m.sessionId||m.version!=null&&typeof m.version!=='string'||m.peerProtocol!==1||typeof m.procStart!=='string'||typeof m.startedAt!=='number'&&typeof m.startedAt!=='string'||typeof m.cwd!=='string'||typeof m.messagingSocketPath!=='string')return null;
-  return m;
+  for(const dir of claudeSessionDirs(home,env)){
+   const path=join(dir,`${pid}.json`);
+   let s;try{s=await lstat(path);}catch{continue;}
+   if(!s.isFile()||s.uid!==process.getuid?.()||(s.mode&0o022)!==0||s.size>65536)return null;
+   const m=JSON.parse(await readFile(path,'utf8'));
+   if(m.pid!==pid||typeof m.sessionId!=='string'||!m.sessionId||m.version!=null&&typeof m.version!=='string'||m.peerProtocol!==1||typeof m.procStart!=='string'||typeof m.startedAt!=='number'&&typeof m.startedAt!=='string'||typeof m.cwd!=='string'||typeof m.messagingSocketPath!=='string')return null;
+   return m;
+  }
+  return null;
  }catch{return null;}
 }
 // The process named by a record is running under this user and started when the record says.
@@ -48,7 +55,7 @@ export async function processFiles(pid:number,run:typeof command=command):Promis
 }
 export async function findClaudeIdentityByPid(pid:number,home=homedir(),options:ClaudeInspection={},allowUnsupportedVersion=false,files?:ProcessFiles):Promise<NativeIdentity|null>{
  try{
-  const m=await claudeSessionRecord(pid,home);
+  const m=await claudeSessionRecord(pid,home,options.env);
   if(!m||!allowUnsupportedVersion&&!isClaudeVersionAllowed(m.version,options))return null;
   const run=options.command??command;
   if(!await claudeProcessMatches(pid,m.procStart,run))return null;
@@ -60,9 +67,9 @@ export async function findClaudeIdentityByPid(pid:number,home=homedir(),options:
 }
 export async function findClaudeIdentity(nativeId:string,home=homedir(),options:ClaudeInspection={}):Promise<NativeIdentity|null>{
  try{
-  const dir=join(home,'.claude','sessions');
-  const candidates=await Promise.all((await readdir(dir)).filter(name=>/^\d+\.json$/.test(name)).map(async name=>{
-   try{const path=join(dir,name),s=await lstat(path);if(!s.isFile()||s.size>65536)return null;return JSON.parse(await readFile(path,'utf8'))?.sessionId===nativeId?Number(name.slice(0,-5)):null;}catch{return null;}
+  const {files}=await claudeSessionFiles({home,env:options.env});
+  const candidates=await Promise.all(files.map(async({pid,path})=>{
+   try{const s=await lstat(path);if(!s.isFile()||s.size>65536)return null;return JSON.parse(await readFile(path,'utf8'))?.sessionId===nativeId?pid:null;}catch{return null;}
   }));
   for(const pid of candidates){if(pid===null)continue;const n=await findClaudeIdentityByPid(pid,home,options);if(n?.nativeId===nativeId)return n;}
  }catch{}return null;

@@ -30,3 +30,6 @@ export function summarizeStatus(data:Record<string,any>) {
   }),observedAt
  };
 }
+
+// Injected into createMcp by the internal entry (scripts/mcp-panel.ts), so the published src/mcp.ts has no import of this file.
+export const statusPanel = { tool: statusPanelTool, resource: statusResource, html: statusHtml, summarize: summarizeStatus };

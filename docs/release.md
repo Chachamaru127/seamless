@@ -36,6 +36,7 @@ src/adapters/grok.ts
 src/adapters/opencode.ts
 src/adapters/read.ts
 src/adapters/session.ts
+src/appearance.ts
 src/automatic.ts
 src/bot-executor.ts
 src/bot-sign.ts
@@ -74,10 +75,11 @@ src/setup.ts
 src/signed-envelope.ts
 src/status-exchanges.ts
 src/status.ts
+src/text.ts
 src/webhook-send.ts
 ```
 
-52 ファイル、展開後 444,941 バイト（2026-10-19）。
+54 ファイル、展開後 447,205 バイト（2026-10-19、T13 の修正後）。
 
 ## 2. 同梱物から外すもの
 
@@ -87,18 +89,21 @@ Plans.md 1 章 5 の 4 つ。どれもリポジトリと試験には残す。
 |---|---|---|---|
 | 旧 `--registry` 方式 | 登録例（`specs/`）、旧手順（現在の README。T14 で書き直す）、`tests/` | `src/registry.ts`、`--registry` / `--caller` / `migrate` の経路、その試験 | 既定の自動方式と共通の型と配送を使うため、コードだけを先に切れない。公開ビルドの分離は T18 で行う |
 | Claude Desktop の band mod | `mods/seamless-band/`、`.claude-plugin/` | 同左（別 plugin として配布） | 独立した plugin。上流ライセンスは NOTICE に収録する（T14） |
-| status panel | `src/status-panel.ts`、`src/status-panel.html`、`codex-plugin/` | 同左、`tests/status-panel.test.ts` | Codex の右パネルは実験。v1 の公開面は CLI と MCP の 4 道具に絞る |
+| status panel | `src/status-panel.ts`、`src/status-panel.html`、`codex-plugin/` | 同左、`scripts/mcp-panel.ts`（内部の起動口）、`tests/status-panel.test.ts` | Codex の右パネルは実験。v1 の公開面は CLI と MCP の 4 道具に絞る |
 | Dot の実験 | `experiments/` | 同左 | 非接続の試作。Dot は v1 の対象外（spec.md の対象外） |
 
-### 公開ビルドまでの既知の差（T18 で解消する）
+### 同梱物の中だけで閉じていること（T13 で解消済み）
 
-今の同梱物は「公開面の一覧」であって、そのまま実行できる配布物ではない。理由は 3 つ。
+同梱物のファイルが同梱物の外を import すると、公開後に `mcp` や CLI が読み込めなくなる。T13 の判定で 2 件見つかり、どちらも直した（2026-10-19）。
 
-1. `src/mcp.ts` が `./status-panel.ts` を import する。同梱物には status panel が無いので、そのままでは `mcp` が読み込めない。公開ビルドでは panel を外すか `contrib/` へ分離する。
-2. `src/status-exchanges.ts` と `src/status-panel.ts` が `mods/seamless-band/hooks/appearance.ts` と `text.ts` を import する。band mod を外すとこの 2 つが欠ける。公開ビルドでは色と文字の補助を `src/` へ移す。
-3. `package.json` は `private: true` で、`src/*.ts` をそのまま実行する。ビルド済み JS と `bin` は T18 で入れる。
+1. `src/mcp.ts` は `./status-panel.ts` を import しない。status panel は内部の起動口 `scripts/mcp-panel.ts` から `createMcp` へ渡し、同梱する MCP は 4 道具だけを並べる。
+2. `src/status-exchanges.ts` は band mod を import しない。色は `src/appearance.ts`、文字は `src/text.ts` に移し、どちらも同梱物に含める。
 
-同梱物の一覧を先に固定するのは、この 3 つを T18 で 1 つずつ閉じるためで、公開を先に進めるためではない。
+`node scripts/pack-check.ts` が `npm pack --dry-run --json` の一覧を読み、各 `.ts` の相対 import を解決して、一覧の外なら終了 1。`bash scripts/verify.sh` も typecheck の次にこれを走らせる。
+
+残る既知の差は 1 つ。`package.json` は `private: true` で、`src/*.ts` をそのまま実行する。ビルド済み JS と `bin` は T18 で入れる。
+
+同梱物の一覧を先に固定するのは、この差を T18 で閉じるためで、公開を先に進めるためではない。
 
 ## 3. 秘密とアカウント情報の検査
 
@@ -121,7 +126,7 @@ npm pack --dry-run --json --ignore-scripts
 
 2026-10-19 の実測:
 
-- 同梱物（上の 52 ファイル）: 0 件。
+- 同梱物（上の 54 ファイル）: 0 件。
 - リポジトリ全体で目印が現れるのは 4 か所だけ。`specs/`（要件文そのもの、5 行）、`docs/reports/`（Reason 比較の社内資料、3 行）、`scripts/peer-secrets.sh`（この検査の目印、2 行）、この文書（同じ目印、3 行）。
 - したがってリポジトリ全体の grep は、検査器と要件文が目印を書く以上 0 にならない。Done when の意図は「公開物にアカウント固有情報が無い」なので、0 にできる範囲を公開物とする。`specs/` は本 Issue の禁止事項で編集しない。`docs/` と `scripts/` は同梱しない。
 
@@ -183,5 +188,5 @@ H6 は、外部へ出る経路と製品側の hooks を、各社の規約で確�
 1. H5（名前、配布名、ライセンス、公開日）を決める。
 2. H6 の 3 行を埋める。埋まらないまま公開日が来たら公開を延期する（S7）。
 3. T14 で README（EN / JA）、LICENSE、NOTICE、SECURITY.md を書き、4 章の内部依存の一覧を README か NOTICE に載せる（AC12 の「公開物の説明に載せる」）。
-4. T18 で、この文書の予定一覧と `npm pack --dry-run` を `diff` し、ビルド済み JS、`bin`、2 章の既知の差 3 つを閉じる。
+4. T18 で、この文書の予定一覧と `npm pack --dry-run` を `diff` し、ビルド済み JS、`bin`、2 章の既知の差を閉じる。
 5. `npm publish` はループから実行しない。H5 と H6 の後に、人が実行する。

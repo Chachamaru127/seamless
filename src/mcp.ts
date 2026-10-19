@@ -1,4 +1,3 @@
-import { statusPanelTool, statusResource, summarizeStatus, statusHtml } from './status-panel.ts';
 import {createAutomatic,type AutomaticOptions,type Automatic} from './automatic.ts';
 import { Delivery } from './delivery.ts';
 import type { NativeAdapter } from './delivery.ts';
@@ -15,9 +14,18 @@ function listParams(value:unknown):void{
  const token=(p._meta as Record<string,unknown>).progressToken;
  if(token!==undefined&&typeof token!=='string'&&typeof token!=='number')throw new ContractError();
 }
-// panelOnly serves just the Codex right-panel tool and its resource, for the seamless-status plugin, so Codex does not list seamless's tools twice.
-export function createMcp(options:{registry?:Registry;caller?:string;refresh?:()=>Promise<void>;adapter?:NativeAdapter;automatic?:Automatic;autoOptions?:AutomaticOptions;panelOnly?:boolean}={}){
+// The status panel is an experiment kept outside the published set (Plans 1 章 5), so the published MCP does not import it:
+// the internal entry (scripts/mcp-panel.ts) passes it in. Without a panel the MCP serves the four tools alone.
+export type Panel = {
+ tool: unknown;
+ resource: {uri:string;name:string;mimeType:string};
+ html: string;
+ summarize(data:Record<string,any>):unknown;
+};
+// panelOnly serves just the panel tool and its resource, for the seamless-status plugin, so Codex does not list seamless's tools twice.
+export function createMcp(options:{registry?:Registry;caller?:string;refresh?:()=>Promise<void>;adapter?:NativeAdapter;automatic?:Automatic;autoOptions?:AutomaticOptions;panel?:Panel;panelOnly?:boolean}={}){
  const legacy=options.registry&&options.caller;const automatic=legacy?null:options.automatic??createAutomatic(options.autoOptions);
+ const panel=automatic?options.panel:undefined;const panelTool=panel?.tool as {name:string}|undefined;
  const discovery=legacy?new Discovery(options.registry!,options.caller!,{refresh:options.refresh}):null;const delivery=legacy&&options.adapter?new Delivery(options.registry!,options.caller!,options.adapter,{refresh:options.refresh}):null;let initialized=false,ready=false;
  return async(input:unknown):Promise<unknown|undefined>=>{
   let id:string|number|null=null,notification=false;
@@ -31,16 +39,16 @@ export function createMcp(options:{registry?:Registry;caller?:string;refresh?:()
    let result:unknown;
    if(r.method==='initialize'){
     const p=object(r.params,['protocolVersion','capabilities','clientInfo','_meta']);if(typeof p.protocolVersion!=='string')throw new ContractError();
-    initialized=true;ready=false;result={protocolVersion:'2025-06-18',capabilities:{tools:{},...(automatic?{resources:{}}:{})},serverInfo:{name:'seamless',version:'0.1.0'}};
+    initialized=true;ready=false;result={protocolVersion:'2025-06-18',capabilities:{tools:{},...(panel?{resources:{}}:{})},serverInfo:{name:'seamless',version:'0.1.0'}};
    }else if(!ready)return error(-32000,'not_initialized');
    else if(r.method==='ping')result={};
-   else if(r.method==='resources/list'&&automatic){if(r.params!==undefined)listParams(r.params);result={resources:[statusResource]};}
-   else if(r.method==='resources/read'&&automatic){const p=object(r.params,['uri','_meta']);if(typeof p.uri!=='string')throw new ContractError();if(p.uri!==statusResource.uri)return error(-32002,'resource_not_found');result={contents:[{uri:statusResource.uri,mimeType:statusResource.mimeType,text:statusHtml}]};}
-   else if(r.method==='resources/templates/list'&&automatic){if(r.params!==undefined)listParams(r.params);result={resourceTemplates:[]};}
-   else if(r.method==='tools/list'&&automatic){if(r.params!==undefined)listParams(r.params);result={tools:options.panelOnly?[statusPanelTool]:[...automaticTools,statusPanelTool]};}
+   else if(r.method==='resources/list'&&automatic&&panel){if(r.params!==undefined)listParams(r.params);result={resources:[panel.resource]};}
+   else if(r.method==='resources/read'&&automatic&&panel){const p=object(r.params,['uri','_meta']);if(typeof p.uri!=='string')throw new ContractError();if(p.uri!==panel.resource.uri)return error(-32002,'resource_not_found');result={contents:[{uri:panel.resource.uri,mimeType:panel.resource.mimeType,text:panel.html}]};}
+   else if(r.method==='resources/templates/list'&&automatic&&panel){if(r.params!==undefined)listParams(r.params);result={resourceTemplates:[]};}
+   else if(r.method==='tools/list'&&automatic){if(r.params!==undefined)listParams(r.params);result={tools:options.panelOnly?(panel?[panel.tool]:[]):[...automaticTools,...(panel?[panel.tool]:[])]};}
    else if(r.method==='tools/list'){if(r.params!==undefined)listParams(r.params);result={tools:[{name:'sessions',annotations:{readOnlyHint:true,destructiveHint:false},description:'List explicitly registered and mutually permitted sessions. Selection reflects registered native observations and mutual permissions.',inputSchema:schema},...(delivery?['read','send'].map(name=>({name,annotations:{readOnlyHint:name==='read',destructiveHint:false},description:name==='read'?'Read permitted native visible conversation.':'Send peer-origin request to the selected existing conversation.',inputSchema:{type:'object',properties:{target:{type:'string'},scope:{type:'string',enum:['current_work','same_repository','any_registered']},...(name==='read'?{cursor:{type:'string'},limit:{type:'integer',minimum:1,maximum:100}}:{id:{type:'string'},text:{type:'string'},replyTo:{type:'string'}})},required:name==='send'?['id','text']:[],additionalProperties:false}})):[])]};}
    else if(r.method==='tools/call'){
-    const p=object(r.params,['name','arguments','_meta']);if(automatic&&p.name==='status_panel'){object(p.arguments===undefined?{}:p.arguments,[]);const value=await automatic('sessions',{scope:'any',peek:true},{kind:'mcp',meta:p._meta});result={content:[],structuredContent:summarizeStatus(value)};}else if(automatic){if(options.panelOnly||!['sessions','read','send','limits'].includes(p.name as string))return error(-32602,'unknown_tool');const value=await automatic(p.name as string,p.arguments,{kind:'mcp',meta:p._meta});result={content:[{type:'text',text:JSON.stringify(value)}],isError:!['ok','absent','empty','submitted','wait_limit'].includes(value.status)};}else if(p.name==='sessions'){const sessions=await discovery!.sessions(p.arguments);result={content:[{type:'text',text:JSON.stringify(sessions)}],isError:sessions.status!=='ok'};}else if(delivery&&(p.name==='read'||p.name==='send')){const value=p.name==='read'?await delivery.read(p.arguments):await delivery.send(p.arguments);const status=(value as {status?:string})?.status;result={content:[{type:'text',text:JSON.stringify(value)}],isError:!['ok','empty','submitted'].includes(status??'')};}else return error(-32602,'unknown_tool');
+    const p=object(r.params,['name','arguments','_meta']);if(automatic&&panel&&panelTool&&p.name===panelTool.name){object(p.arguments===undefined?{}:p.arguments,[]);const value=await automatic('sessions',{scope:'any',peek:true},{kind:'mcp',meta:p._meta});result={content:[],structuredContent:panel.summarize(value)};}else if(automatic){if(options.panelOnly||!['sessions','read','send','limits'].includes(p.name as string))return error(-32602,'unknown_tool');const value=await automatic(p.name as string,p.arguments,{kind:'mcp',meta:p._meta});result={content:[{type:'text',text:JSON.stringify(value)}],isError:!['ok','absent','empty','submitted','wait_limit'].includes(value.status)};}else if(p.name==='sessions'){const sessions=await discovery!.sessions(p.arguments);result={content:[{type:'text',text:JSON.stringify(sessions)}],isError:sessions.status!=='ok'};}else if(delivery&&(p.name==='read'||p.name==='send')){const value=p.name==='read'?await delivery.read(p.arguments):await delivery.send(p.arguments);const status=(value as {status?:string})?.status;result={content:[{type:'text',text:JSON.stringify(value)}],isError:!['ok','empty','submitted'].includes(status??'')};}else return error(-32602,'unknown_tool');
    }else return error(-32601,'unknown_method');
    return {jsonrpc:'2.0',id,result};
   }catch(e){if(notification)return undefined;return error(e instanceof ContractError?-32602:-32603,e instanceof ContractError?'invalid_params':'request_failed');}

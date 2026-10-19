@@ -2,7 +2,7 @@
   "mcpServers": {
     "seamless-status": {
       "command": "/Users/tachibanashuuta/.local/share/mise/installs/node/24/bin/node",
-      "args": ["/Users/tachibanashuuta/LocalWork/Code/seamless/src/cli.ts", "mcp", "--panel-only"]
+      "args": ["/Users/tachibanashuuta/LocalWork/Code/seamless/scripts/mcp-panel.ts", "--panel-only"]
     }
   }
 }

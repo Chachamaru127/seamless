@@ -72,7 +72,7 @@ git switch -q "$cur"
 
 verdict=$(head -c 400 "$judge" | rg -o -m1 "PASS|FAIL|判定不能" | head -1)
 echo "verdict: ${verdict:-none}"
-summary="判定 ${STAMP}（版 ${sha}）: 図面検査 Haiku 5.5 → $(head -c 300 "$haiku" | tr '\n' ' ')
+summary="判定 ${STAMP}（版 ${sha}）: 図面検査 Haiku 5.5 → $(head -c 300 "$haiku" | LC_ALL=C tr '\n' ' ')
 判定役 Codex gpt-6-astra → ${verdict:-不明}
 $(head -c 1200 "$judge")"
 gh issue comment "$num" --body "$summary" >/dev/null

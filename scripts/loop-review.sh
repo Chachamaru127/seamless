@@ -43,6 +43,22 @@ cur=$(git branch --show-current)
 if ! git diff --quiet || ! git diff --cached --quiet; then echo "作業ツリーが汚れている。判定を中止"; exit 2; fi
 git switch -q "$branch"
 
+# 判定役の環境は読み取り専用で実行検査ができないことがある。リーダーが同じ版で機械検査を走らせ、出力を証拠として渡す。
+ev="$LOG_DIR/$STAMP-issue-$num-evidence.log"
+{
+  echo "== git rev-parse HEAD"; git rev-parse HEAD
+  echo "== HOME=\$(mktemp -d) bash scripts/verify.sh (tail)"; HOME=$(mktemp -d) bash scripts/verify.sh 2>&1 | tail -12; echo "exit=${PIPESTATUS[0]}"
+  echo "== node --test の件数行"; rg -n "^ℹ (tests|pass|fail)" "$ev" 2>/dev/null || true
+} > "$ev" 2>&1
+cat >> "$req" <<EOF2
+
+## リーダーが同じ版（$sha）で走らせた機械検査の出力（証拠。施工役の自己申告ではない）
+\`\`\`
+$(cat "$ev" | tail -40)
+\`\`\`
+判定役が自分で実行できない項目は、この出力と差分を根拠に判定してよい。出力に無い項目は「判定不能」ではなく、差分とファイルの中身から判定する。
+EOF2
+
 haiku="$LOG_DIR/$STAMP-issue-$num-haiku.md"
 { echo "あなたは図面検査役です。Issue の Done when と差分の食い違いだけを、行間を読まずに挙げてください。合格を出さず、食い違いの一覧（無ければ「食い違いなし」）を返してください。"; echo; cat "$req"; } \
   | claude-headless -p --model claude-haiku-5-5 --effort medium --permission-mode plan --tools Read,Glob,Grep,Bash --strict-mcp-config > "$haiku" 2>"$haiku.err"

@@ -63,3 +63,8 @@
 | 2026-10-19 22:45 | #14 T10 Grok CLI manifest | 0acdeae | opencode deepseek-v4.1-flash:1017（330 秒） | 0（816 pass） | 食い違いなし | PASS（4 項目 Yes） | 閉じて merge。残件: 配達記録の保存と封筒削除が別操作で、間の異常終了で本文が残る → #28 を起こした |
 | 2026-10-19 22:56 | #15 T09 Antigravity | cb3084b | opencode deepseek-v4.1-flash:1017（380 秒） | 0（820 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件: listAntigravity が who の一覧に接続されていない（#25 の登録簿の配線で一緒に扱う） |
 | 2026-10-19 23:05 | #16 T17 T3 相性 | 5efa151 | opencode deepseek-v4.1-flash:1017（270 秒） | 0（827 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件: T3 実画面での html_render と実 Claude の検出は AC14 / AC15 の人の作業 |
+| 2026-10-19 23:15 | 並列 wave 1（#17 #18 #21 #22 #26 #28） | 各 worktree | opencode deepseek-v4.1-flash:1017（6 並列、各 verify 0） | 0 | — | 1 回目の判定は無効（判定 script の worktree 対応版が main に無く、本線の古い verify.sh で実行検査が落ちた） | script を直して再判定 |
+| 2026-10-19 23:35 | #18 T14 README / LICENSE | 402256a | 並列 wave 1 | 0 | — | PASS（3 項目 Yes。1 は静的判定） | 閉じて merge（a1d0f11） |
+| 2026-10-19 23:35 | #21 T01b fix_required 優先 | 8d234fb | 並列 wave 1 | 0 | — | PASS（3 項目 Yes） | 閉じて merge（6013ce0） |
+| 2026-10-19 23:35 | #17 T13、#26 T07b | d5061a6、dba1b47 | 並列 wave 1 | 0 | — | FAIL（Done when の文言: #17 は grep が定義ファイル自身に当たる、#26 は「4 製品」が grok-cli 追加で 5 製品） | 文言を直して再判定 |
+| 2026-10-19 23:35 | #22 T03b、#28 T10b | a7a3790、0c82cbb | 並列 wave 1 | 判定時 1（並列 verify の不安定。順番に走らせると 0） | — | FAIL（#22: limits 未渡し。#28: 偽の fs 試験なし、全ファイル検査なし） | 直し方を追記して再施工。判定時の verify は順番に走らせる形に変更 |

@@ -9,6 +9,8 @@ import { Discovery, classifyPeers, type WhoOptions } from './discovery.ts';
 import { observeGit } from './git-context.ts';
 import { createServe } from './serve.ts';
 import { createMcp } from './mcp.ts';
+import { runSetup } from './setup.ts';
+import { runDoctor } from './doctor.ts';
 import { runLines } from './io.ts';
 import { ContractError, object } from './protocol.ts';
 import {securityKeychain} from './secrets.ts';
@@ -37,6 +39,17 @@ export async function runCli(argv:string[],automatic:Automatic=createAutomatic({
   if(sendable.length>1){console.log(JSON.stringify({status:'ambiguous',candidates:sendable}));return;}
   console.log(JSON.stringify({...await automatic('send',{ticket:sendable[0].ticket,text:mode}),target:sendable[0].id}));
   return;
+ }
+ // `setup [--dry-run]`: detect the products on this Mac and register seamless's MCP server once. `--dry-run` reports the
+ // same list and the one change it would make, without writing. Neither reads the Keychain nor calls a product.
+ if(mode==='setup'){
+  if(rawArgs.length&&!(rawArgs.length===1&&rawArgs[0]==='--dry-run'))throw new ContractError('invalid_arguments');
+  console.log(JSON.stringify(await runSetup({home:whoOptions.home,dryRun:rawArgs.length===1})));return;
+ }
+ // `doctor [--json]`: the read-only diagnosis. It always prints JSON, so `--json` is accepted and nothing else is.
+ if(mode==='doctor'){
+  if(rawArgs.length&&!(rawArgs.length===1&&rawArgs[0]==='--json'))throw new ContractError('invalid_arguments');
+  console.log(JSON.stringify(await runDoctor({home:whoOptions.home})));return;
  }
  if(mode==='status'){if(!(rawArgs.length===1||rawArgs.length===3&&rawArgs[1]==='--wait'))throw new ContractError('invalid_arguments');const waitSeconds=rawArgs.length===3?Number(rawArgs[2]):0;if(!Number.isFinite(waitSeconds)||waitSeconds<0||waitSeconds>600)throw new ContractError('invalid_arguments');console.log(JSON.stringify(await automatic('send',{track:rawArgs[0],waitSeconds})));return;}
  if(mode==='compat-check'){const ok=rawArgs[0]==='--limits'&&(rawArgs.length===2||rawArgs.length===4&&rawArgs[2]==='--target'&&/^(claude|codex):[A-Za-z0-9-]{1,128}$/.test(rawArgs[3]));if(!ok)throw new ContractError('invalid_arguments');console.log(JSON.stringify(await compatibilityCheck(rawArgs[1],{},{kind:'cli'},rawArgs[3])));return;}

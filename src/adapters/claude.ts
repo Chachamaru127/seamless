@@ -13,12 +13,24 @@ import type { Observation, Registration } from '../protocol.ts';
 import type { ReadItem, Transcript, TranscriptReader } from './read.ts';
 import { parseEnvelope } from './read.ts';
 const run=promisify(execFile);
-const MAX_RECORD_BYTES=65_536,MAX_TRANSCRIPT_BYTES=64*1024*1024;
+const MAX_RECORD_BYTES=65_536,MAX_TRANSCRIPT_BYTES=64*1024*1024,MAX_CONFIG_DIR_CHARS=4096;
 export type ClaudeSession={version:string;pid:number;sessionId:string;cwd:string;startedAt:number;messagingSocketPath:string|null;kind:string|null;status:string|null;name:string|null;generation:string};
 // reachable = the sessions JSON names an inbox socket. kind, status and name are Claude Code's own words, carried as written.
 export type ClaudeInboxState={status:'reachable';socket:string;kind:string|null;claudeStatus:string|null;name:string|null}|{status:'unreachable';reason:'no_inbox_socket'|'session_record_unreadable'};
 const textOrNull=(value:unknown)=>typeof value==='string'?value:null;
-export type ClaudeOptions=CompatibilityOptions&{home?:string;processStart?:(pid:number)=>Promise<number|null>};
+export type ClaudeOptions=CompatibilityOptions&{home?:string;env?:NodeJS.ProcessEnv;processStart?:(pid:number)=>Promise<number|null>};
+// Claude Code keeps its session records under the folder CLAUDE_CONFIG_DIR names, or ~/.claude when it names none. A
+// caller started under another profile (routecli's `--use-profile`, for one) leaves its records only in that folder, so
+// both are candidates. A relative or oversized value is not a folder this code will follow.
+export function claudeConfigDir(env:NodeJS.ProcessEnv=process.env):string|null{
+ const value=env.CLAUDE_CONFIG_DIR;
+ return typeof value==='string'&&value.startsWith('/')&&value.length<=MAX_CONFIG_DIR_CHARS?value:null;
+}
+export function claudeSessionDirs(home=homedir(),env:NodeJS.ProcessEnv=process.env):string[]{
+ const dirs=[join(home,'.claude','sessions')],config=claudeConfigDir(env);
+ if(config){const dir=join(config,'sessions');if(!dirs.includes(dir))dirs.push(dir);}
+ return dirs;
+}
 const OMITTED=['thinking','tool_use','tool_result','images','non_peer_attachments','sidechains'];
 // missing = the file does not exist; unreadable = permission, symlink, foreign owner, size or I/O failure.
 type Owned={text:string}|{error:'missing'|'unreadable'};
@@ -35,30 +47,64 @@ export async function readOwned(path:string,limit:number):Promise<Owned>{
 export async function processStart(pid:number):Promise<number|null>{
  try{const {stdout}=await run('ps',['-o','lstart=','-p',String(pid)],{timeout:5000,env:{LC_ALL:'C',PATH:'/bin:/usr/bin'}});const t=Date.parse(stdout.trim());return Number.isFinite(t)?t:null;}catch{return null;}
 }
-export function claudeTranscriptPath(cwd:string,nativeId:string,options:{home?:string}={}){
- return join(options.home??homedir(),'.claude','projects',cwd.replace(/[^A-Za-z0-9]/g,'-'),`${nativeId}.jsonl`);
+export function claudeTranscriptPaths(cwd:string,nativeId:string,options:{home?:string;env?:NodeJS.ProcessEnv}={}):string[]{
+ const name=cwd.replace(/[^A-Za-z0-9]/g,'-'),home=options.home??homedir();
+ const dirs=[join(home,'.claude','projects')],config=claudeConfigDir(options.env);
+ if(config){const dir=join(config,'projects');if(!dirs.includes(dir))dirs.push(dir);}
+ return dirs.map(dir=>join(dir,name,`${nativeId}.jsonl`));
+}
+export function claudeTranscriptPath(cwd:string,nativeId:string,options:{home?:string;env?:NodeJS.ProcessEnv}={}){
+ return claudeTranscriptPaths(cwd,nativeId,options)[0]!;
+}
+// The record names the conversation; the transcript travels with the same config folder. The default folder is read
+// first, and an unreadable file there is reported as such rather than skipped for the other folder's copy.
+async function readClaudeTranscriptFile(cwd:string,nativeId:string,options:{home?:string;env?:NodeJS.ProcessEnv}={}):Promise<Owned>{
+ let result:Owned={error:'missing'};
+ for(const path of claudeTranscriptPaths(cwd,nativeId,options)){
+  const raw=await readOwned(path,MAX_TRANSCRIPT_BYTES);
+  if('text' in raw)return raw;
+  if(raw.error==='unreadable')result=raw;
+ }
+ return result;
+}
+// Every sessions/<pid>.json in the default folder and in the folder CLAUDE_CONFIG_DIR names, one entry per pid: a pid
+// already listed keeps its first file, so the default folder wins over the configured one. unreadable = a folder could
+// not be listed, so absence is unproven.
+export async function claudeSessionFiles(options:{home?:string;env?:NodeJS.ProcessEnv}={}):Promise<{files:{pid:number;path:string}[];unreadable:boolean}>{
+ const files:{pid:number;path:string}[]=[];const seen=new Set<number>();let unreadable=false;
+ for(const dir of claudeSessionDirs(options.home??homedir(),options.env)){
+  let names:string[];try{names=await readdir(dir);}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')unreadable=true;continue;}
+  for(const name of names){
+   if(!/^\d+\.json$/.test(name))continue;
+   const pid=Number(name.slice(0,-5));
+   if(!Number.isSafeInteger(pid)||seen.has(pid))continue;
+   seen.add(pid);files.push({pid,path:join(dir,name)});
+  }
+ }
+ return {files,unreadable};
 }
 // null = no record for this session; 'unreadable' = the search itself failed, so absence is unproven.
-export async function findClaudeSession(nativeId:string,options:{home?:string}={}):Promise<ClaudeSession|null|'unreadable'>{
- const dir=join(options.home??homedir(),'.claude','sessions');
- let names:string[];try{names=await readdir(dir);}catch(error){return (error as NodeJS.ErrnoException).code==='ENOENT'?null:'unreadable';}
- let uncertain=false;
- for(const name of names){
-  if(!/^\d+\.json$/.test(name))continue;
-  const raw=await readOwned(join(dir,name),MAX_RECORD_BYTES);
+export async function findClaudeSession(nativeId:string,options:{home?:string;env?:NodeJS.ProcessEnv}={}):Promise<ClaudeSession|null|'unreadable'>{
+ const {files,unreadable}=await claudeSessionFiles(options);
+ let uncertain=unreadable;
+ for(const {pid,path} of files){
+  const raw=await readOwned(path,MAX_RECORD_BYTES);
   if(!('text' in raw)){if(raw.error==='unreadable')uncertain=true;continue;}
   let r;try{r=JSON.parse(raw.text);}catch{uncertain=true;continue;}
   if(!r||typeof r!=='object'||typeof r.sessionId!=='string'){uncertain=true;continue;}
   if(r.sessionId!==nativeId)continue;
-  if(!Number.isInteger(r.pid)||`${r.pid}.json`!==name||typeof r.cwd!=='string'||!Number.isFinite(r.startedAt)){uncertain=true;continue;}
+  if(!Number.isInteger(r.pid)||r.pid!==pid||typeof r.cwd!=='string'||!Number.isFinite(r.startedAt)){uncertain=true;continue;}
   return {version:typeof r.version==='string'?r.version:'unknown',pid:r.pid,sessionId:nativeId,cwd:r.cwd,startedAt:r.startedAt,messagingSocketPath:textOrNull(r.messagingSocketPath),kind:textOrNull(r.kind),status:textOrNull(r.status),name:textOrNull(r.name),generation:`${r.pid}@${r.startedAt}`};
  }
  return uncertain?'unreadable':null;
 }
 // One process's own record (sessions/<pid>.json). null = no record for this pid; 'unreadable' = a record exists but proves nothing.
-export async function findClaudeSessionByPid(pid:number,options:{home?:string}={}):Promise<ClaudeSession|null|'unreadable'>{
+export async function findClaudeSessionByPid(pid:number,options:{home?:string;env?:NodeJS.ProcessEnv}={}):Promise<ClaudeSession|null|'unreadable'>{
  if(!Number.isInteger(pid)||pid<=0)return null;
- const raw=await readOwned(join(options.home??homedir(),'.claude','sessions',`${pid}.json`),MAX_RECORD_BYTES);
+ const {files,unreadable}=await claudeSessionFiles(options);
+ const file=files.find(entry=>entry.pid===pid);
+ if(!file)return unreadable?'unreadable':null;
+ const raw=await readOwned(file.path,MAX_RECORD_BYTES);
  if(!('text' in raw))return raw.error==='missing'?null:'unreadable';
  let r;try{r=JSON.parse(raw.text);}catch{return 'unreadable';}
  if(!r||typeof r!=='object'||r.pid!==pid||typeof r.sessionId!=='string'||typeof r.cwd!=='string'||!Number.isFinite(r.startedAt))return 'unreadable';
@@ -90,11 +136,11 @@ export function claudeInbox(session:ClaudeSession|null|'unreadable'):ClaudeInbox
  if(!session?.messagingSocketPath)return {status:'unreachable',reason:'no_inbox_socket'};
  return {status:'reachable',socket:session.messagingSocketPath,kind:session.kind,claudeStatus:session.status,name:session.name};
 }
-export async function findClaudeInbox(nativeId:string,options:{home?:string}={}):Promise<ClaudeInboxState>{
+export async function findClaudeInbox(nativeId:string,options:{home?:string;env?:NodeJS.ProcessEnv}={}):Promise<ClaudeInboxState>{
  return claudeInbox(await findClaudeSession(nativeId,options));
 }
 // A Claude process with no sessions JSON has no inbox: nothing in it can name a socket.
-export async function findClaudeProcessInbox(pid:number,options:{home?:string}={}):Promise<ClaudeInboxState>{
+export async function findClaudeProcessInbox(pid:number,options:{home?:string;env?:NodeJS.ProcessEnv}={}):Promise<ClaudeInboxState>{
  return claudeInbox(await findClaudeSessionByPid(pid,options));
 }
 // online only when the recorded PID is alive and started within 2s of the record (PID reuse guard).
@@ -148,7 +194,7 @@ export function createClaudeReader(options:ClaudeOptions={}):TranscriptReader{
   if(session==='unreadable')return {status:'unavailable',reason:'session_record_unreadable'};
   if(!session)return {status:'not_found',reason:'session_record'};
   if(!isClaudeVersionAllowed(session.version,options))return {status:'unsupported_version',reason:session.version};
-  const raw=await readOwned(claudeTranscriptPath(session.cwd,target.nativeId,options),MAX_TRANSCRIPT_BYTES);
+  const raw=await readClaudeTranscriptFile(session.cwd,target.nativeId,options);
   if('error' in raw)return raw.error==='missing'?{status:'not_found',reason:'transcript'}:{status:'unavailable',reason:'transcript_unreadable'};
   return {generation:session.generation,items:projectClaude(raw.text.split('\n'),target.nativeId),complete:true,source:'claude-transcript',omitted:OMITTED} satisfies Transcript;
  };
@@ -177,7 +223,7 @@ export function projectClaudeStructure(lines:string[],nativeId:string):Structure
 export async function readClaudeStructure(target:Registration,options:ClaudeOptions={}):Promise<StructureItem[]>{
  const session=await findClaudeSession(target.nativeId,options);
  if(!session||session==='unreadable'||session.generation!==target.generation||!isClaudeVersionAllowed(session.version,options))return [];
- const raw=await readOwned(claudeTranscriptPath(session.cwd,target.nativeId,options),MAX_TRANSCRIPT_BYTES);
+ const raw=await readClaudeTranscriptFile(session.cwd,target.nativeId,options);
  return 'text' in raw?projectClaudeStructure(raw.text.split('\n'),target.nativeId):[];
 }
 
@@ -199,7 +245,7 @@ export function projectClaudeSentIds(lines:string[],nativeId:string,ids:string[]
 export async function readClaudeSentIds(target:Registration,ids:string[],recipient:SendRecipient,options:ClaudeOptions={}):Promise<string[]>{
  const session=await findClaudeSession(target.nativeId,options);
  if(!session||session==='unreadable'||session.generation!==target.generation||!isClaudeVersionAllowed(session.version,options))return [];
- const raw=await readOwned(claudeTranscriptPath(session.cwd,target.nativeId,options),MAX_TRANSCRIPT_BYTES);
+ const raw=await readClaudeTranscriptFile(session.cwd,target.nativeId,options);
  return 'text' in raw?projectClaudeSentIds(raw.text.split('\n'),target.nativeId,ids,recipient):[];
 }
 

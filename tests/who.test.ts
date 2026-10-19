@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCli } from '../src/cli.ts';
@@ -65,6 +65,49 @@ test('a waiting, working, sleeping and socketless peer get ready, next_turn, wak
   ]);
   assert.equal(out.peers[0].versionStatus, 'verified');
   assert.deepEqual(calls, [{ method: 'sessions', input: { operation: 'send', scope: 'any', includeOffline: true } }]);
+});
+
+test('who --json lists a conversation that exists only under CLAUDE_CONFIG_DIR, once per pid', async t => {
+  const home = await claudeHome(t);
+  const config = await mkdtemp(join(tmpdir(), 'seamless-who-config-'));
+  t.after(() => rm(config, { recursive: true, force: true }));
+  await mkdir(join(config, 'sessions'), { recursive: true });
+  const cwd = await realpath(home), procStart = 'Fri Oct 2 12:00:00 2026';
+  const live: Record<number, { cwd: string; socket: string }> = {
+    41: { cwd, socket: join(home, 'socket-41') },
+    42: { cwd, socket: join(home, 'socket-42') },
+  };
+  const entry = (pid: number, sessionId: string) => ({ ...record({ pid, sessionId, cwd, startedAt: 100, messagingSocketPath: live[pid]!.socket }), peerProtocol: 1, procStart });
+  await writeFile(join(home, '.claude', 'sessions', '41.json'), JSON.stringify(entry(41, 'waiting')), { mode: 0o600 });
+  // The same pid under the configured folder is shadowed: its conversation is not a second candidate.
+  await writeFile(join(config, 'sessions', '41.json'), JSON.stringify(entry(41, 'shadowed')), { mode: 0o600 });
+  await writeFile(join(config, 'sessions', '42.json'), JSON.stringify(entry(42, 'configured')), { mode: 0o600 });
+  const uid = process.getuid!();
+  const command = async (file: string, args: string[]) => {
+    const pid = Number(args[args.indexOf('-p') + 1]), here = live[pid]!;
+    if (file === 'ps') return `${uid} ${procStart}`;
+    return `fcwd\ntDIR\nn${here.cwd}\nftxt\ntREG\nn/bin/node\nf3\ntunix\nn${here.socket}`;
+  };
+  const automatic = createAutomatic({
+    home,
+    caller: async () => ({ status: 'ok', caller: { provider: 'claude', nativeId: 'caller', generation: 'g', cwd, socket: '', source: 'claude-ancestor' } }),
+    scanOptions: {
+      claude: { command, socket: async () => true },
+      version: async () => '26.928.40906+12694', rows: async () => [],
+      git: async (path: string) => ({ state: 'no_git' as const, workspace: path }),
+    },
+  });
+  const before = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = config;
+  let out: any;
+  try { out = await cli(automatic, ['who', '--json'], { home }); } finally {
+    if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = before;
+  }
+  assert.equal(out.status, 'ok');
+  assert.deepEqual(out.peers.map((p: any) => [p.id, p.state]), [['claude:waiting', 'ready'], ['claude:configured', 'ready']]);
+  const ids = out.peers.map((p: any) => p.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(ids.includes('claude:shadowed'), false);
 });
 
 test('a Claude record without a socket, or with no record at all, is unreachable: no_inbox_socket in the registry path', async t => {

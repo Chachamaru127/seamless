@@ -79,7 +79,7 @@ async function stillCaller(previous:Caller,options:CallerOptions):Promise<boolea
   const home=options.home??homedir();
   if(previous.source==='claude-ancestor'){
    if(previous.pid===undefined)return false;
-   const m=await claudeSessionRecord(previous.pid,home);
+   const m=await claudeSessionRecord(previous.pid,home,options.env);
    return !!m&&m.sessionId===previous.nativeId&&`${previous.pid}@${m.startedAt}`===previous.generation&&m.messagingSocketPath===previous.socket&&await realpath(m.cwd)===previous.cwd&&await claudeProcessMatches(previous.pid,m.procStart,options.claude?.command??command);
   }
   if(previous.source==='grok-ancestor'){
@@ -126,7 +126,7 @@ export async function identifyCaller(context:{kind:'cli'|'mcp';meta?:unknown},op
     // it is a known, signed Grok in the ledger, and otherwise (a headless grok -p, an executable lsof cannot show, a grok
     // installed elsewhere) nothing above it is taken as the caller, so a Claude or Codex ancestor is never mistaken for it.
     const grokNamed=typeof current.command==='string'&&/^grok(-\d+\.\d+\.\d+-macos-.*)?$/.test(basename(current.command));
-    const candidate=every||grokNamed||await claudeSessionRecord(current.pid,home)!==null||typeof current.command==='string'&&await knownCodex(current.command,locations)||!!(await grokRows())?.some(r=>r.pid===current!.pid);
+    const candidate=every||grokNamed||await claudeSessionRecord(current.pid,home,options.env)!==null||typeof current.command==='string'&&await knownCodex(current.command,locations)||!!(await grokRows())?.some(r=>r.pid===current!.pid);
     if(current.executable===null&&candidate){files=await processFiles(current.pid,run);current={...current,executable:files.executable};}
     if(current.executable===null){if(grokNamed)return fail('grok_identity_unobserved');skipped=true;continue;}
     if(grokNamed&&!await knownCodex(current.executable,grokPaths))return fail('grok_identity_unobserved');

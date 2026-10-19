@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>seamless を Reason より上にする: どこで勝ち、どこを追わないか</title>
+<style>
+  :root{
+    --paper:#fbf7ef; --paper-2:#fffdf7; --ink:#1c1a16; --muted:#6f685c;
+    --line:#ddd3c2; --soft:#f0e8d8; --seamless:#b5451f; --reason:#33414d;
+    --green:#1f5c4d; --amber:#8a641c; --red:#8a2a1c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,-apple-system,sans-serif;
+    font-size:16px;line-height:1.9;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 32px 96px}
+  p{margin:0 0 1.1em}
+  small{font-size:12px;color:var(--muted)}
+  code{font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;font-size:.86em;background:var(--soft);padding:2px 6px;border-radius:2px}
+  .mono{font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace}
+  .topline{display:flex;justify-content:space-between;gap:20px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--ink);padding-bottom:12px}
+  .kicker{margin-top:44px;color:var(--seamless);font-size:12px;letter-spacing:.16em;text-transform:uppercase}
+  h1{font-size:34px;line-height:1.35;margin:8px 0 18px;font-weight:700;letter-spacing:-.01em}
+  h2{font-size:22px;margin:56px 0 14px;padding-top:18px;border-top:1px solid var(--line)}
+  h3{font-size:17px;margin:28px 0 8px}
+  .lead{font-size:18px;color:#2a2621}
+  .box{background:var(--paper-2);border:1px solid var(--line);padding:18px 22px;margin:18px 0}
+  .box.hl{border-left:4px solid var(--seamless)}
+  .box.warn{border-left:4px solid var(--amber)}
+  table{width:100%;border-collapse:collapse;margin:14px 0 22px;font-size:14.5px}
+  th,td{border-bottom:1px solid var(--line);padding:9px 10px;text-align:left;vertical-align:top}
+  th{font-size:12px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--ink)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .s{color:var(--seamless);font-weight:700}
+  .r{color:var(--reason);font-weight:700}
+  .bar{display:grid;grid-template-columns:150px 1fr 70px;gap:12px;align-items:center;margin:6px 0;font-size:14px}
+  .bar .track{height:14px;background:var(--soft);position:relative}
+  .bar .fill{position:absolute;left:0;top:0;bottom:0}
+  .bar .fill.s{background:var(--seamless)}
+  .bar .fill.r{background:var(--reason)}
+  .bar .fill.g{background:#b9ae9a}
+  .bar .v{text-align:right;font-variant-numeric:tabular-nums}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media (max-width:720px){.grid2{grid-template-columns:1fr}.bar{grid-template-columns:110px 1fr 56px}}
+  ul,ol{padding-left:1.4em}
+  li{margin:4px 0}
+  .tag{display:inline-block;font-size:11px;letter-spacing:.08em;padding:2px 8px;border:1px solid var(--line);border-radius:2px;color:var(--muted);margin-right:6px}
+  .ok{color:var(--green);font-weight:700}
+  .ng{color:var(--red);font-weight:700}
+  .mid{color:var(--amber);font-weight:700}
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+  .flow div{background:var(--paper-2);border:1px solid var(--line);padding:12px;font-size:14px}
+  .flow b{display:block;color:var(--seamless);font-size:12px;letter-spacing:.1em;margin-bottom:4px}
+  @media (max-width:720px){.flow{grid-template-columns:1fr 1fr}}
+  .decision{border:1px solid var(--ink);padding:18px 22px;margin:18px 0;background:var(--paper-2)}
+  .decision h3{margin-top:0}
+  .decision dl{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;margin:0}
+  .decision dt{color:var(--muted);font-size:13px}
+  .decision dd{margin:0}
+  .src{font-size:13px;color:var(--muted)}
+  .src li{margin:2px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="topline"><span>seamless / team-research（L）</span><span>2026-10-19 JST</span></div>
+<div class="kicker">Reason を超える設計</div>
+<h1>seamless を Reason より上にする。<br>どこで勝ち、どこを追わないか。</h1>
+<p class="lead">
+Reason Network は「自分の網」を作る製品です。seamless は、あなたがもう持っている網（Claude Code の公式メッセージ口、Codex の <code>codex queue</code>、Grok Bot の webhook、SSH）を束ねる配線にします。自前の名簿、鍵、中継、常駐、本文の保存を持ちません。届いたかは、相手の記録を読んでから言います。
+</p>
+
+<div class="box hl">
+<b>ひとことで。</b> 同じ土俵（チームの網、10 製品）では超えられません。超えるのは 4 つの軸です。<b>届いたの正確さ</b>、<b>持たないもの</b>（常駐 0、本文 0、外部接続 0）、<b>入口から初回往復までの速さ</b>、<b>身元と失効を自前で作らない</b>。この 4 つで勝ち、総合点ではセキュリティで並びます。
+</div>
+
+<h2>01 今日分かった大きな事実（前提が変わった）</h2>
+
+<p>調べ直して、計画 v2 の前提が 2 つ古いと分かりました。</p>
+
+<table>
+<tr><th>事実</th><th>意味</th><th>出典</th></tr>
+<tr><td><b>Claude Code は 2026-08 から公式に「セッション同士のメッセージ」を持つ。</b> 同じ Mac では会話ごとの socket（=同じ Mac の中だけで通じる口）。socket の場所はフック用の環境変数 <code>CLAUDE_CODE_MESSAGING_SOCKET</code> として公開され、「スクリプトから投稿したいとき」の節がある。</td>
+<td>seamless が今使っている Claude の口は、もう「内部 API」ではなく「文書化された挙動」。Reason の Claude への押し込みも同じ口。</td>
+<td>code.claude.com/docs/en/cross-session-messaging</td></tr>
+<tr><td><b>Codex CLI 0.163.0 に <code>codex queue --thread &lt;ID&gt; --message</code> がある。</b> ただし「保存した」時点で成功を返す。読まれたかは分からない。Desktop の <code>/goal</code> 中は消費されず手動 Steer が要る（issue #52705、open）。返事を読む公式手段の要望（#54252）は未回答。</td>
+<td>書く口は公式。「届いた」を確かめる口は無い。ここが seamless の差別化になる。</td>
+<td>手元で <code>codex queue --help</code> 実行。github.com/openai/codex/issues/52705、54252</td></tr>
+<tr><td><b>Reason のエンジンは <code>reason-network</code> CLI まで OSS で、アカウントなしの team link モードがある。</b> 非公開なのは製品の <code>reason</code> CLI。</td>
+<td>「アカウント不要」「OSS」は seamless だけの売りではない。前回の説明を訂正。</td>
+<td>github.com/reason-machines/reason-network README</td></tr>
+<tr><td><b>Claude Code Channels は research preview。</b> 自作の channel は対話セッションでしか読み込めず（<code>-p</code> では無視）、通知に受領確認が無い。忙しいときは次のターンにまとめて届く。</td>
+<td>v2 が主経路にした Channels は、補助（CI や外部イベント用）に回す。</td>
+<td>code.claude.com/docs/en/channels-reference</td></tr>
+<tr><td><b>Reason の「届いた」は受信側デーモンの ack（stored / delivered / held）。</b> 「bypass の Claude が hold しているのに delivered と言った」issue #24 は 10-18 に修正。「delivered」が「読んだ」を意味するかは未定義。</td>
+<td>seamless は「相手の記録に依頼 ID が現れるまで届いたと言わない」で、この穴を設計で塞ぐ。</td>
+<td>DESIGN.md、issues #24</td></tr>
+</table>
+
+<h2>02 どこで勝つか（4 つの軸と、測り方）</h2>
+
+<table>
+<tr><th>軸</th><th>何を測るか</th><th class="s">seamless v3 の目標</th><th class="r">Reason の今</th></tr>
+<tr><td><b>届いたの正確さ</b></td><td>hold、busy、<code>/goal</code> 中に「届いた」と誤表示した件数</td><td>0 件。相手の記録で依頼 ID を見るまで「預かり」</td><td>デーモンの ack。#24 で誤表示があり修正済み</td></tr>
+<tr><td><b>持たないもの</b></td><td>追加プロセス数、本文の保存バイト数、ローカル往復で接続する外部ホスト数</td><td>0、0、0</td><td>デーモン 1、SQLite に本文、既定で n0 の中継</td></tr>
+<tr><td><b>入口から初回往復</b></td><td>一覧が出るまでの秒数、1 往復の操作回数、質問数</td><td>10 秒、3 操作、0 問</td><td>install + setup + ログイン（または team 作成）+ エージェント再起動</td></tr>
+<tr><td><b>身元と失効</b></td><td>自前の鍵と名簿の有無、失効が機械的に効くか</td><td>OS ユーザーだけ。自前の鍵と名簿を作らない（オンライン機能は持たない。2026-10-19 判断）</td><td>自前の署名つき名簿。除名は「暗号的に無力にはならない（this is for friends）」</td></tr>
+</table>
+
+<div class="box warn">
+<b>追わない軸。</b> 対応製品数（Reason は 10）、他人のマシンを含むチーム名簿、オフラインの郵便箱、LAN と P2P、遠隔の承認ポップアップ。ここは Reason の本体で、1 人では追えません。README に「チームなら Reason。同じ会話に両方をつながない」と書きます。
+</div>
+
+<h2>03 仕組み（実際には何が動くか）</h2>
+
+<div class="flow">
+<div><b>1. 探す</b>Claude は <code>/tmp/cc-socks-&lt;uid&gt;</code> と sessions の記録。Codex は rollout と所有者照会。Grok Bot は本人の名簿。常駐なし。</div>
+<div><b>2. 送る</b>Claude は公式 socket。Codex は <code>codex queue</code>。opencode は plugin。Grok Bot は webhook（HTTPS）。遠隔は持たない。</div>
+<div><b>3. 確かめる</b>相手の記録を読む。依頼 ID が見える → 渡った。ターンが始まる → 処理中。replyTo が一致 → 返事。</div>
+<div><b>4. 残す</b><code>~/.seamless/reservations/</code> に hash、状態、時刻だけ。本文は残さない。二重には送らない。</div>
+</div>
+
+<p><b>状態の言葉は 5 つ。</b> 預かり / 渡った / 処理中 / 返事 / 不明。新しく、<b>「相手が承認待ち（hold）」</b>と<b>「Codex が手動 Steer 待ち」</b>を区別して出します。socket への書き込みが成功しても、相手の記録に現れなければ「渡った」と言いません。</p>
+
+<p class="mid" style="display:none"><b>遠隔（旧案、取り下げ）は SSH。</b> <code>seamless key issue --scope read,send --host mac2</code> が、<code>command="seamless inbound --scope read,send",no-pty,…</code> の <code>authorized_keys</code> 行を出します。身元は SSH 鍵、暗号化は SSH、失効は行の削除。自前の暗号と NAT 越えを作りません。Tailscale の上でも同じです。代わりに、相手の Mac が起きていなければ「不明」で止まります（郵便箱を持たない）。</p>
+
+<h2>04 採点（予測。公開資料と計画からの判断で、侵入試験ではありません）</h2>
+
+<h3>セキュリティとオンライン（13 項目、前回と同じ重み）</h3>
+<div class="bar"><span class="r">Reason</span><div class="track"><div class="fill r" style="width:83%"></div></div><span class="v">4.15</span></div>
+<div class="bar"><span>seamless 現行</span><div class="track"><div class="fill g" style="width:67.4%"></div></div><span class="v">3.37</span></div>
+<div class="bar"><span>v2 予測</span><div class="track"><div class="fill g" style="width:76.8%"></div></div><span class="v">3.84</span></div>
+<div class="bar"><span class="s">v3 予測</span><div class="track"><div class="fill s" style="width:76.4%"></div></div><span class="v">3.82</span></div>
+<p><small>純セキュリティ（重み 91）: Reason 4.10、v3 4.08。オンラインだけ（重み 9）: Reason 4.56、v3 1.22。オンラインを持たない思想なので総合は Reason が上。純セキュリティはほぼ同点で、二重送信、本文の保存、権限を広げないことで seamless が上。</small></p>
+
+<table>
+<tr><th>#</th><th>懸念</th><th class="num">重み</th><th class="num r">Reason</th><th class="num">現行</th><th class="num s">v3</th><th>v3 の根拠</th></tr>
+<tr><td>1</td><td>送り主の特定</td><td class="num">12</td><td class="num">5</td><td class="num">4</td><td class="num">4</td><td>OS ユーザーとプロセスの親子</td></tr>
+<tr><td>2</td><td>宛先の許可</td><td class="num">12</td><td class="num">5</td><td class="num">4</td><td class="num">4.5</td><td>limits と、鍵ごとの scope</td></tr>
+<tr><td>3</td><td>盗聴・暗号化</td><td class="num">12</td><td class="num">5</td><td class="num">2</td><td class="num">4.5</td><td>ローカルは網に出ない。webhook は HTTPS</td></tr>
+<tr><td>4</td><td>なりすまし</td><td class="num">9</td><td class="num">4.5</td><td class="num">4</td><td class="num">4</td><td>プロセスの親子</td></tr>
+<tr><td>5</td><td>二重送信</td><td class="num">9</td><td class="num">4</td><td class="num">5</td><td class="num">5</td><td>予約と内容ハッシュ</td></tr>
+<tr><td>6</td><td>プロンプト注入</td><td class="num">9</td><td class="num">4</td><td class="num">4</td><td class="num">4</td><td>同僚の依頼として渡す。防げない</td></tr>
+<tr><td>7</td><td>フックのコード実行</td><td class="num">7</td><td class="num">3</td><td class="num">2</td><td class="num">3</td><td>コミュニティ製フックを配らない。forced command</td></tr>
+<tr><td>8</td><td>会話本文の保存</td><td class="num">7</td><td class="num">2</td><td class="num">5</td><td class="num">5</td><td>変えない</td></tr>
+<tr><td>9</td><td>監査</td><td class="num">6</td><td class="num">3</td><td class="num">3</td><td class="num">3</td><td>予約の記録</td></tr>
+<tr><td>10</td><td>ファイル衝突</td><td class="num">4</td><td class="num">3</td><td class="num">3</td><td class="num">3</td><td>見える化だけ</td></tr>
+<tr><td>11</td><td>退会・失効</td><td class="num">4</td><td class="num">4</td><td class="num">2</td><td class="num">3</td><td>limits と Grok Bot 名簿の削除</td></tr>
+<tr><td>12</td><td>オンライン対応</td><td class="num">5</td><td class="num">5</td><td class="num">1</td><td class="num">1</td><td>持たない（製品の思想）</td></tr>
+<tr><td>13</td><td>オフライン可用性</td><td class="num">4</td><td class="num">4</td><td class="num">2</td><td class="num">1.5</td><td>郵便箱を持たない</td></tr>
+<tr><td></td><td><b>合計</b></td><td class="num"><b>100</b></td><td class="num r">4.14</td><td class="num">3.37</td><td class="num s">3.82</td><td></td></tr>
+</table>
+
+<h3>製品としての 10 観点（前回と同じ重み）</h3>
+<div class="bar"><span class="r">Reason</span><div class="track"><div class="fill r" style="width:92.4%"></div></div><span class="v">4.62</span></div>
+<div class="bar"><span>前回の推奨形</span><div class="track"><div class="fill g" style="width:73.6%"></div></div><span class="v">3.68</span></div>
+<div class="bar"><span class="s">v3 予測</span><div class="track"><div class="fill s" style="width:80.2%"></div></div><span class="v">4.01</span></div>
+
+<table>
+<tr><th>観点</th><th class="num">重み</th><th class="num r">Reason</th><th class="num s">v3</th><th class="num">差</th><th>読み方</th></tr>
+<tr><td>導入、設定の簡単さ</td><td class="num">14</td><td class="num">5.0</td><td class="num">4.5</td><td class="num">0.07</td><td>npx 1 回。アカウントも再起動も無し。Grok Bot の webhook 設定が残る</td></tr>
+<tr><td>つながる相手の広さ</td><td class="num">12</td><td class="num">5.0</td><td class="num">4.0</td><td class="num">0.12</td><td>opencode を v1 に入れる。Cursor、Gemini、Copilot は追わない</td></tr>
+<tr><td>届く速さ、確実さ</td><td class="num">14</td><td class="num">5.0</td><td class="num">4.5</td><td class="num">0.07</td><td>同じ公式経路。速さでは勝てない。確実さで並ぶ</td></tr>
+<tr><td>相手の文脈と選びやすさ</td><td class="num">10</td><td class="num">5.0</td><td class="num">4.0</td><td class="num">0.10</td><td>repo、branch、busy、会話名。チーム名簿は無い</td></tr>
+<tr><td>チーム、複数マシン</td><td class="num">12</td><td class="num">5.0</td><td class="num">1.5</td><td class="num">0.42</td><td>持たない（思想）</td></tr>
+<tr><td>外部、非コーディング入口</td><td class="num">10</td><td class="num">4.0</td><td class="num">5.0</td><td class="num ok">−0.10</td><td>Grok Bot webhook。Dot は phase 2</td></tr>
+<tr><td>届いた証拠、監査性</td><td class="num">8</td><td class="num">4.0</td><td class="num">5.0</td><td class="num ok">−0.08</td><td>相手の記録で確認。hold と Steer 待ちを区別</td></tr>
+<tr><td>安全境界</td><td class="num">7</td><td class="num">4.0</td><td class="num">4.5</td><td class="num ok">−0.04</td><td>受信側の権限を広げない。承認を書かない</td></tr>
+<tr><td>壊れにくさ、保守</td><td class="num">8</td><td class="num">4.0</td><td class="num">3.5</td><td class="num">0.04</td><td>Claude は文書化された。Codex Desktop の読取りは内部のまま</td></tr>
+<tr><td>OSS 配布、説明</td><td class="num">5</td><td class="num">4.0</td><td class="num">4.0</td><td class="num">0.00</td><td>どちらも OSS</td></tr>
+<tr><td><b>合計</b></td><td class="num"><b>100</b></td><td class="num r">4.62</td><td class="num s">4.01</td><td class="num">0.61</td><td>0.54 はチームと広さ（追わない）。0.07 は実測で詰める。seamless が上回るのは 3 観点（0.22）</td></tr>
+</table>
+
+<h2>05 応援の答え（採用、見送り、要確認）</h2>
+
+<h3>Codex gpt-6.1-sol（逆家系。一次資料と web 検索。chatgpt-2 契約）</h3>
+<ul>
+<li><span class="ok">採用</span> 「公式経路への移行は保守性に効くが、Reason も同じ公式経路を使うので速さの優位は断定できない」。</li>
+<li><span class="ok">採用</span> 「Channels は受領確認がなく黙って落ちる。返信ツールでの相関が要る」。</li>
+<li><span class="ok">採用</span> 「<code>codex queue</code> は登録と消費が別。CLI の終了 0 を到達にできない」。</li>
+<li><span class="ok">採用</span> 「A2A は既存 CLI 会話へ注入する口ではない。アダプタは残る」。</li>
+<li><span class="ok">採用</span> 優先案 1（配送証拠を ID で照合）、2（今の画面から依頼と返信確認）、4（閲覧、送信、起動、承認の分離）。</li>
+<li><span class="ok">採用</span> 「Reason の『CLI 非公開』は製品 CLI の話。エンジンにも CLI がある」。前回の説明を訂正。</li>
+<li><span class="ng">見送り</span> 優先案 5「Reason との橋渡しで獲得」。需要が未検証で、二重配送と権限の変換が危ない。v1 は「併用の注意」まで。</li>
+</ul>
+
+<h3>Grok 4.7（X 調査。required）</h3>
+<div id="grok-section"><ul>
+<li><span class="ok">採用</span> 乗り換えの決め手は「画面操作とコピペをやめる」「同僚の枝（repo、branch）が見える」「公開エンジン」。しょうへい氏は Computer Use の遅さから乗り換え（X、2026-10-16）。焼山氏は「同じフォルダへ数秒で push、8 秒」（X、2026-10-19。1 人の 1 計測）。</li>
+<li><span class="ok">採用</span> 「受理をツール許可にするな」（hexablob 氏、X、2026-10-18）。seamless の不変条件 3 と一致。</li>
+<li><span class="ok">採用</span> agmsg 作者は「公式モニターが 30 分で切れるため socket と queue を選んだ」（X、2026-10-15）。主経路の判断と一致。</li>
+<li><span class="ok">採用</span> 「1 日で消える郵便を真似しない。不在は未着として返す」「処理開始が無ければ成功と言わない」。Claude Code 純正でも「届かずに成功」の報告あり（anthropics/claude-code #25135）。</li>
+<li><span class="ok">採用</span> 「公式経路だけなら、より壊れにくく同等以上に速い」は成り立たない。Codex 応援と同じ結論。速さでは勝たない。</li>
+<li><span class="ng">見送り</span> 「2〜5 人向けに自前の名簿を既定 hold で足す」。名簿は持たず、SSH の hosts 一覧で遠隔の <code>who</code> を呼ぶ形で代える。自前の名簿は漏洩面になる。</li>
+<li><span class="mid">要確認</span> 「Orca で足りる」という声（大田原氏、X、2026-10-19）。Orca との役割分担を README に書くか。X の投稿はリーダー未再確認。</li>
+</ul></div>
+
+<h3>類似製品が定着しなかった理由（出典つき）</h3>
+<ul>
+<li>agmsg（Claude と Codex の会話ツール）は 3 週間で手打ち 9 回、会話 1 件、7 週間後にアンインストール。<b>「人間が手で起動するツールは死に、走っている中から呼べるものが生きた」</b>（zenn.dev/kaz_hira、2026-10-03）。→ seamless は「今開いている会話の中から 1 行」を守る。</li>
+<li>agmsg の運用で 3 分ごとに Codex を起動し、3 時間で約 60 会話、メモリ不足（fujibee/agmsg #163、2026-06-19）。→ 空振り起動をしない（不変条件 2）。</li>
+<li>Codex の <code>/goal</code> 中は外部 queue が待ち続け、手動 Steer が要る（openai/codex #52705）。→ 公式入口でも「受理 ≠ 読んだ」。証拠が要る。</li>
+</ul>
+
+<h2>06 あなたの判断材料</h2>
+
+<div class="grid2">
+<div class="box"><b>本質はどこか</b><br>「Reason と同じ網を作らない」と決めること。勝つ軸を 4 つに絞り、そこだけを測る。</div>
+<div class="box"><b>何が変わるか</b><br>前: 常駐 hub、Channels 主経路、チーム機能を未決のまま。<br>後: 常駐なし、公式 socket と <code>codex queue</code>、hold と Steer 待ちを見分ける、遠隔は SSH の鍵 1 行。</div>
+<div class="box"><b>あなたから見た変化</b><br>導入は npx 1 回。送った文が「届いたかどうか分からないのに届いたと言われる」ことが無くなる。チームの網が要るときは Reason を併用する。</div>
+<div class="box"><b>最終的な仕様への影響</b><br>不変条件（再送しない、権限を広げない、本文を保存しない）は変えない。「常駐なし」と「自前の鍵と名簿を作らない」を不変条件に足すか、H4 と H6 で決める。後から足すのは簡単、外すのは難しい。</div>
+</div>
+
+<h2>07 決めること（今回は 3 件）</h2>
+
+<div class="decision">
+<h3>1. v1 の公開範囲</h3>
+<dl>
+<dt>何を決めるか</dt><dd>最初の公開を「Claude Code、Codex、opencode、Grok Bot（webhook まで）+ Grok CLI」に限るか。</dd>
+<dt>推奨</dt><dd>決定（2026-10-19）: 限る。opencode v2.0.32 が手元にあるので v1 に入れる。常駐 hub、チーム、遠隔、Channels のカスタム channel、A2A、Grok Bot の玄関口は出さない。</dd>
+<dt>許可すると何が起きるか</dt><dd>週 1 で 15 往復の実測に入る。公開面を削る作業が始まる。</dd>
+<dt>今回はしないこと</dt><dd>公開そのもの、npm への登録、Reason のインストール。</dd>
+<dt>後から戻せるか</dt><dd>戻せる。範囲は後から広げられる。狭めるのは公開後だと難しい。</dd>
+</dl>
+</div>
+
+<div class="decision">
+<h3>2. Codex Desktop の内部 IPC を読み取りに使い続けるか</h3>
+<dl>
+<dt>何を決めるか</dt><dd>Desktop の会話の「届いた」判定に、内部 IPC（アプリ同士が話す非公開の口）を使い続けるか。CLI の会話だけを正式対応にするか。</dd>
+<dt>推奨</dt><dd>決定（2026-10-19）: 使い続ける。「Desktop は未確認」表示を許容し、公式の読取り口（openai/codex #54252）が出たら乗り換える。</dd>
+<dt>許可すると何が起きるか</dt><dd>Codex Desktop の会話が一覧に残る。版ごとの互換表の更新が続く。</dd>
+<dt>今回はしないこと</dt><dd>Desktop の IPC を公開物の「主経路」と名乗ること。</dd>
+<dt>後から戻せるか</dt><dd>戻せる。CLI 限定への切り替えは設定 1 つ。</dd>
+</dl>
+</div>
+
+<div class="decision">
+<h3>3. 比較実測のために Reason Network を入れるか</h3>
+<dl>
+<dt>何を決めるか</dt><dd>週 7〜8 の 5 指標の実測のために、Reason Network をこの Mac（または別の OS ユーザー）に入れるか。</dd>
+<dt>推奨</dt><dd>入れる。同じ OS ユーザーでよい（同じエージェント、同じ版で測るのが公平）。条件は 2 つ。Reason の <code>setup</code> が書き換える各エージェントの設定ファイルの backup を先に確認する。同じ会話に seamless と両方をつながず、計測は順番に行う。終わったら <code>reason-network leave</code> → <code>setup --remove</code> で消す。</dd>
+<dt>許可すると何が起きるか</dt><dd>外部ソフトの導入。各エージェントの設定ファイルに Reason のフックが書かれる（backup つき）。n0 の公開中継に接続する。</dd>
+<dt>今回はしないこと</dt><dd>Reason のワークスペース作成、他人の招待。</dd>
+<dt>後から戻せるか</dt><dd>戻せる。手順は README に記載。設定ファイルの backup を確認してから進める。</dd>
+</dl>
+</div>
+
+<p>決定済み（2026-10-19）: オンライン機能は製品として持たない（H4、H6 は不要）。後回し: 名前と配布（H5）。</p>
+
+<h2>08 進捗</h2>
+<p><b>プロジェクトの目的:</b> 立花さんが、今開いている AI にそのまま一言を届け、届いたかを正直に知ることができる配線アプリ seamless を OSS として出す。</p>
+<p><b>全体進捗:</b> 調査は 100%。設計案は約 90%（本人の 3 判断が残る）。実装、実測、公開は 0%。100% の定義は「v1 が公開され、第三者が説明どおりに動かし、issue を出せる状態」。</p>
+<p><b>今やっている作業:</b> 一次資料と応援 2 つの答えを突き合わせ、勝つ軸を 4 つに絞り、計画 v3 と採点を書いた。Grok の答えも反映した。</p>
+<p><b>何のためにやるのか:</b> 「Reason と同じものを作って負ける」を避け、1 人で保守できる範囲で Reason に勝てる軸を決めるため。</p>
+<p><b>次に進めるべきタスク:</b></p>
+<ul>
+<li>この回答までに進めた: 調査記録 v3、計画案 v3、採点の再計算、この HTML。</li>
+<li>次に AI が続ける: 承認後に team-plan で spec.md、Plans.md、tasks.md へ分ける。完了条件: AC 11 件すべてに検証コマンドが対応する。</li>
+<li>本人の判断が必要: 上の 3 件。完了条件: 3 件すべてについて、進める範囲と今回は止める範囲が決まる。</li>
+<li>外部条件待ち: Codex の公式読取り口（#54252）、Channels の allowlist 方針、Grok Bot の規約確認。</li>
+</ul>
+
+<h2>出典</h2>
+<ul class="src">
+<li>Claude Code cross-session messaging: code.claude.com/docs/en/cross-session-messaging（2026-10-19 取得）</li>
+<li>Claude Code Channels / reference: code.claude.com/docs/en/channels、/channels-reference（同日）</li>
+<li>Codex app-server: learn.chatgpt.com/docs/app-server（同日）。<code>codex queue --help</code>（codex-cli 0.163.0、手元）</li>
+<li>openai/codex issues #52705（2026-10-09）、#54252（2026-10-15）</li>
+<li>Reason Network: reasonmachines.com/network、docs.reasonmachines.com/docs/network、github.com/reason-machines/reason-network（README、DESIGN.md、issues。同日）</li>
+<li>zenn.dev/kaz_hira/articles/multi-agent-env-3weeks-measured（2026-10-03）、fujibee/agmsg #163</li>
+<li>seamless: main 87a4162、spec.md、src/adapters、specs/2026-10-universal-wiring/drafts（v2、research-v3、plan-v3）</li>
+<li>応援: Codex gpt-6.1-sol（answer-codex-v3.md）、Grok 4.7（answer-grok-v3.md）</li>
+</ul>
+<p><small>このページは判断用の派生物で、製品仕様の正本ではありません。点数は予測で、重みを変えれば動きます。法務と規約の判断は専門家と一次資料で確認してください。</small></p>
+
+</div>
+</body>
+</html>

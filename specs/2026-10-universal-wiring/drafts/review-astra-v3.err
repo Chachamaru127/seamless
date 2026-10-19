@@ -1,0 +1,2260 @@
+codex-headless: chatgpt-1 has no room; running on chatgpt-2
+Reading additional input from stdin...
+OpenAI Codex v0.163.0
+--------
+workdir: /Users/tachibanashuuta/LocalWork/Code/seamless
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 01a153a0-164d-7673-88d9-424c80d929a0
+--------
+user
+あなたは敵対役です。穴を探してください。合格を出さないでください。特に、AC の抜け、停止条件の抜け、検証できない箇所、T3 Code との相性の主張の根拠不足、30 分ループ（Plans.md 6 章）が暴走または空回りする条件、施工役（DeepSeek 1017）に任せると壊れやすいタスクを探してください。
+
+# 計画の判定依頼（読み取り専用。ファイルを変更しない。コードを書かない）
+
+対象: /Users/tachibanashuuta/LocalWork/Code/seamless の specs/2026-10-universal-wiring/{spec.md, Plans.md, tasks.md, evidence.md}。
+根拠資料: 同フォルダの drafts/research-v3-beyond-reason.md と drafts/consolidated-plan-v3-beyond-reason.md。ルートの spec.md（製品の不変条件 1〜8）。
+版: git main 87a4162 + 未コミットの上記ファイル（2026-10-19）。
+
+## 判定の線（この番号に結び付けて指摘する）
+- AC1〜AC16（spec.md）、停止条件 S1〜S7、Human gates H1〜H7、Open decisions 1〜3（Plans.md 7 章）。
+- FAIL は「どの AC / S / H が、どう判定不能か、または抜けているか」を番号で書く。番号に結び付かない指摘は「その他」に分ける。
+- 合格は出さない（敵対）。図面検査は「食い違い」だけを返し、行間を読まない。
+
+## 確かめること（Yes / No で答える）
+1. すべての AC に、Plans.md 8 章の検証コマンドと tasks.md のタスクが対応しているか。対応の無い AC を番号で挙げる。
+2. tasks.md の各 Done when は Yes / No で判定できるか。「いい感じ」「ちゃんと」に当たる表現を挙げる。
+3. 停止条件 S1〜S7 は、どの AC が落ちたときに発動するか明確か。
+4. Human gates のうち「決定済み」としたものは、本人の指示（2026-10-19: オンライン機能なし、opencode / Cursor CLI / Antigravity CLI を v1 に、Codex Desktop IPC 継続、Reason は同じ OS ユーザー、Issue + 30 分ループ、施工は DeepSeek 1017）と食い違っていないか。
+5. 製品の不変条件（ルート spec.md 1〜8）を Plans.md が定義し直していないか。
+6. spec.md にスタック、ライブラリ、ファイルパスが混ざっていないか（spec.md は「何を、なぜ」だけ）。
+7. T3 Code との相性（spec AC14〜AC16、Plans 4 章）に、実機の事実（evidence.md）と矛盾する主張が無いか。
+
+## 返し方
+- 先頭に判定（図面検査: PASS / FAIL / 判定不能。敵対: 指摘の件数と重大度）。
+- 指摘は「番号 / 何が / どう直すか（1 行）」。日本語、2,500 字以内。
+- 判定の後に、確かめること 1〜7 の Yes / No を並べる。
+2026-10-19T10:06:04.343690Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when AuthRequired(AuthRequiredError { www_authenticate_header: "Bearer resource_metadata=\"https://mcp.firecrawl.dev/.well-known/oauth-protected-resource/v2/mcp-oauth\", error=\"invalid_token\", error_description=\"Firecrawl credentials required: OAuth access token (Authorization: Bearer fco_...) or API key (x-firecrawl-api-key)\"" })
+codex
+指定された図面と根拠資料を読み、AC、停止条件、検証手順の食い違いを確認します。`team-review` の手順も確認し、読み取り専用で敵対レビューを行います。
+
+exec
+/bin/zsh -lc pwd in /Users/tachibanashuuta/LocalWork/Code/seamless
+ succeeded in 46ms:
+/Users/tachibanashuuta/LocalWork/Code/seamless
+
+exec
+/bin/zsh -lc 'cat /Users/tachibanashuuta/.agents/skills/team-review/SKILL.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc "rg --files -g 'AGENTS.md' -g 'CLAUDE.md' -g 'spec.md' -g 'Plans.md' -g 'tasks.md' -g 'evidence.md' -g 'research-v3-beyond-reason.md' -g 'consolidated-plan-v3-beyond-reason.md' -g 'decisions.md' -g 'patterns.md'" in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'git status --short' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'git rev-parse --short HEAD' in /Users/tachibanashuuta/LocalWork/Code/seamless
+ succeeded in 113ms:
+---
+name: team-review
+description: 作ったもの（コード、設計、計画、文章）を、立花さんが聞き取り画面で決めたレビューのチームで判定するときに使う。大きさ（S、M、L）を決め、リーダーを切り替え、作った家系と逆の判定役と、敵対、図面検査を呼び、PASS、FAIL、判定不能を受け取る。cli-review の後継。実装そのものや、判定役を自分で兼ねることには使わない。
+---
+
+# team-review
+
+2026-10-15 本人指示: 承認と停止条件は `~/LocalWork/Code/CJ-Plugin/contract/references/autonomy-policy.md` を優先する。整備済みCI/CDと本人の許可範囲が揃うcommit、merge、deploy、明確な事前承認内の外部送信、承認された設定編集は、毎回の本人操作を待たない。下の「最後は本人」「push禁止」等の一般則は、この条件付き継続許可を妨げない。未整備の反映と範囲外の操作は止める。製品の拒否は迂回しない。
+
+
+リーダー（いま話している AI）が、立花さんの決めたチームにレビューを頼み、判定を書き換えずに持ち帰る。
+顔ぶれと原則はこのファイルに写さない。毎回、保存内容を読む。細かい分岐は決めていない。状況を見て判断する。
+
+## 1. 読む
+
+`~/.config/cli-routing/intent.json` を読む。
+
+- `shared_principles`: どのカテゴリにも守らせる原則
+- `categories[name=レビュー]`: `principles`（このカテゴリの原則）と、仕事「レビュー」の `memo` と `teams`
+- `teams[size=M|L].members`: 応援。`required: true` は毎回呼ぶ。ほかは候補で、同じ役なら上から使えるものを1つ
+- `when_unavailable`: 使えない応援がいるときの扱い（別の AI で代える、飛ばす、止める）。本人の承認や了承を待っているだけの応援は「使えない」に含めない。黙って代えず、着手前の確認で聞く
+
+## 2. 大きさを決めて、リーダーを切り替える
+
+- S: 応援を呼ばない。テストなど機械の確認だけで終える
+- M: 間違えると「できました」が嘘になる。判定役は検証の結果と差分を読む
+- L: 嘘の完成が本番、お金、公開に触れる。判定役は evidence.md と差分を読む。セキュリティの最終確認を足す。使うモデルと深さは固定しない。聞き取り画面（`intent.json` のレビュー L の `teams`）に保存した値に従う（2026-09-23、Fable 5.1 から置き換え）
+
+立花さんと決めた大きさ、なければ自分の判断で決める。Claude Code なら `route-shift set --size M`（または L）を実行し、出た1行を会話に書く。切り替えられない CLI なら、切替を1行で立花さんに頼んで続ける。Claude デスクトップアプリの会話では route-shift の自動の引き上げが効かず、アプリの道具も自分の会話の推論量とモデルは変えない（2026-09-30 実測）。足りないときは、上げる先（例: 推論量 medium → high）を1行で書き、立花さんにモデルのメニューで選んでもらう。自分が始めた応援の会話は、アプリの道具（ccd_session_mgmt の set_session_effort と set_session_model）で上げ、何から何へ変えたかを1行で書く。
+
+## 3. 呼べるか確かめる
+
+応援ごとに `route-cli --check <backend>:<model>` を実行する。backend は、画面なしで呼ぶ Claude Code（`claude-headless -p`）が `cc_headless`、会話の中のサブエージェントが `cc_max`（会話の契約）、Codex が `codex`、Cursor の API 枠が `cursor`、Auto 枠が `cursor_auto`、GLM が `glm`、Grok Build CLI が `grok_build`、OpenCode の Ollama Cloud が `opencode_ollama`（例: `opencode_ollama:deepseek-v4.1-flash:1017`）を使う。Ori DeepSeek（`claude_deepseek`）と OpenRouter（`openrouter`）は 2026-10-19 に退役した。答えが `available` 以外なら理由を見て、代える、飛ばす、待つを判断する。監視のない道具（Ask Pro、Grok Bot）は未確認のまま、呼んでみて判断する。従量課金の道具も、上限に対する使用率で判定できるものは、ほかと同じ扱いで呼ぶ。
+
+## 4. 呼ぶ
+
+判定役は、作った家系と逆の側を1つだけ呼ぶ（Claude や Grok が作ったものは Codex Astra、Codex 系が作ったものは Claude）。敵対（穴探し）は判定役が判定のあとに兼ね、別の敵対がいなかったことを記録する。敵対は合格を出さない。敵対（穴探し）を Ask Pro に並列で頼んでいるときは、Astra（xhigh など）の敵対を重ねない。同じ穴探しを2つの旗艦に払う意味がないため（2026-10-04 立花さん判断。判定役は従来どおり）。Ask Pro は画像生成のときだけ使い、判定にも敵対にも使わない（2026-10-01 立花さん判断）。判定役は読み取り専用の呼び方で呼ぶ。
+
+M と L では、team-board に従って進行画面を出す。判定役、敵対、図面検査を1工程ずつ立て、返事が来たら `route-live lane <id> done --verdict <PASS|FAIL|判定不能>` を付ける。
+
+| 応援 | 呼び方（読み取り） |
+|---|---|
+| Claude Code のモデル指定 | `claude-headless -p --model <model> --effort <effort> --permission-mode plan --tools Read,Glob,Grep --strict-mcp-config` を対象のフォルダで。`--strict-mcp-config` がないと、Haiku 4.5 は MCP の説明だけで「Prompt is too long」になる。差分はファイルに書いて `--add-dir` で読ませる。依頼文は標準入力（`< 依頼文のファイル`）で渡す。`--add-dir` は後ろの引数もフォルダとして読むので、後ろに置いた依頼文は届かない（2026-09-27、「Input must be provided」で止まった）。サブエージェントも `model` を明示すればそのモデルで動く（2026-09-29 実測。未指定だと general-purpose は `CLAUDE_CODE_SUBAGENT_MODEL`、Explore は本体のモデル）。別のプロセスで読ませたいときはこちら。`claude-headless` は、画面なしの呼び出しを会話と別の契約（いつもは claude-2。2026-10-04 から、その契約が上限なら空いている別の契約へ自動で回す）で動かす入口（routecli の spec.md）。会話の中から `claude -p` を直接使うと、会話の契約の枠を使う（画面なしの Claude の中から呼ぶ `claude -p` は、その契約を引き継ぐ）。入口は本人の読み取り禁止、サンドボックス、道具の前の hook を写してから起動する |
+| Ask Pro | 画像生成のときだけ（2026-10-01 立花さん判断）。`/ask-pro`。GitHub にある版を読ませる。返事まで10〜15分。内部ブラウザを持たないリーダー（Grok Bot、CLI の Codex と Claude Code）は呼ばず、逆の家系の1つで代える |
+| Codex | `codex-headless exec -s read-only -m <model> "<依頼>" </dev/null`。`-s read-only` が書き込みを止める。`</dev/null` が無いと、画面なしでは標準入力を待って止まる（2026-10-04、Grok Bot の確認）。`codex-headless` は、いつもの Codex のログインが上限なら空いている別の契約で `codex` を動かす入口（2026-10-04。routecli の spec.md）。移した契約では本人の `AGENTS.md` だけが届き、`config.toml` の MCP は届かない。`-m gpt-6.1-sol-ultrafast` で Ultrafast（速い段。chatgpt-1 だけ。同じ仕事で枠を8倍使う。読む量が少なく待ち時間が効く仕事だけ。入口が `-m gpt-6.1-sol -c service_tier=ultrafast` に直す） |
+| Grok Build CLI | `grok -p '<依頼>' --model grok-4.7 --reasoning-effort <low|medium|high|xhigh> --permission-mode plan`。速さ優先なら `grok-4.7-build-fast`（2倍の価格） |
+| Cursor | `cursor-agent -p --model <model> --mode ask --workspace <対象>` |
+
+### 施工役（書く）の呼び方
+
+判定役ではなく、実装を書かせる施工役（team-build から呼ばれる）はこちら。
+
+| 応援 | 呼び方（書く） |
+|---|---|
+| Claude Code | `claude-headless -p --model <m> --effort <e> --permission-mode acceptEdits --allowedTools "Bash(<試験のコマンド>:*)" --strict-mcp-config`。`--allowedTools` がないと、シェルのコマンドは承認待ちで止まったままになり、それでも CLI の終了コードは0のまま |
+| Codex | `codex-headless exec --approve-for-me -m <m> "<依頼>" </dev/null`。`-s` とは併用できない。外部への通信はサンドボックスが塞ぐ。ただし Codex 自身の自動承認（guardian）が、サンドボックスの格上げ（作業フォルダの外への書き込みなど）を通すことがある（2026-09-25 の比較で、依頼文の禁止を越えて /tmp にログを書いた）。外に書かせたくない仕事では、依頼文で禁じたうえで、差分と Codex の記録で確かめる |
+| OpenCode | `opencode run --model ollama-cloud/deepseek-v4.1-flash:1017 --agent build --auto "<依頼>"`。対象のフォルダへ `cd` してから呼ぶ。`--auto` は明示的に拒否されていない権限を自動承認する。`opencode run` はスラッシュコマンドを展開しない（2026-10-19 実測）。完了は出力の自己申告ではなく、対象の試験の終了コードで確かめる。読むだけの判定には `--agent plan` を使う |
+
+AI の CLI の終了コードは、仕事の成否ではない。完了は5節のとおり、試験のコマンドそのものの終了コードで確かめる。
+
+依頼文は「今回の仕事の契約」にする。目的、対象の版と完成条件、承認済みの操作、人を待つ操作、終わり方（完成したら止める。版、試験の実結果、判定、残件を返す。途中の報告だけで終えない）、判定の線の6つを書く。判定の線は、レビューの `principles` にある決まり（FAIL を「確かめること」の番号に結び付ける）を、そのまま依頼文に写す。「確かめること」は Yes か No で答えられる粒度の番号で並べ、広い項目は照らす節を指定する。子には元の承認範囲を渡す。リーダーの要約だけを渡さない。ほかの応援の結論は渡さない。
+
+Haiku 4.5 の図面検査は速いが浅い（試運転では3手で PASS）。食い違いを見落としたと感じたら、候補の別のモデルに重ねて頼んでよい。
+
+## 5. 持ち帰る
+
+- 判定を書き換えない。リーダーが自分で直して PASS にしない。番号と証拠のそろった FAIL は作った側へ差し戻す
+- 判定不能を PASS にしない
+- PASS が出たら、その依頼のレビュー工程は閉じる。残件は人の出口（ship、wait、reject）へそのまま渡し、残件を理由に同じ工程を開き直さない。残件を直すかは立花さんが決める
+- FAIL の再審に渡すのは、前回の判定文、前回判定した版からの差分、直した版での試験の実結果の3つ。差分全体は渡し直さない。再審で出た新しい指摘は、番号と証拠を示せるときだけ FAIL、示せなければ残件
+- 番号か証拠のどちらかが欠けた FAIL は、一度だけ聞き直す。それでも欠けるとき、同じ証拠の解釈で割れたままのときは、判定を書き換えずに立花さんへ渡し（wait）、往復をそこで止める
+- 出口は3段: 機械（テスト、verify.sh）→ 判定役 → 立花さんが ship、wait、reject
+- 完了を言うときは、まず `route-job --project <P> verify <job> -- <試験コマンド>` を実行する（`--project` はサブコマンドの前）。AI の CLI 自体の終了コードではなく、試験コマンド本体の実際の終了コード、試験の前後のワークツリーと `git rev-parse HEAD` のフルSHAを記録に残す。次に `route-job --project <P> record <job> --leader <L> --result-file <F> --verification-file <F> --next-file <F> --commit <SHA> --judge-verdict PASS|FAIL|UNKNOWN --judge-commit <SHA>` を実行する（`--test-exit-code` は省略でき、直前の verify の記録から補う）。`--commit` と同じフルSHAへの verify の記録があり、試験が終わっていて、終了コード0、試験の前後でワークツリーが綺麗で版が同じ、（`--test-exit-code` を渡したときはその値も記録と一致）、判定が `PASS`、試験した版と判定した版のSHAが一致して初めて `tested_and_judged`（検証済み）になる。記録の後に同じ版で試験をやり直し、1つでも失敗か途中があれば取り消される。後で成功しても戻らないので、`record` をやり直す。verify を走らせずに数字だけ渡しても検証済みにはならない（理由「試験の実行記録がない」）。足りない記録は `self_reported`（自己申告のみ）、崩れがあれば `not_verified`（理由つき）のまま
+- 報告には、呼んだ相手とモデル、使えなかった相手と理由、代わった相手、判定を書く。利用可能なら `route-job` にも残す
+
+終わり方は4つで書く: 完了、失敗、途中（続きがある）、取り消し。応援を諦めても、仕事そのものは止めない。
+
+ succeeded in 129ms:
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+87a4162
+
+ succeeded in 132ms:
+spec.md
+Plans.md
+specs/202610-status-ui/tasks.md
+specs/202610-status-ui/evidence.md
+specs/202610-status-ui/Plans.md
+specs/202610-status-ui/spec.md
+specs/202610-more-peers/evidence.md
+specs/2026-10-universal-wiring/spec.md
+specs/2026-10-universal-wiring/tasks.md
+specs/202610-more-peers/Plans.md
+specs/202610-more-peers/tasks.md
+specs/202610-more-peers/spec.md
+specs/202610-multi-vendor/spec.md
+specs/202610-multi-vendor/evidence.md
+specs/202610-everyday-use/spec.md
+specs/202610-everyday-use/tasks.md
+specs/202610-everyday-use/evidence.md
+specs/202610-everyday-use/Plans.md
+specs/2026-10-universal-wiring/drafts/consolidated-plan-v3-beyond-reason.md
+specs/2026-10-universal-wiring/drafts/research-v3-beyond-reason.md
+specs/2026-10-universal-wiring/evidence.md
+specs/2026-10-universal-wiring/Plans.md
+specs/202610-session-interop/history-pre-native-probe/spec.md
+specs/202610-session-interop/history-pre-native-probe/tasks.md
+specs/202610-session-interop/history-pre-native-probe/Plans.md
+specs/202610-session-discovery/spec.md
+specs/202610-session-discovery/tasks.md
+specs/202610-session-discovery/evidence.md
+specs/202610-session-discovery/Plans.md
+specs/202610-session-interop/evidence.md
+specs/202610-session-interop/Plans.md
+specs/202610-session-interop/tasks.md
+specs/202610-session-interop/spec.md
+specs/202610-session-interop/history-before-full-live/evidence.md
+specs/202610-session-interop/history-before-full-live/Plans.md
+
+ succeeded in 135ms:
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+?? 20261004T135907-e0beed2d/
+?? docs/reports/2026-10-19-seamless-beyond-reason.html
+?? docs/reports/2026-10-19-seamless-vs-reason-network.html
+?? docs/reports/2026-10-19-why-seamless-better-than-reason.html
+?? specs/2026-10-universal-wiring/
+
+exec
+/bin/zsh -lc 'wc -l spec.md specs/2026-10-universal-wiring/spec.md specs/2026-10-universal-wiring/Plans.md specs/2026-10-universal-wiring/tasks.md specs/2026-10-universal-wiring/evidence.md specs/2026-10-universal-wiring/drafts/research-v3-beyond-reason.md specs/2026-10-universal-wiring/drafts/consolidated-plan-v3-beyond-reason.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'for f in AGENTS.md CLAUDE.md specs/AGENTS.md specs/CLAUDE.md specs/2026-10-universal-wiring/AGENTS.md specs/2026-10-universal-wiring/CLAUDE.md .claude/memory/decisions.md .claude/memory/patterns.md; do if test -f "$f"; then printf '"'%s\\n' \""'$f"; cat "$f"; else printf '"'%s: absent\\n' \""'$f"; fi; done' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'nl -ba specs/2026-10-universal-wiring/spec.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'nl -ba spec.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'nl -ba specs/2026-10-universal-wiring/Plans.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+ succeeded in 100ms:
+AGENTS.md: absent
+CLAUDE.md: absent
+specs/AGENTS.md: absent
+specs/CLAUDE.md: absent
+specs/2026-10-universal-wiring/AGENTS.md: absent
+specs/2026-10-universal-wiring/CLAUDE.md: absent
+.claude/memory/decisions.md: absent
+.claude/memory/patterns.md: absent
+
+ succeeded in 101ms:
+     1	# claudex
+     2	
+     3	> 2026-10-04 に claudex から seamless へ改名した（独立リポジトリ）。本文の claudex、`~/.claudex`、実行したコマンドは記録当時の旧名のまま残す。
+     4	
+     5	Status: 実会話の相互読取り、両方向配送、busy、既存Desktop接続を実証済み。製品実装の計画は specs/202610-session-interop/Plans.md。
+     6	Updated: 2026-10-08 JST（不変条件 8 を改訂）
+     7	
+     8	Codex と Claude の会話同士で、一覧、本文の読み取り、依頼、返信、実行状態を共通操作で扱う。
+     9	共有SQLiteを中心にしない。agmsgをforkしない。
+    10	立花が会話を切り替えて文章を貼り直す手間をなくす。
+    11	
+    12	2026-10-09 現状: DotはMacからの通知に絞る方針連絡を受領し、以下のHTTP＋OAuth案は検討経緯に留める。本人の3点それぞれへの直接回答は未確認。本体の承認済み仕様はここでは変更せず、[非接続試作の追加検証](specs/202610-more-peers/dot-events-integration.md)を進める。
+    13	
+    14	2026-10-08 Dot の追加調査: [MCP Events の内包案](specs/202610-more-peers/dot-events-integration.md)。既存の不変条件と AC11a〜c を維持する。OAuth の認証済み接続を登録に結び付ける Q5 案は判断待ちで、Dot 会話 ID の保証や製品実装の完了を意味しない。
+    15	
+    16	## 製品の不変条件
+    17	
+    18	1. 宛先は製品、ホスト、会話、実行主体を区別して特定する。表示名だけで勝手に選ばない。
+    19	2. 既存の会話へ送るときは、その会話を持つ実行主体へ届ける。同じ履歴の別プロセスを起動して成功扱いにしない。
+    20	3. seamless は配線だけを持ち、判断を足さない。別会話から届いた文をどう扱うかは、受け取った AI が自分の権限の範囲で判断する。seamless は受信側の権限（sandbox、承認、権限の設定）を広げない。届いた文は本人の承認の代わりにならず、封筒に `humanApproval:true` を書くことはない。人の確認を促す印 `humanApproval:false` は、制限の設定の `markUnapproved:true` のときだけ付ける（既定は付けない。旧方式の `--registry` の経路は limits.json を読まないので付けない。2026-10-04 立花さん決定）。
+    21	4. 受理、配信確認、処理開始、返答完了を別に記録する。観測できない段階は未確認のまま示す。
+    22	5. 依頼と返信の対応を追える。返信を新しい依頼へ自動変換し続けない。
+    23	6. 送信の成否が不明なときに、自動で同じ依頼を再実行しない。
+    24	7. 接続できた範囲を示す。CLI の実証を Desktop の既存会話の実証へ読み替えない。
+    25	8. 対象は、同じ Mac で実観測できる会話（Claude、Codex、Grok CLI）と、本人が名簿に登録した外の実行主体（Grok Bot、ChatGPT Dot）とする。Mac 内の会話は名簿なしで自動で見つける。外の実行主体は名簿と鍵で確かめ、名乗りだけでは送り手にも宛先にもしない。読む、送るの制限は、本人が任意で置く設定で行う。既定の探す範囲は同じ作業場所とする。外の実行主体には作業場所が無いので、名簿の登録ごとに本人が範囲を決める（2026-10-08 改訂、承認 1 回目。詳細は specs/202610-more-peers/spec.md。旧 2026-10-03: 対象は同じ Mac で動いている Codex と Claude の会話。旧 2026-10-02: 本人が通信対象として登録した会話）。
+    26	
+    27	仕様案の詳細は機能仕様に置く。
+    28	
+    29	両方向の相手探索は同じ選択規則を使う（2026-10-03 から名簿は任意の制限の設定）。製品ごとに対象選択の優先順位を変えない。Gitのリポジトリとworktree、論理workspace、担当を区別する。詳細は specs/202610-session-discovery/spec.md。
+    30	
+    31	P1の最新状態: 66試験PASS、verify実終了0。最終66試験版のHaiku / Opus独立判定PASS。P1共通核完了。当時のP1単独起動はnative観測器未接続。追加承認後の接続は下記と製品検証を参照。
+    32	
+    33	2026-10-02 現在の実装工程: 本人が登録した既存会話のペアで、native観測、相互read、単一write経路と返信相関を製品へ接続中。初回のnative往復は成功したが、製品全体の検収は未完了。既存の不変条件を維持する。
+    34	
+    35	2026-10-02 製品接続の最新検収: [既存会話ペアの証拠](specs/202610-session-interop/product-evidence.md)。起動済みの双方の元会話でread/send/replyを観測。最終配送再判定と機械検証を実施中。過去の方式検証と、今回の製品実装の証拠を分けて記録する。
+    36	
+    37	最終更新: 既存ペアの5操作を実会話で検収完了。100試験PASS/実終了0、strict終了0、source hash前後一致。read APPROVE、配送Opus PASS（重大0/中0）、図面Haiku PASS。[製品検証](specs/202610-session-interop/product-evidence.md)が現行状態。常用MCP設定導入は未実施で今回範囲外。
+
+ succeeded in 101ms:
+     1	# universal-wiring: 今開いている AI へ、一言を届ける（何を、なぜ）
+     2	
+     3	状態: 2026-10-19 起草。立花さんの判断（オンライン機能を持たない、opencode / Cursor CLI / Antigravity CLI を v1 に入れる、Codex Desktop IPC を読取りに継続、Reason の比較導入は同じ OS ユーザー）を反映。承認 1 回目（spec.md）待ち。
+     4	根拠: `drafts/research-v3-beyond-reason.md`（事実 A〜C、出典つき）、`drafts/consolidated-plan-v3-beyond-reason.md`（採点と Reason との比較）。
+     5	ルートの `spec.md` の不変条件 1〜8 は変えない。本仕様はその下にある機能仕様。
+     6	
+     7	## 何を
+     8	
+     9	同じ Mac で開いている AI の会話（Claude Code、Codex、opencode、Cursor CLI、Antigravity CLI、Grok CLI）と、本人が名簿に登録した Grok Bot に、今の会話から一言を届け、届いたかを相手の記録で確かめ、返事を同じ場所に出す。公開 OSS（MIT）として第三者が導入できる形にする。
+    10	
+    11	## なぜ
+    12	
+    13	- 競合 Reason Network は「チームの網」を作る。seamless は、利用者がもう持っている各製品の公式経路を束ねる。勝つ軸は 4 つ。届いたの正確さ、持たないもの（常駐 0、本文の保存 0、ローカル往復の外部接続 0）、入口から初回往復までの速さ、自前の鍵と名簿を作らないこと。
+    14	- 類似製品（agmsg）は「人間が手で起動する」ために定着しなかった。走っている会話の中から 1 行で呼べることを守る。
+    15	- Codex の `codex queue` と Claude の socket は「書き込めた」までしか教えない。相手の記録を読んで「渡った」「処理中」「返事」を区別することが、seamless の価値。
+    16	
+    17	## 用語
+    18	
+    19	- 相手: 一覧に出る会話または実行主体。製品、会話 ID、世代、作業場所で特定する。
+    20	- 段階: 預かり（予約済み、未書込み または 相手の記録に未出現）、渡った（相手の記録に依頼 ID が出現）、処理中（依頼を含むターンが始まった記録）、返事（replyTo が依頼 ID と一致）、不明（書込み後に成否が分からない）。
+    21	- 保留中: 相手が hold（Claude の `crossSessionInbound` や bypass の組み合わせ）または手動 Steer 待ち（Codex の `/goal` 中）で、書込みは成功したが相手の記録に出現しない状態。「渡った」とは別に表示する。
+    22	- 公式経路: その製品の公開文書にある口。Claude の cross-session socket、Codex の `codex queue`、opencode の plugin、Cursor と Antigravity と Grok CLI の hooks、Grok Bot の webhook。
+    23	- 内部依存: 公開文書にない形式やファイル。Claude の `sessions/<pid>.json` と jsonl、Codex Desktop の IPC、Grok CLI の `active_sessions.json`。互換表で版ごとに確認する。
+    24	
+    25	## 持たないもの（製品の思想。2026-10-19 立花さん判断）
+    26	
+    27	- 常駐 hub、デーモン。起こす機能が要るときだけ本人が任意で `launchd` に置く。
+    28	- オンライン機能。別マシン、P2P、中継、郵便箱、SSH 遠隔。Grok Bot の webhook（HTTPS）だけが Mac の外へ出る。
+    29	- 自前の鍵、署名つき名簿、チーム。身元は OS ユーザー。
+    30	- 会話本文の保存。予約は hash、状態、時刻だけ。
+    31	- 独立した受信箱アプリ。返事は送り先の画面に出る。
+    32	
+    33	## 受け入れ条件（AC。Yes / No で判定。観測値つき）
+    34	
+    35	### 入口
+    36	- AC1: 初見の Mac で `npx @chachamaru/seamless setup` から宛先一覧が出るまで 10 秒以内。観測値: 3 回の秒数、質問数 0、変更した設定ファイル数（MCP 登録のみ）。
+    37	- AC2: 一覧に Claude Code、Codex、opencode、Cursor CLI、Antigravity CLI、Grok CLI、Grok Bot のうち、動いているものが 3 状態（すぐ渡せる / 次の区切りで渡す / 起こすと届く）のどれかで出る。観測値: 製品数、状態、誤表示 0。
+    38	- AC3: `seamless "…"` の 1 コマンドで既定の宛先に届き、返信 ID が依頼 ID と一致する。観測値: 依頼 ID、返信 ID、秒数、操作回数 3 以下。
+    39	
+    40	### 届いたの正確さ
+    41	- AC4: 相手が hold のとき（Claude の bypass 組み合わせ、`crossSessionInbound: hold`）、「渡った」と出ず「保留中」と出る。観測値: 表示、相手の記録に依頼 ID が無いこと。
+    42	- AC5: Codex の `/goal` 中に送ったとき、「渡った」と出ず「保留中（手動 Steer 待ち）」と出る。観測値: 表示、rollout に依頼 ID が無いこと。
+    43	- AC6: 送信直後に切断しても二重送信せず「不明」。照会で相手の記録から段階を判定できる。観測値: 書込み回数 1、最終状態。
+    44	- AC7: 「渡った」は相手の記録に依頼 ID が出現したときだけ。socket や queue の書込み成功だけで「渡った」と出した件数 0。観測値: 15 往復の記録。
+    45	
+    46	### 持たないもの
+    47	- AC8: ローカル 1 往復で、追加プロセス 0、本文の保存 0 バイト、外部ホスト接続 0。観測値: `ps`、`~/.seamless` の中身、`lsof -i`。
+    48	
+    49	### 対応製品
+    50	- AC9: 新製品（Cursor CLI、Antigravity CLI、Grok CLI）が manifest + hook 1 枚で追加でき、コアの差分 0。観測値: `git diff --stat`。
+    51	- AC10: opencode が plugin だけで追加でき、idle と busy で 1 往復が通る。観測値: 依頼 ID と返信 ID の一致。
+    52	- AC11: 対応表に製品、版、接続方式、状態、確認日があり、表にない版は「未確認」と出して止めない。観測値: `seamless who --json` の versionStatus。
+    53	
+    54	### 公開
+    55	- AC12: 公開物に内部 API の再現、アカウント情報、秘密が無い。観測値: 秘密スキャン 0 件、`npm pack --dry-run` の同梱物。
+    56	- AC13: Reason との 5 指標（最初の画面までの時間、初回往復時間、操作回数、復帰成功率、届いた表示の正確さ）の実測値がある。観測値: 表。同じ会話に両方を配線しない。
+    57	
+    58	### T3 Code との相性
+    59	- AC14: T3 Code の会話から seamless の MCP 道具（sessions / read / send / status）を呼び、同じ Mac の Claude Code、Codex、opencode へ送って返事を照合できる。観測値: 依頼 ID と返信 ID の一致。
+    60	- AC15: `seamless status --json` の出力だけから、T3 Code の `html_render` で 5 段階の進み具合を表示できる（本文を含まない）。観測値: 表示された段階と状態の一致。
+    61	- AC16: T3 Code の会話自身を宛先にできるかを、T3 の Claude（Agent SDK 経由）が inbox socket を持つかで判定し、持たなければ一覧に「T3: 受信不可（理由）」と出す。観測値: `/tmp/cc-socks-<uid>` の有無と一覧の表示。
+    62	
+    63	## 停止条件
+    64	
+    65	- S1: AC3 が週 1 の検証で通らない。→ 製品数を増やさず原因へ戻る。
+    66	- S2: AC4 または AC5 が通らない。→ 「渡った」の定義を「相手の記録で確認」だけに戻し、見分けられない製品は「不明」固定。
+    67	- S3: AC8 が通らない（常駐や本文保存が要る）。→ その機能を任意機能に分け、既定から外す。
+    68	- S4: Codex Desktop の IPC が現行版で通らない。→ Codex は CLI（rollout 読取り + queue）だけを正式対応にし、Desktop は未確認と表示。
+    69	- S5: Antigravity CLI の実行ファイルと hooks が週 1 で確認できない。→ Antigravity を phase 2 へ送る（2026-10-19 時点で `~/.gemini/antigravity-cli` の記録はあるが、実行ファイルが PATH に無い）。
+    70	- S6: 公開物に内部 API やアカウント情報が混ざる。→ 該当アダプタを外す。
+    71	- S7: 法務・規約の確認が公開予定日までに終わらない。→ 公開を延期。
+    72	
+    73	## Human gates
+    74	
+    75	- H1: 決定済み（2026-10-19）: v1 は Claude Code、Codex、opencode、Cursor CLI、Antigravity CLI、Grok CLI、Grok Bot（webhook まで）。
+    76	- H2: 決定済み（2026-10-19）: Codex Desktop の IPC を読取りに使い続ける。
+    77	- H3: 決定済み（2026-10-19）: Reason の比較導入は同じ OS ユーザー。backup 確認、順番に計測、終わったら leave → setup --remove。
+    78	- H4: 決定済み（2026-10-19）: オンライン機能を持たない。
+    79	- H5: 名前、npm スコープ（`@chachamaru/seamless`）、MIT、公開 β の時期。公開前に決める。
+    80	- H6: Grok Bot webhook、Cursor hooks、Antigravity hooks の利用規約の確認。公開前。
+    81	- H7: GitHub Issues と 30 分ごとの自動ループで実装を進めること（2026-10-19 立花さん指示）。ループは commit までで、push と公開は H5 の後。
+    82	
+    83	## 未決（AI が決めない）
+    84	
+    85	1. H5 名前と配布の時期。
+    86	2. H6 規約の確認。
+    87	3. Antigravity CLI の実行ファイルの場所（本人に確認）。
+
+ succeeded in 100ms:
+     1	# universal-wiring: どうやって作るか（Plans）
+     2	
+     3	状態: 2026-10-19 起草。承認 2 回目（Plans.md）待ち。spec.md の AC1〜AC16、停止条件 S1〜S7、Human gates H1〜H7 に対応する。
+     4	製品の不変条件（ルート spec.md 1〜8）は定義し直さない。
+     5	
+     6	## 1. 作りの方針
+     7	
+     8	1. **公式経路を先に、内部依存は互換表で囲う。** Claude は `~/.claude/sessions/<pid>.json` の `messagingSocketPath`、`kind`、`status`、`peerProtocol`（2026-10-19 に実機で確認。文書化された socket と env に対応する）を使う。Codex の書込みは `codex queue --thread`。読取りは rollout と Desktop IPC（H2）。
+     9	2. **「渡った」は相手の記録で。** 書込みの成功と、相手の記録への出現を分ける。出現しないまま一定時間が過ぎたら「保留中」。保留中の理由は製品ごとの観測（Claude: bypass / hold、Codex: `/goal` 中）で付ける。
+    10	3. **アダプタは manifest + 1 ファイル。** 発見、同一性、書込み、証拠、権限、install 手順を manifest に書き、コアは manifest を読むだけ。新製品の追加でコアの差分 0（AC9）。
+    11	4. **常駐なし。** 照会のたびに読む。予約は `~/.seamless/reservations/`。
+    12	5. **公開面を削る。** 旧 `--registry` 方式、Claude Desktop の band mod、status panel、Dot の実験は npm の同梱物から外す（内部と試験には残す）。
+    13	6. **検証は hermetic。** `scripts/verify.sh` を、Keychain と Claude CLI を要する部分と要しない部分に分け、CI は後者だけを走らせる。Nestra V2 の AC27（一時のホーム、外への通信なしで通る）と同じ条件。
+    14	
+    15	## 2. 構成
+    16	
+    17	```
+    18	src/
+    19	  core/        発見、予約、段階、照会、limits（製品を知らない）
+    20	  adapters/    claude.ts  codex.ts  opencode.ts  cursor.ts  antigravity.ts  grok-cli.ts  grok-bot.ts
+    21	  manifests/   <product>.json（発見、同一性、書込み、証拠、権限、install）
+    22	  cli.ts       seamless "…" / who / status / setup / doctor / limits / compat-md
+    23	  mcp.ts       sessions / read / send / status（4 道具）
+    24	packages/
+    25	  opencode-plugin/   opencode の plugin（公式 API）
+    26	hooks/
+    27	  cursor/ antigravity/ grok-cli/   hook 1 枚ずつ（turn 配送）
+    28	scripts/
+    29	  verify.sh（hermetic）  verify-live.sh（Keychain と実会話が要る）  measure.ts（AC7、AC13）
+    30	```
+    31	
+    32	## 3. 経路（製品ごと）
+    33	
+    34	| 製品 | 発見 | 書込み | 証拠（渡った / 処理中 / 返事） | 保留中の判定 | 段 |
+    35	|---|---|---|---|---|---|
+    36	| Claude Code | `~/.claude/sessions/*.json`（`messagingSocketPath`、`kind`、`status`、`cwd`、`name`） | socket に `{"type":"user",…}` | `~/.claude/projects/…/<sessionId>.jsonl` に依頼 ID / そのターン開始 / replyTo | 書込み成功後 N 秒で jsonl に未出現、かつ sessions の `status` が busy でない | push |
+    37	| Codex CLI / Desktop | rollout（`~/.codex/sessions`）、Desktop は IPC の owner 照会 | `codex queue --thread <id> --message`（標準入力は使えないので引数。本文は合言葉を含むので長さ上限を設ける） | rollout に依頼 ID / turn 開始 / replyTo | 書込み成功後 N 秒で未出現、かつ Desktop の `/goal` 中（IPC の状態）→「手動 Steer 待ち」 | push |
+    38	| opencode | plugin が書く `~/.seamless/peers/opencode-<session>.json` | plugin の `session.prompt`（公式） | plugin の応答と session event | plugin が busy を返した | push |
+    39	| Cursor CLI | hooks（sessionStart / stop / afterAgentResponse）が書く peers ファイル。`~/.cursor/chats/<ws>/<session>/meta.json` は補助 | 受信箱ファイル + stop hook で次ターンに注入 | hook receipt、次の発話 | idle なら人が起こすまで待つ、と表示 | turn |
+    40	| Antigravity CLI | hooks（S5: 実行ファイルと hooks の確認が先） | 受信箱 + hook | hook receipt | 同上 | turn |
+    41	| Grok CLI | `~/.grok/active_sessions.json`（内部）+ hooks | 受信箱 + Stop hook（現行） | hook receipt、次の発話 | 同上 | turn |
+    42	| Grok Bot | 名簿（本人登録） | webhook（HTTPS、署名）（現行） | 受理記録、返信 replyTo | スリープ中は「起こすと届く」 | push + reply |
+    43	
+    44	N は Open decision 1。
+    45	
+    46	## 4. T3 Code との相性（Nestra V2 への接続）
+    47	
+    48	Nestra V2（T3 Code 日本語版 + Nestra 層）は、routecli と seamless（botress を含む）を `packages/` に履歴ごと取り込む（Nestra spec O5、AC24）。その前提で、公開版 seamless が守ること。
+    49	
+    50	1. **Nestra 専用の部分を境界の外に置く。** 玄関口（gateway）は `~/.seamless/gateway.json` の有無で道が決まる任意アダプタ（Nestra の o3-gateway.md 2 章）。公開版のコアは gateway を知らず、manifest の仕組みで後から足せる。
+    51	2. **判断の受け皿に流せる形。** `seamless status --json` と、受信した依頼の記録（本文なし。ID、相手、段階、時刻、replyTo）を、Nestra の受け皿が読める決まった形で出す。Nestra は「外の入口の判断を受け皿に並べ、答えを seamless で返す」（Nestra spec 7 章）。
+    52	3. **T3 のスレッドから送れる。** T3 の会話は seamless の MCP（4 道具）を呼べる。送る側はこれで足りる（AC14）。
+    53	4. **T3 のスレッドを宛先にできるかは実機で判定する。** 2026-10-19 の実測: T3 が起動する `claude --output-format stream-json` のプロセス（pid 10142、88557）には `~/.claude/sessions/<pid>.json` も `/tmp/cc-socks/<pid>.sock` も無い。受信 socket を持つのは Claude Desktop の対話セッション（`kind: interactive`、`entrypoint: claude-desktop`）だけ。したがって v1 では T3 のスレッドは「受信不可（socket なし）」と一覧に出す（AC16）。T3 側のスレッドへ届けるのは、Nestra が自分の口（T3 の `t3_thread_send`）で行う。
+    54	5. **検証が hermetic。** Nestra の AC27 と同じ条件で seamless の試験が通る（1 節の 6）。
+    55	6. **html_render で見せられる。** `status --json` から 5 段階の進み具合を 1 枚の HTML に描く template を同梱する（AC15）。
+    56	
+    57	## 5. 順番と週
+    58	
+    59	| 週 | 作業（tasks.md の ID） | 完了条件 |
+    60	|---|---|---|
+    61	| 1 | T01 対応表、T02 Claude 保留中、T03 Codex queue、T04 段階と status、T15 計測 | 15 往復の記録。誤って「渡った」0（AC7）。AC4、AC5 |
+    62	| 2〜4 | T05 1 コマンド、T06 setup / doctor、T11 manifest 基盤、T12 hermetic CI | AC1、AC3、AC8、CI 緑 |
+    63	| 5〜6 | T07 opencode、T08 Cursor、T09 Antigravity（S5）、T10 Grok CLI、T17 T3 相性 | AC9、AC10、AC14〜AC16 |
+    64	| 7〜8 | T16 Reason 比較（H3）、T13 公開面の削減 | AC12、AC13 |
+    65	| 9〜10 | T14 README / LICENSE / SECURITY、T18 npm pack | AC12。H5、H6 の後に公開 |
+    66	| 11〜13 | 公開 β、issue 対応、互換表の月次追従 | 第三者の issue に 1 週間以内に応答 |
+    67	
+    68	## 6. 実装の回し方（H7）
+    69	
+    70	- tasks.md の各タスクを GitHub Issue にする（ラベル `loop:ready`、`loop:in-progress`、`loop:blocked`、`loop:human`）。
+    71	- 30 分に 1 回、T3 のスケジュールがこの会話を起こす。リーダーは `loop:ready` の最も番号が若い Issue を 1 件取り、`loop:in-progress` を付け、施工役 opencode（Ollama Cloud、`deepseek-v4.1-flash:1017`、`--agent build --auto`）に依頼する。依頼文には Issue の Done when、触ってよいファイル、禁止（`~/` の設定、Keychain、本物の送信）を書く。
+    72	- 施工の後、リーダーが `bash scripts/verify.sh` を走らせ、終了コード 0 なら作業ブランチ `loop/<issue>` に commit し、Issue に結果を書いて閉じる。非 0 なら Issue にログを貼り `loop:blocked`。人の判断が要る Issue は `loop:human` にして止める。
+    73	- push、PR、公開はしない（H5 の後）。main には直接 commit しない。
+    74	- 二重起動を避ける: `loop:in-progress` が 1 件でもあれば、その回は状態確認だけで終える。
+    75	
+    76	## 7. Open decisions（AI が決めない）
+    77	
+    78	1. 「保留中」と判定するまでの秒数 N。案: 20 秒（Claude のツール間隔より長く、人の体感で待てる）。
+    79	2. `codex queue --message` の本文の長さ上限。案: 4,000 文字。超える本文は要約せず拒否する。
+    80	3. ループの作業ブランチを 1 本（`loop/main`）にするか Issue ごとにするか。案: Issue ごと。
+    81	
+    82	## 8. 検証コマンド（AC との対応）
+    83	
+    84	| AC | コマンド / 手順 |
+    85	|---|---|
+    86	| AC1 | `time npx . setup --dry-run` を初見相当の一時ホーム（`HOME=$(mktemp -d)`）で 3 回 |
+    87	| AC2 | `node src/cli.ts who --json` を検査する試験 `tests/who.test.ts` |
+    88	| AC3 | `scripts/measure.ts roundtrip --target <id>`（依頼 ID と返信 ID の一致を出力） |
+    89	| AC4 | `scripts/measure.ts hold --target <claude bypass session>`（表示が `held`、jsonl に ID なし） |
+    90	| AC5 | `scripts/measure.ts hold --target <codex goal thread>` |
+    91	| AC6 | `tests/delivery-unknown.test.ts`（書込み後に切断、再呼出しで書込み回数 1） |
+    92	| AC7 | `scripts/measure.ts batch --n 15` の記録ファイル |
+    93	| AC8 | `scripts/measure.ts footprint`（`ps`、`~/.seamless` のサイズ、`lsof -i`） |
+    94	| AC9 | `git diff --stat main -- src/core src/cli.ts src/mcp.ts` が 0 行（アダプタ追加の commit で） |
+    95	| AC10 | `scripts/measure.ts roundtrip --target opencode-<id>` idle と busy |
+    96	| AC11 | `node src/cli.ts compat-md` と `who --json` の versionStatus |
+    97	| AC12 | `bash scripts/peer-secrets.sh`、`npm pack --dry-run`、`git grep -n "grok-bot-vm\|Bot ID"` |
+    98	| AC13 | `scripts/measure.ts compare` の表（Reason 導入後、順番に） |
+    99	| AC14 | T3 の会話から MCP `send` を呼び、`status` で replyTo 一致 |
+   100	| AC15 | `node src/cli.ts status --json <id> | node scripts/status-html.ts` の出力を html_preview で確認 |
+   101	| AC16 | `who --json` に socket の無い Claude プロセスが `unreachable: no_inbox_socket` で出る試験 |
+
+ succeeded in 106ms:
+      37 spec.md
+      87 specs/2026-10-universal-wiring/spec.md
+     101 specs/2026-10-universal-wiring/Plans.md
+      27 specs/2026-10-universal-wiring/tasks.md
+      25 specs/2026-10-universal-wiring/evidence.md
+     101 specs/2026-10-universal-wiring/drafts/research-v3-beyond-reason.md
+     186 specs/2026-10-universal-wiring/drafts/consolidated-plan-v3-beyond-reason.md
+     564 total
+
+exec
+/bin/zsh -lc 'nl -ba specs/2026-10-universal-wiring/drafts/consolidated-plan-v3-beyond-reason.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'nl -ba specs/2026-10-universal-wiring/tasks.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'nl -ba specs/2026-10-universal-wiring/drafts/research-v3-beyond-reason.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'nl -ba specs/2026-10-universal-wiring/evidence.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'cat /Users/tachibanashuuta/.config/cli-routing/intent.json' in /Users/tachibanashuuta/LocalWork/Code/seamless
+ succeeded in 113ms:
+     1	# universal-wiring: 終わった証拠
+     2	
+     3	状態: 2026-10-19 起草。空。各 AC の証拠は、検証コマンドの実出力と終了コード、日付、版を付けてここに足す。自己申告は書かない。
+     4	
+     5	## 計画の判定
+     6	
+     7	| 日付 | 対象 | 役 | モデル | 判定 | 記録 |
+     8	|---|---|---|---|---|---|
+     9	| 2026-10-19 | spec.md、Plans.md、tasks.md | 図面検査 | claude-haiku-5-5 | （未） | drafts/review-haiku-v3.md |
+    10	| 2026-10-19 | 同上 | 敵対 | gpt-6-astra（xhigh） | （未） | drafts/review-astra-v3.md |
+    11	
+    12	## AC の証拠
+    13	
+    14	| AC | 日付 | コマンド | 終了コード | 観測値 | 版 |
+    15	|---|---|---|---|---|---|
+    16	| （未） | | | | | |
+    17	
+    18	## 実機の事実（計画の根拠。2026-10-19）
+    19	
+    20	- Claude Desktop の対話セッション 11 件が `~/.claude/sessions/<pid>.json` に `messagingSocketPath: /tmp/cc-socks/<pid>.sock`、`kind: interactive`、`entrypoint: claude-desktop`、`peerProtocol: 1` を持つ。`lsof -U` で同じ socket が開いている。
+    21	- T3 Code が起動した `claude --output-format stream-json`（pid 10142、88557）には sessions JSON も socket も無い。
+    22	- `codex queue --help`（codex-cli 0.163.0）: `--thread <UUID|名前> --message <TEXT>`、`--remote`。
+    23	- `cursor-agent` 2026.10.17-1b98cdc。`~/.cursor/hooks.json` に sessionStart、stop、afterAgentResponse などの hooks。`~/.cursor/chats/<ws>/<session>/meta.json`。
+    24	- Antigravity CLI: `~/.gemini/antigravity-cli/`（conversations、log、2026-10-12 の記録）はあるが、実行ファイルが PATH と `~/.local/bin` に無い。
+    25	- opencode v2.0.32。`~/.config/opencode/opencode.json`。
+
+ succeeded in 113ms:
+     1	# 調査記録 v3: seamless を Reason Network より上にするための事実（2026-10-19）
+     2	
+     3	team-research（L）。リーダー: Claude（この会話は Fable 5.1。route-shift の記録上は claude-opus-5-5／high）。
+     4	応援: Codex gpt-6.1-sol（逆家系の一次資料調査。web 検索つき。chatgpt-2 契約で実行）、Grok 4.7（X 調査。required）。
+     5	問いと範囲は末尾。承認前の調査記録で、製品仕様の正本ではない。
+     6	
+     7	## 結論 3 行
+     8	
+     9	1. Reason を「同じ土俵で」超えることはできない。チーム名簿、10 製品、P2P 網は Reason の本体で、1 人では追えない。
+    10	2. 超えられる軸は 4 つある。届いたの正確さ、本文を持たない、常駐も名簿も中継もなし、ベンダー公式の網（Claude の cross-session、Codex の queue、Grok Bot の webhook）を**組み合わせる**配線。Reason は自前の網を作る。seamless はベンダーの網を束ねる。
+    11	3. 統合プラン v2 は 2 点を直す。Claude の主経路は Channels ではなく、公式になった cross-session messaging の socket。Codex の `codex queue` は「保存された」までしか返さないので、seamless の到達証拠が差別化になる。
+    12	
+    13	## 事実（出典つき。取得日はすべて 2026-10-19）
+    14	
+    15	### A. ベンダー公式の経路が増えた（統合プラン v2 の前提が古い）
+    16	
+    17	| # | 事実 | 出典 | 状態 |
+    18	|---|---|---|---|
+    19	| A1 | Claude Code は v2.1.224（2026-08）から公式の cross-session messaging を持つ。同じ Mac は per-session の Unix socket、別マシンとクラウドは Remote Control 経由（Anthropic サーバーを通る。claude.ai サインイン限定、API key 不可）。 | code.claude.com/docs/en/cross-session-messaging | 確認済み |
+    20	| A2 | socket の場所は `CLAUDE_CODE_MESSAGING_SOCKET` としてフックと Bash に公開される。文書に「スクリプトやフックからセッションへ投稿したいとき」の節がある。ディレクトリは `/tmp/cc-socks-<uid>`。トークン `CLAUDE_CODE_MESSAGING_TOKEN` は macOS では任意。 | 同上「The session's inbox socket」 | 確認済み |
+    21	| A3 | 配送は「ツール呼び出しの間」に読まれ、idle なら新しいターンが始まる。「Delivery is not guaranteed」と明記。受信側は `crossSessionInbound` の accept / hold / refuse。bypass モードの組み合わせで既定が hold になる。100 件保持、50 件キュー、同一文の連投は落とす。 | 同上 | 確認済み |
+    22	| A4 | Reason の Claude への push は、この同じ socket に `{"type":"user",…}` を書く方式。Channels と asyncRewake フックは fallback。 | reason-network DESIGN.md「getting messages into agents」 | 確認済み |
+    23	| A5 | seamless 現行の Claude アダプタも同じ socket と `~/.claude/sessions/<pid>.json` を使う。 | src/adapters/claude.ts | 確認済み |
+    24	| A6 | Codex CLI 0.163.0（手元）に `codex queue --thread <UUID|名前> --message <TEXT>` がある。`--remote ws://…` で遠隔の app-server にも送れる。 | `codex queue --help` 実行（2026-10-19） | 確認済み |
+    25	| A7 | `codex queue` は保存した時点で exit 0 を返し、消費されたかは分からない。返信を読む公式手段がなく、要望 issue が未回答で open。 | github.com/openai/codex/issues/54252（2026-10-15） | 確認済み |
+    26	| A8 | Codex Desktop で `/goal` 実行中は queue が消費されず、手動 Steer が要る。Desktop の app-server は private な子プロセスで外から `turn/steer` できない。 | github.com/openai/codex/issues/52705（2026-10-09、open、bug ラベル） | 確認済み |
+    27	| A9 | Codex app-server は JSON-RPC（stdio / WebSocket / Unix socket）。`thread/resume` + `turn/start`、`turn/steer`、`thread/items/list` がある。「experimental、本番非推奨」。自分が起動した server の thread にしか効かない。 | learn.chatgpt.com/docs/app-server | 確認済み |
+    28	| A10 | Claude Code Channels は research preview。カスタム channel は allowlist 外で、`--dangerously-load-development-channels` を**対話セッションでだけ**受け付ける（`-p` では無視）。通知に ACK はなく、busy 中は次ターンにまとめて届く。 | code.claude.com/docs/en/channels-reference | 確認済み |
+    29	
+    30	### B. Reason Network の構造（変えにくい点と、既に持つ点）
+    31	
+    32	| # | 事実 | 出典 | 状態 |
+    33	|---|---|---|---|
+    34	| B1 | 端末ごとに 1 デーモン、iroh（ed25519 鍵、LAN → ホールパンチ → n0 の公開中継）。中継は暗号文だけを見るが、既定で n0 に接続する。 | DESIGN.md、README | 確認済み |
+    35	| B2 | 名簿は全端末に複製。誰でも招待と除名ができる。除名された端末は「暗号的に無力にはならない。this is for friends」。 | DESIGN.md | 確認済み |
+    36	| B3 | ask_user の承認署名は「speed bump, not a guarantee」。 | DESIGN.md | 確認済み |
+    37	| B4 | 不在セッションの郵便は 1 日で破棄。フルメッシュは約 50 台まで。 | DESIGN.md | 確認済み |
+    38	| B5 | 受信側の ack は `stored | delivered | held | refused`。`send_message` は `delivered / queued / held`。「delivered」が「読んだ」を意味するかは未定義。issue #24「bypass の Claude が hold しているのに送り主に delivered と言う」は 2026-10-18 に閉じられ、DESIGN は `pushed` + 「held by Claude Code」の注記に変わった。 | DESIGN.md、issues #24 | 確認済み |
+    39	| B6 | SQLite に郵便箱と状態を保存する（本文を持つ）。 | DESIGN.md | 確認済み |
+    40	| B7 | エンジンは MIT OR Apache-2.0 で、`reason-network` CLI（init / join / who / send / listen / mcp / relay / doctor）も OSS。非公開なのは製品の `reason` CLI。**アカウントなしの team link モードがある。** 前回レポートの「CLI は非公開」「アカウント必須」は、この範囲で訂正が要る。 | README | 確認済み |
+    41	| B8 | 公開 issue は 7 件、すべて 1 日以内に閉じている（Windows、OpenCode 2.x plugin、非 ASCII 名、名簿の順序バグ、ask_user の証明）。open 0。452 stars / 36 forks / 132 commits。 | github issues 一覧 | 確認済み |
+    42	| B9 | 公式サイトの速さ「短い返事は 1.5〜2 秒。大半はモデルの思考」は `reason network serve` の warm agent の話で、既存会話への配送時間ではない。 | reasonmachines.com/network | 確認済み |
+    43	| B10 | Hacker News、Reddit に独立したレビューは見つからなかった（検索 1 回）。X は公式の発表投稿のみ検索で出た。 | WebSearch 2026-10-19 | 未確認（網羅していない） |
+    44	
+    45	### C. この分野で定着しなかった理由（類似製品の事例）
+    46	
+    47	| # | 事実 | 出典 | 状態 |
+    48	|---|---|---|---|
+    49	| C1 | agmsg（Claude↔Codex の会話ツール）は 3 週間で手打ち 9 回、メッセージ DB に会話 1 件、7 週間後にアンインストール。「人間が手で起動するツールは死に、走っている中から呼べるものが生きた」。 | zenn.dev/kaz_hira/articles/multi-agent-env-3weeks-measured（2026-10-03） | 確認済み |
+    50	| C2 | agmsg の運用で 3 分ごとに Codex を起動し、約 3 時間で約 60 会話、メモリ不足。空振り起動のコスト。 | github.com/fujibee/agmsg/issues/163（2026-06-19） | 確認済み（Codex 応援の報告。リーダー未再確認） |
+    51	| C3 | Codex の `/goal` 中は外部 queue が待ち続け、手動 Steer が要る。公式入口でも「受理 ≠ 読んだ」。 | A8 と同じ | 確認済み |
+    52	
+    53	## 応援の答え
+    54	
+    55	### Codex gpt-6.1-sol（逆家系、一次資料）
+    56	
+    57	採用:
+    58	- 「公式経路への移行は保守性に効くが、Reason も同じ公式経路を使うので速さの優位は断定できない」。根拠 A4、A6。
+    59	- 「Channels は ACK がなく黙って落ちるので、返信ツールでの相関が要る」。根拠 A10。
+    60	- 「`codex queue` は登録と消費が別。CLI 終了 0 を到達にできない」。根拠 A7、A8。
+    61	- 「A2A は既存 CLI 会話へ注入する口ではない。アダプタは残る」。根拠 a2a-protocol.org v1.0。
+    62	- 優先案 1（配送証拠を ID で照合）、2（今の画面から依頼と返信確認）、4（閲覧・送信・起動・承認の分離）。
+    63	- 「Reason の『CLI 非公開』は製品 CLI の話で、エンジンにも CLI がある」。B7 の訂正。
+    64	
+    65	見送り:
+    66	- 優先案 5「Reason との橋渡しで獲得」。需要未検証で、二重配送と権限変換の危険が大きい。v1 では「併用の注意」までに留める（前回レポートと同じ）。
+    67	
+    68	要確認:
+    69	- 「Reason の送り主ごとの hold と loop guard は 2〜5 人で弱点になりにくい」は妥当だが、本人の用途（1 人 + Bot）では評価軸が違う。
+    70	
+    71	### Grok 4.7（X 調査、required。到着 18:4x。X の投稿はリーダー未再確認）
+    72	
+    73	採用:
+    74	- 乗り換えの決め手は「画面操作とコピペをやめる」「同僚の枝（repo、branch）が見える」「公開エンジン」。しょうへい氏は Computer Use の遅さから乗り換え（x.com/showheyohtaki/status/2111209287460815092、2026-10-16）。焼山氏は「同じフォルダへ数秒で push、8 秒」（x.com/8kyama/status/2112065669722419260、2026-10-19。1 人の 1 計測）。
+    75	- 「受理をツール許可にするな」（hexablob 氏、x.com/hexablob/status/2111725409679355968、2026-10-18）。seamless の不変条件 3（届いた文は承認の代わりにならない）と一致。
+    76	- agmsg 作者は「公式モニターが 30 分で切れるため socket と queue を選んだ」（x.com/fujibee/status/2110875185763283324、2026-10-15）。Claude の socket と `codex queue` を主経路にする判断と一致。
+    77	- 案 4「1 日で消える郵便を真似しない。不在は未着として返す」、案 5「処理開始が無ければ成功と言わない」。v3 の軸 1 と H6 に一致。
+    78	- Claude Code 純正の cross-session でも「届かずに成功」の報告（anthropics/claude-code #25135、2026-02-12）。公式経路でも証拠が要る根拠。
+    79	- 「公式経路だけなら、より壊れにくく同等以上に速い」は 2026-10-19 の公開仕様では成り立たない（Codex 応援と同じ結論）。
+    80	
+    81	見送り:
+    82	- 案 2「2〜5 人向けに repo、branch、busy の名簿を既定 hold で足す」。名簿そのものを持たず、SSH の hosts 一覧で遠隔の `who` を呼ぶ形（計画 v3 の 3 節）で代える。理由: 自前の名簿は漏洩面になる（Grok 自身の危険の指摘）。
+    83	- 「Claude の socket は暫定」。公式文書が socket と env を「スクリプトから投稿する」用途で公開しているので（事実 A2）、暫定ではなく「文書化された挙動」として扱う。ただし安定 SDK ではない点は同じ。
+    84	
+    85	要確認:
+    86	- 大田原氏「Orca で足りる」（x.com/cursorvers/status/2112083831368847470）。Orca（本人も使う worktree 管理アプリ）との役割分担を README に 1 行書くか。
+    87	- Tincan 0.18 の電話承認（x.com/mvanhorn/status/2111665525768311227）は Reason への同梱が未確認。
+    88	
+    89	## 食い違い
+    90	
+    91	- Grok は「Claude の socket は暫定」、リーダーは「文書化された挙動」。根拠は A2 の公式文書。両者とも「安定 SDK ではない」では一致。
+    92	
+    93	- 前回レポート（2026-10-19 午前）は「Reason はアカウント必須、CLI 非公開」と書いた。README はアカウントなしモードと OSS の `reason-network` CLI を明記している（B7）。前回の採点「導入 5.0」「OSS 配布 4.0」は変えないが、「アカウント不要が seamless だけの売り」は成り立たない。
+    94	- 統合プラン v2 は「Claude の主経路は Channels」とした。A1〜A4、A10 から、主経路は cross-session の socket（公式文書あり、`-p` でも動く）で、Channels は外部イベント用の補助にする。
+    95	
+    96	## 問いと範囲
+    97	
+    98	1. Reason が持っていて seamless が持たない価値のうち、個人と 2〜5 人に効くものは何か。Reason の設計上変えにくい弱点は何か。
+    99	2. 公式の押し込み経路で、Reason より壊れにくく同等以上に速い配線が作れるか。
+   100	3. 乗り換え、併用の決め手は何か。
+   101	調べない範囲: 実装、侵入試験、法務の確定。harness-mem の検索は CLI の引数が合わず未実施（`harness-mem search` が「Unknown option」）。repo の `.claude/memory/` は存在しない。
+
+ succeeded in 113ms:
+     1	# universal-wiring: タスク（1 タスク 1 ターン。Done when は Yes / No）
+     2	
+     3	状態: 2026-10-19 起草。Plans.md の承認後に GitHub Issue へ写す（H7）。`[P]` は別ファイルなので並列可。
+     4	施工役: opencode（Ollama Cloud `deepseek-v4.1-flash:1017`）。実地検査と判定は team-review。
+     5	
+     6	| ID | 作るもの | 触るファイル | 依存 | Done when |
+     7	|---|---|---|---|---|
+     8	| T01 | 対応表を現行版へ更新。Claude 2.1.303、Codex CLI 0.163.0、Codex Desktop 現行、Grok CLI 現行を `checking` で追加 | `src/compat.ts`、`specs/202610-everyday-use/compat.md` | なし | `node src/cli.ts compat-md` の表に 4 行が `checking` で出て、`bash scripts/verify.sh` が 0 |
+     9	| T02 | Claude アダプタ: sessions JSON の `messagingSocketPath`、`kind`、`status`、`name` を使う。socket が無いプロセスは `unreachable: no_inbox_socket` | `src/adapters/claude.ts`、`tests/claude-adapter.test.ts` | T01 | 試験で、socket 欄の無い JSON が `unreachable` になり、ある JSON が `reachable` になる。verify 0 |
+    10	| T03 [P] | Codex 書込みを `codex queue --thread <id> --message` に切替（Desktop IPC の書込みは fallback に降格）。本文 4,000 文字超は `rejected: too_long` | `src/adapters/codex.ts`、`tests/codex-queue.test.ts` | T01 | 試験で `codex` 実行を偽物に差し替え、引数が `queue --thread <id> --message <本文>` になる。4,001 文字で `rejected`。verify 0 |
+    11	| T04 | 段階に `held`（保留中）を追加。書込み成功後 N 秒（limits の `heldAfterSec`、既定 20）で相手の記録に未出現なら `held` と理由（`claude_hold`、`codex_goal`、`unknown`） | `src/delivery.ts`、`src/status.ts`、`src/limits.ts`、`tests/held.test.ts` | T02、T03 | 試験で、記録に出現しない偽の相手に送ると `held` と理由が返る。`submitted` を `reached` と表示する経路が無い（grep で `reached` の生成箇所が jsonl 照合の 1 箇所だけ）。verify 0 |
+    12	| T05 [P] | `seamless "<一言>"` の 1 コマンド。既定の宛先は呼ぶ側と同じ作業場所で 1 件に絞れた相手。2 件以上なら候補を出して止まる | `src/cli.ts`、`tests/cli-oneword.test.ts` | T04 | 試験で、候補 1 件なら send が呼ばれ、2 件なら呼ばれず候補一覧が出る。verify 0 |
+    13	| T06 | `setup`（エージェント検出、MCP 登録、`--dry-run`、backup）と `doctor`（Node、各製品、socket、互換、Reason の配線の検出） | `src/setup.ts`、`src/doctor.ts`、`src/cli.ts`、`tests/setup.test.ts` | T04 | 一時ホームで `setup --dry-run` が 10 秒以内に一覧を出し、ファイルを変えない。`doctor --json` に `reason_network_hooks: true/false` が出る。verify 0 |
+    14	| T07 [P] | opencode plugin（公式 API）: session を peers ファイルに書き、`session.prompt` で注入、busy を返す | `packages/opencode-plugin/index.ts`、`src/adapters/opencode.ts`、`src/manifests/opencode.json`、`tests/opencode.test.ts` | T11 | 偽の plugin API で idle と busy の 2 試験が通る。コアの差分 0（`git diff --stat -- src/core src/cli.ts src/mcp.ts` が空）。verify 0 |
+    15	| T08 [P] | Cursor CLI アダプタ: hooks（sessionStart、stop、afterAgentResponse）が peers ファイルを書き、受信箱 + stop hook で次ターンに注入 | `hooks/cursor/seamless-hook.sh`、`src/adapters/cursor.ts`、`src/manifests/cursor.json`、`tests/cursor.test.ts` | T11 | 偽の hook 入力で peers ファイルができ、受信箱の 1 通が hook の出力に出る。コア差分 0。verify 0 |
+    16	| T09 | Antigravity CLI アダプタ。先に実行ファイルと hooks の有無を `doctor` で確認（S5）。無ければ manifest だけ置き `status: unverified` | `src/manifests/antigravity.json`、`src/adapters/antigravity.ts`、`tests/antigravity.test.ts` | T11 | `doctor --json` に `antigravity: {binary: <path|null>, hooks: <bool>}` が出る。binary null なら一覧に出ない。verify 0 |
+    17	| T10 [P] | Grok CLI を manifest + hook 1 枚に寄せ直す（現行の受信箱 + Stop hook を保つ） | `src/manifests/grok-cli.json`、`hooks/grok-cli/`、`src/adapters/grok.ts`、`src/grok-hook.ts` | T11 | 既存の Grok 試験が全部通り、コア差分 0。verify 0 |
+    18	| T11 | manifest 基盤: schema、loader、コアが manifest だけでアダプタを登録する仕組み。既存 3 製品を manifest に移す | `src/core/manifest.ts`、`src/manifests/{claude,codex,grok-bot}.json`、`tests/manifest.test.ts` | T04 | 壊れた manifest を拒否する試験と、3 製品が manifest 経由で一覧に出る試験が通る。verify 0 |
+    19	| T12 [P] | hermetic CI: `verify.sh` から Keychain と Claude plugin の検査を `verify-live.sh` へ分け、GitHub Actions（macOS）で `verify.sh` を走らせる | `scripts/verify.sh`、`scripts/verify-live.sh`、`.github/workflows/verify.yml` | なし | `HOME=$(mktemp -d) bash scripts/verify.sh` が外部通信なしで 0。Actions の yml が `act` か手動で通る |
+    20	| T13 | 公開面の削減: 旧 `--registry` 方式、band mod、status panel、Dot 実験を `npm pack` の同梱物から外す（`files` と `.npmignore`）。秘密スキャン | `package.json`、`.npmignore`、`scripts/peer-secrets.sh` | T12 | `npm pack --dry-run` の一覧に `mods/`、`experiments/`、`status-panel` が無い。`peer-secrets.sh` 0 件 |
+    21	| T14 | README EN / JA を `setup` / `seamless "…"` / `status` 中心に書き直す。MIT LICENSE、NOTICE、SECURITY.md、非公式の但し書き、Reason 併用の注意、Orca との役割の 1 行 | `README.md`、`README.ja.md`、`LICENSE`、`NOTICE`、`SECURITY.md` | T13 | 第三者が README だけで `setup` → 1 往復まで辿れる（別の頭で読んで手順の抜け 0）。LICENSE が MIT |
+    22	| T15 | 計測スクリプト: roundtrip / hold / batch / footprint。本文を記録に残さない | `scripts/measure.ts` | T04 | `--help` が 4 副コマンドを出し、`batch --n 2` が偽の相手で記録ファイルを作る。記録に本文が無い |
+    23	| T16 | Reason 比較（H3、人が実行）: 同じ OS ユーザーで導入、backup 確認、順番に 5 指標を計測、leave → setup --remove | `specs/2026-10-universal-wiring/evidence.md` | T15、H3 | evidence.md に 5 指標の表と、設定ファイルが元に戻った確認がある |
+    24	| T17 | T3 相性: `status --json` → HTML の template、T3 の会話から MCP で 1 往復（AC14）、socket の無い Claude プロセスの表示（AC16） | `scripts/status-html.ts`、`tests/t3.test.ts` | T02、T04 | template が 5 段階を描く。AC16 の試験が通る。AC14 は evidence.md に記録 |
+    25	| T18 | npm pack の最終確認と公開手順の文書（H5 の後に実行） | `docs/release.md` | T13、T14 | `npm pack --dry-run` の一覧が docs/release.md の予定と一致 |
+    26	
+    27	人の作業（ループに入れない。`loop:human`）: T16、AC14 の T3 からの実往復、H5、H6。
+
+ succeeded in 113ms:
+     1	# seamless v3 計画案: Reason を超える軸を決めて、そこで勝つ（承認前）
+     2	
+     3	作成: 2026-10-19。v2（consolidated-plan.md）に、調査記録 v3（research-v3-beyond-reason.md）の事実を当てて書き直した。
+     4	立場: 製品仕様の正本ではない。承認後に team-plan で spec.md、Plans.md、tasks.md へ分ける。
+     5	
+     6	## 0. 一言
+     7	
+     8	**Reason は自分の網を作る。seamless は、あなたがもう持っている網を束ねる。**
+     9	Claude Code の公式メッセージ socket、Codex の `codex queue`、opencode の plugin、Grok Bot の webhook。オンライン機能は製品として持たない（2026-10-19 立花さん判断）。
+    10	自前の名簿、鍵、中継、常駐、本文の保存を持たない。届いたかは、相手の記録を読んで言う。
+    11	
+    12	## 1. 「超える」の定義（ここだけで勝つ。総合点では並ばない）
+    13	
+    14	| 軸 | 指標 | seamless v3 の目標 | Reason の現状（出典は調査記録 v3） |
+    15	|---|---|---|---|
+    16	| 届いたの正確さ | hold、busy、`/goal` 中に「届いた」と誤表示した件数 | 0 件。依頼 ID が相手の記録に現れるまで「預かり」。 | 受信デーモンの ack（stored / delivered / held）。#24 で誤表示があり修正済み。「delivered」≠「読んだ」。 |
+    17	| 持たないもの | 追加プロセス数、本文の保存バイト数、ローカル往復で接続する外部ホスト数 | 0、0、0 | デーモン 1、SQLite に本文、既定で n0 中継。 |
+    18	| 入口から初回往復 | 導入開始から宛先一覧が出るまでの秒数、1 往復までの操作回数、質問数 | 10 秒、3 操作、0 問 | install + setup + ブラウザ login（または init team）+ エージェント再起動。 |
+    19	| 身元と失効 | 自前の鍵・名簿の有無 | OS ユーザーだけ。名簿は Grok Bot の本人登録のみ。 | 自前の署名つき名簿。除名は「暗号的に無力にはならない（for friends）」。 |
+    20	| 非コーディングの相手 | 一覧に並ぶ非コーディングの相手 | Grok Bot（webhook）。Dot は phase 2。 | Grok Bot、Muse は Reason MCP 経由（アカウント要否は未確認）。 |
+    21	
+    22	勝てない軸（追わない）: 対応製品数（Reason 10）、チームの名簿と他人のマシン、オフライン郵便箱、LAN/P2P、ask_user の遠隔承認。
+    23	
+    24	## 2. v2 からの訂正（調査記録 v3 の A、B）
+    25	
+    26	1. **Claude の主経路は Channels ではなく、公式の cross-session messaging socket。** 文書が `CLAUDE_CODE_MESSAGING_SOCKET` を「スクリプトやフックから投稿する」用途で公開した。`-p` の会話にも届く。Channels は research preview で、カスタム channel は対話セッション限定、ACK なし。外部イベント（CI、webhook）用の補助に回す。
+    27	2. **Codex の書込みは `codex queue --thread`（公式、CLI 0.163.0 で確認）。** ただし保存時点で exit 0 を返し、消費されたかは分からない。Desktop の `/goal` 中は消費されない（#52705）。だから seamless の到達証拠（相手の記録を読む）が差別化になる。Desktop の記録読取りは現行の IPC（内部）か rollout ファイルの受動読取り。公式の読取り口は要望 #54252 が open。
+    28	3. **「アカウント不要」「OSS」は seamless だけの売りではない。** Reason のエンジンは `reason-network` CLI を含めて OSS で、アカウントなしの team link モードがある。売りは「持たない」と「届いたの正確さ」に絞る。
+    29	4. **「デーモンなし」は看板にしてよい。** v2 は「端末ごとに常駐 hub」としたが、v3 では hub を持たない。状態の所有者は予約ファイル（`~/.seamless/reservations/`）と、各製品の記録そのもの。照会のたびに読む。常駐が要る機能（起こす、見張る）は本人が明示したときだけ `launchd` に置く任意機能にする。
+    30	
+    31	## 3. アーキテクチャ
+    32	
+    33	```
+    34	[あなた / 今開いている AI]
+    35	   │  seamless "一言"  または MCP 道具（sessions / read / send / status）
+    36	   ▼
+    37	[seamless CLI（常駐なし。呼ばれたときだけ動く）]
+    38	   ├ 探す: Claude は /tmp/cc-socks-<uid> と sessions/<pid>.json、Codex は rollout と IPC owner、Grok CLI は hooks の受信箱、Grok Bot は名簿
+    39	   ├ 送る: Claude socket（公式）/ codex queue（公式）/ Grok CLI 受信箱 / Grok Bot webhook（HTTPS）
+    40	   ├ 確かめる: 相手の記録を読み、依頼 ID → 到達、ターン開始 → 処理開始、replyTo → 返答
+    41	   └ 予約: ~/.seamless/reservations/<id>（hash、状態、時刻だけ。本文なし）
+    42	   │
+    43	   （遠隔なし。Grok Bot の webhook だけが Mac の外へ出る）
+    44	```
+    45	
+    46	- **transport と会話操作を分ける。** ローカルは socket とファイル。Grok Bot は HTTPS webhook。遠隔の transport は持たない。
+    47	- **身元は借りる。** OS ユーザーだけ。自前の鍵と名簿を作らない。
+    48	- **権限を 4 つに分ける（v2 の採用 7 を維持）。** 閲覧、送信、会話の起動、操作の承認。起動は v1 で持たない（既存会話へ送るだけ。不変条件 2）。承認は持たない（不変条件 3。`humanApproval:true` を書かない）。
+    49	- **A2A は phase 3。** 既存 CLI 会話へ注入する口ではない（Codex 応援の指摘）。外部クライアント向けの AgentCard 公開だけを試作する。
+    50	
+    51	## 4. 経路表（公式性と証拠。v1 の 3 + 1）
+    52	
+    53	| 相手 | 探す | 送る | 到達の証拠 | 公式性 | 残る内部依存 |
+    54	|---|---|---|---|---|---|
+    55	| Claude Code | `/tmp/cc-socks-<uid>`、`~/.claude/sessions/<pid>.json`、`/list-agents` 相当 | 公式 socket に `{"type":"user",…}` | `~/.claude/projects/…/<id>.jsonl` に依頼 ID | socket と env は文書化。hold / refuse は文書どおり | sessions/<pid>.json の形式、jsonl の形式 |
+    56	| Codex（CLI / Desktop） | rollout ファイル、IPC の owner 照会 | `codex queue --thread <id> --message`（公式） | rollout に依頼 ID、turn 開始、replyTo | queue は公式。読取り口は未提供（#54252） | Desktop IPC（読取りと busy 判定） |
+    57	| Grok Bot | 名簿（本人登録） | webhook（HTTPS、署名） | 受理記録、返信の replyTo | 利用者設定の webhook | 玄関口は使わない（v1） |
+    58	| opencode（4 つ目） | plugin API の session 一覧 | plugin の `session.prompt`（公式） | plugin の応答、session event | plugin は公式 | busy 中の割込みは未確認 |
+    59	| Grok CLI（5 つ目） | `~/.grok/active_sessions.json`（内部） | 受信箱 + Stop hook（hooks は公式） | hook receipt、次の発話 | hooks は公式 | active_sessions の形式 |
+    60	
+    61	## 5. ユーザー体験（v2 の 5 節を維持。変更点だけ）
+    62	
+    63	- 最初の画面は宛先の一覧と送信欄だけ。行ごとに 3 状態（すぐ渡せる / 次の区切りで渡す / 起こすと届く）。
+    64	- 状態の言葉は 5 つ（預かり / 渡った / 処理中 / 返事 / 不明）。「渡った」は相手の記録で依頼 ID を見てから。
+    65	- **新規: 「相手が hold している」を区別して出す。** Claude の bypass モードや `crossSessionInbound: hold` では、socket への書込みは成功しても相手には届かない。相手の記録に現れなければ「預かり（相手が承認待ち）」と出し、「渡った」と言わない。Reason の #24 と同じ穴を、設計で塞ぐ。
+    66	- **新規: Codex の `/goal` 中は「次の区切りで渡す」ではなく「相手が手動 Steer するまで待ち」と出す**（#52705）。
+    67	
+    68	## 6. v1 の範囲（90 日）
+    69	
+    70	入れる: Claude Code、Codex、opencode、Grok Bot の 4 + Grok CLI。opencode は手元に入っているので検証できる（2026-10-19 立花さん指示）。CLI 1 本、MCP 4 道具、`setup` / `doctor`、予約、4 段階、hold 検出、README EN/JA、MIT、CI（Keychain と Claude CLI を外した hermetic）。
+    71	出さない: 常駐 hub、チーム名簿、P2P、中継、郵便箱、遠隔（SSH を含む）、独立受信箱、Grok Bot 玄関口、Dot、Channels のカスタム channel、A2A。
+    72	phase 2（v1 公開後）: Dot（通知のみ）、Channels を外部イベント用に。オンライン機能は製品として持たない。
+    73	
+    74	## 7. 90 日（週）
+    75	
+    76	| 週 | やること | 完了条件（観測値） |
+    77	|---|---|---|
+    78	| 1 | **最难関の実測。** Claude（idle、busy、hold、bypass）、Codex（idle、busy、`/goal`）、Grok Bot（起きている、スリープ）で各 5 往復。誤表示 0 を確かめる。 | 15 往復の記録。依頼 ID と返信 ID の一致。誤って「渡った」と出した件数 0。 |
+    79	| 2〜4 | `setup` / `doctor`、1 コマンド、5 状態、hold 検出、予約の再確認、Claude 2.1.303 / Codex 0.163.0 / Desktop 現行の互換表更新。 | 初見の Mac で 10 秒以内に一覧。3 操作で 1 往復。質問 0。 |
+    80	| 5〜6 | opencode を plugin で、Grok CLI を manifest + hook 1 枚で追加。公開面の削減（旧 `--registry`、band mod、status panel を外へ）。 | コアの差分 0 で 4 製品目。`npm pack --dry-run` に内部資料とアカウント情報 0。 |
+    81	| 7〜8 | Reason との比較実測（H3 承認後）。同じ Mac、同じ題材、同じ 5 指標。両方を同じ会話に同時に配線しない。 | 5 指標の表。seamless が 1 節の 4 軸で目標値を満たす。 |
+    82	| 9〜10 | 公開準備。README、LICENSE、NOTICE、SECURITY、秘密スキャン、npm provenance。 | 第三者が説明どおりに動かし issue を出せる。 |
+    83	| 11〜13 | 公開 β、issue 対応、互換表の月次追従。 | 第三者の issue に 1 週間以内に応答できる体制。 |
+    84	
+    85	## 8. 確かめること（Yes / No、観測値つき）
+    86	
+    87	1. 初見の Mac で、宛先一覧が 10 秒以内に出る。観測値: 秒数 3 回、質問数 0、変更した設定ファイル数。
+    88	2. Claude、Codex、Grok Bot の 3 つが、3 状態のどれかで出る。観測値: 製品数、状態、誤表示 0。
+    89	3. `seamless "…"` の 1 コマンドで既定の宛先に届き、返信 ID が依頼 ID と一致する。観測値: ID、秒数、操作回数。
+    90	4. 相手が hold（Claude の bypass 組み合わせ、`crossSessionInbound: hold`）のとき、「渡った」と出ない。観測値: 表示された状態、相手の記録に依頼 ID が無いこと。
+    91	5. Codex の `/goal` 中に送ったとき、「渡った」と出ず、「手動 Steer 待ち」と出る。観測値: 表示、rollout に依頼 ID が無いこと。
+    92	6. 送信直後に切断しても二重送信せず「不明」。照会で相手の記録から判定できる。観測値: 書込み回数 1、最終状態。
+    93	7. ローカル 1 往復で、追加プロセス 0、本文の保存 0 バイト、外部ホスト接続 0。観測値: `ps`、`~/.seamless` の中身、`lsof -i`。
+    94	8. Grok CLI が manifest + hook 1 枚で追加できる。観測値: コアの差分 0。
+    95	9. 公開物に内部 API の再現、アカウント情報、秘密が無い。観測値: スキャン 0 件。
+    96	10. Reason との 5 指標の実測値がある。観測値: 表。
+    97	11. opencode が plugin だけで追加でき、idle と busy で 1 往復が通る。観測値: コアの差分 0、依頼 ID と返信 ID の一致。
+    98	
+    99	## 9. 停止条件
+   100	
+   101	- S1: 確かめること 3 が週 1 で通らない。→ 製品数を増やさず原因へ戻る。
+   102	- S2: 確かめること 4 または 5 が通らない（hold や `/goal` を見分けられない）。→ 「渡った」の定義を「相手の記録で確認」だけに戻し、見分けられない製品は「不明」固定にする。
+   103	- S3: 確かめること 7 が通らない（常駐や本文保存が要る）。→ その機能を任意機能へ分け、既定から外す。
+   104	- S4: Codex Desktop の IPC が現行版で通らない。→ Codex は CLI（rollout 読取り + queue）だけを正式対応にし、Desktop は未確認と表示。
+   105	- S5: 公開物に内部 API やアカウント情報が混ざる。→ 該当アダプタを外す。
+   106	- S6: 法務・規約の確認が公開予定日までに終わらない。→ 公開を延期。
+   107	
+   108	## 10. Human gates
+   109	
+   110	- H1: v1 の公開範囲を「3 + Grok CLI、Grok Bot は webhook まで」に決める。
+   111	- H2: Codex Desktop の IPC（内部）を読取りと busy 判定に使い続けてよいか。CLI 限定にするか。
+   112	- H3: 比較実測のために Reason Network をこの Mac（または別ユーザー）に入れてよいか。外部ソフトの導入と、同じ会話への二重配線の回避。
+   113	- H4: 決定済み（2026-10-19）: オンライン機能は製品として持たない。
+   114	- H5: 名前、npm スコープ（`@chachamaru/seamless`）、ライセンス（MIT）、公開 β の時期。
+   115	- H6: 「本文を保存しない」を遠隔でも不変条件として維持するか（郵便箱を持たない代わりに、相手の Mac が起きていないと送れない）。
+   116	
+   117	## 11. 採点の再計算（予測。公開資料と計画からの判断で、侵入試験ではない）
+   118	
+   119	### 11a. セキュリティとオンライン（13 項目、前回と同じ重み）
+   120	
+   121	| # | 懸念 | 重み | Reason | seamless 現行 | v3 予測 | v3 の根拠 |
+   122	|---|---|---:|---:|---:|---:|---|
+   123	| 1 | 送り主の特定 | 12 | 5 | 4 | 4 | OS ユーザーとプロセスの親子。 |
+   124	| 2 | 宛先の許可 | 12 | 5 | 4 | 4.5 | limits と、鍵ごとの scope。 |
+   125	| 3 | 盗聴・暗号化 | 12 | 5 | 2 | 4.5 | ローカルは socket（網に出ない）。webhook は HTTPS。 |
+   126	| 4 | なりすまし | 9 | 4.5 | 4 | 4 | プロセスの親子。 |
+   127	| 5 | 二重送信 | 9 | 4 | 5 | 5 | 予約と内容ハッシュ。 |
+   128	| 6 | プロンプト注入 | 9 | 4 | 4 | 4 | 同僚の依頼として渡す。防げない。 |
+   129	| 7 | フックのコード実行 | 7 | 3 | 2 | 3 | コミュニティ製フックを配らない。forced command。 |
+   130	| 8 | 会話本文の保存 | 7 | 2 | 5 | 5 | 変えない。 |
+   131	| 9 | 監査 | 6 | 3 | 3 | 3 | 予約の記録。改ざん耐性はない。 |
+   132	| 10 | ファイル衝突 | 4 | 3 | 3 | 3 | 見える化だけ。 |
+   133	| 11 | 退会・失効 | 4 | 4 | 2 | 3 | limits と Grok Bot 名簿の削除。 |
+   134	| 12 | オンライン対応 | 5 | 5 | 1 | 1 | 持たない（製品の思想）。 |
+   135	| 13 | オフライン可用性 | 4 | 4 | 2 | 1.5 | 郵便箱を持たない。相手が起きていなければ「不明」。 |
+   136	| | **合計** | **100** | **4.14** | **3.37** | **3.82** | |
+   137	
+   138	純セキュリティ（重み 91）: Reason 4.10、v3 4.08。オンラインだけ（重み 9）: Reason 4.56、v3 1.22。
+   139	読み方: オンラインを持たない分、総合は Reason が上（0.32 差）。純セキュリティはほぼ同点。seamless が上なのは二重送信、本文の保存、受信側の権限を広げないこと。
+   140	
+   141	### 11b. 製品としての 10 観点（前回と同じ重み）
+   142	
+   143	| 観点 | 重み | Reason | 前回の推奨形 | v3 予測 | 差（Reason − v3） |
+   144	|---|---:|---:|---:|---:|---:|
+   145	| 導入、設定の簡単さ | 14 | 5.0 | 4.0 | 4.5 | 0.07 |
+   146	| つながる相手の広さ | 12 | 5.0 | 3.5 | 4.0 | 0.12 |
+   147	| 届く速さ、確実さ | 14 | 5.0 | 4.0 | 4.5 | 0.07 |
+   148	| 相手の文脈と選びやすさ | 10 | 5.0 | 3.5 | 4.0 | 0.10 |
+   149	| チーム、複数マシン | 12 | 5.0 | 1.5 | 1.5 | 0.42 |
+   150	| 外部、非コーディング入口 | 10 | 4.0 | 4.5 | 5.0 | −0.10 |
+   151	| 届いた証拠、監査性 | 8 | 4.0 | 5.0 | 5.0 | −0.08 |
+   152	| 安全境界 | 7 | 4.0 | 4.5 | 4.5 | −0.04 |
+   153	| 壊れにくさ、保守 | 8 | 4.0 | 3.0 | 3.5 | 0.04 |
+   154	| OSS 配布、説明 | 5 | 4.0 | 4.0 | 4.0 | 0.00 |
+   155	| **合計** | **100** | **4.62** | **3.68** | **4.01** | **0.61** |
+   156	
+   157	0.61 の内訳: チーム 0.42 + 相手の広さ 0.12 = 0.54 は追わない（オンラインを持たない思想）。残り 0.07 は導入、速さ、文脈、壊れにくさで、週 1〜4 の実測で詰める。seamless が上回るのは外部入口、証拠、安全境界の 3 観点（合計 0.22）。
+   158	
+   159	## 12. 未決（AI が決めない）
+   160	
+   161	1. v1 の範囲（H1）。
+   162	2. Codex Desktop の内部 IPC を使い続けるか（H2）。
+   163	3. Reason を実測のために入れるか（H3）。
+   164	4. （決定済み）オンライン機能は持たない。
+   165	5. 名前と配布（H5）。
+   166	6. 本文を保存しない不変条件を遠隔でも維持するか（H6）。
+   167	
+   168	## 13. X で言われていること（Grok 4.7 の報告。リーダー未再確認）
+   169	
+   170	- 乗り換えの決め手は「画面操作とコピペをやめる」「同僚の repo と branch が見える」「公開エンジン」。seamless の v1 は 1 つ目を守り、2 つ目は同じ Mac の範囲で出し、3 つ目は MIT で満たす。
+   171	- 「受理をツール許可にするな」（hexablob 氏）。不変条件 3 を変えない根拠。
+   172	- 「Orca で足りる」という声。README で Orca（worktree の管理）と seamless（会話への配送）の役割を 1 行で分ける。
+   173	
+   174	## 14. この案の危険
+   175	
+   176	- **Claude の socket は「文書化された挙動」であり、安定 SDK ではない。** `sessions/<pid>.json` と jsonl の形式は内部。版ごとの互換表と `doctor` で軽くする。
+   177	- **Codex Desktop の読取りは内部 IPC のまま。** 公式の読取り口（#54252）が出るまで、Desktop は「未確認」表示を許容する設計にする。
+   178	- **Reason も同じ公式経路を使う。** 速さで勝つ根拠はない。勝つのは正確さと持たないこと。
+   179	- **チームを求める利用者には届かない。** それは Reason の仕事と書き、併用（同じ会話に二重配線しない）を README に書く。
+   180	
+   181	## 15. 2026-10-19 の本人判断（反映済み）
+   182	
+   183	1. オンライン機能は製品の思想として持たない。SSH 遠隔案は取り下げ。採点は 11 節を更新済み（13 項目 3.82、10 観点 4.01）。
+   184	2. opencode（手元 v2.0.32）を v1 に入れる。Reason の issue #12（OpenCode 2.x で setup の plugin が読み込めない。10-18 に閉鎖）があるので、plugin API の版差を週 1 の実測に含める。
+   185	3. Codex Desktop の内部 IPC は読取りに使い続ける。
+   186	4. Reason の比較導入は同じ OS ユーザーで行う。条件: setup が書き換える設定ファイルの backup を先に確認、同じ会話に両方をつながない、計測は順番、終わったら leave → setup --remove。
+
+ succeeded in 112ms:
+{
+  "schema_version": 2,
+  "shared_principles": "作る家系（Claude、Codex、Grok）と、判定する家系を分ける。応援のAIにはモデルを明示し、リーダーの高いモデルを引き継がせない。完了条件は箱（比較軸、閾値、参照先、停止条件）に分け、空の箱がある間は完了と言わない。箱は入口で書き出す。レビューでは依頼文の「確かめること」、計画では AC、停止条件、Human gates に書く。レビュー中の発見で箱を増やさず、残件として人の出口へ渡す。箱が増えるのは、本人が要確認を箱へ昇格させたときだけ。\n書類の決まり: 機能ごとに specs/<年月>-<名前>/ を作り、spec.md（何を、なぜ）、Plans.md（どうやって）、tasks.md（1ターンで終わる作業）、evidence.md（終わった証拠）を置く。ルートに大きな計画ファイルを作らない。製品全体の台帳は GOD_Plans.md だけ。優先順位は、ルートの spec.md ＞ 機能の spec.md ＞ 機能の Plans.md ＞ GOD_Plans.md と tasks.md。書く厚さは大きさで決める。S は何も書かない。M は plan mode だけで、霧が残ったら機能の spec.md へ上げる。L は4つとも必須。製品の不変条件が動くなら、大きさに関係なくルートの spec.md を先に直す。チャットは消えるので、変更は先にファイルへ書く。\n利用枠の使用率85％の基準は、推薦を止める線で、上限ではない。Haiku 4.5（図面検査）は、使用率98％になるまで呼んでよい（2026-09-21本人判断）。",
+  "categories": [
+    {
+      "name": "プラン",
+      "skill": true,
+      "skill_name": "team-plan",
+      "principles": "大きさSの仕事は、応援のAIを呼ばず、書類も作らず、リーダーが1人でやる。Fable 5.1を使わない。製品の感覚や使い心地の相談は、Grok 4.7（Grok Build CLI）に聞き、実例はMobbinで探して見せながら話す。このカテゴリではコードを書かない。図面検査に旗艦（Fable 5.1、Astra）を使わない。計画がFable 5.1なら敵対はAstra、逆も同じ。\nこのカテゴリの成果物は、機能の spec.md、Plans.md、tasks.md。spec.md にはスタック、ライブラリ、ファイルパスを書かない。Plans.md は製品の不変条件を定義し直さない。tasks.md は1タスクを1ターンに収め、Done when を Yes か No で判定できる1行にする（「いい感じ」「ちゃんと動く」は禁止）。完了条件の箱は、spec.md の AC（受け入れ条件）、Evidence of done、Stop conditions に書く。検証コマンドを決められないなら、止めて聞く。人の承認は入口で、L は2回（spec.md、その次に Plans.md）、M は計画そのものに1回。不可逆な作業の事前承認は Human gates（L は Plans.md、M は計画の中）で取る。承認の前に実装へ渡さない。未決の項目（Open decisions、Open questions）をAIが勝手に決めない。図面検査は、すべての AC に検証コマンドとタスクが対応しているかを確かめる。敵対は、AC の抜け、停止条件の抜け、検証できない箇所を探す。敵対と図面検査への依頼文には判定の線を書き、指摘は AC、停止条件、Human gates の番号に結び付ける。採用は「AC、停止条件、Human gates を変えるか」で分け、変えない採用は計画をもう一周させない。見送りは理由1行で閉じる。計画をもう一周するのは AC、停止条件、Human gates が変わったときだけで、変わった箱だけを見せる。\n敵対で Ask Pro を並列に走らせているときは、Astra（xhigh など）の敵対を重ねない（2026-10-04 立花さん判断。判定役とそれ以外は従来どおり）。",
+      "leaders": [
+        "claude_code",
+        "codex",
+        "grok_bot"
+      ],
+      "tasks": [
+        {
+          "task_id": "hard_system",
+          "label": "計画",
+          "description": "何を、なぜ、どうやって作るかを決める。大きさは相談して決まる。",
+          "memo": "M、L: 敵対は、リーダーと逆の家系の1つに毎回頼む（リーダーがClaudeならCodexのAstra、Codex系ならClaudeのOpus 5.5）。利用枠を使う旗艦を、同じ仕事に2つ載せない。（2026-10-01 立花さん判断: Ask Pro は画像生成のときだけ使う）",
+          "sized": true,
+          "size": "",
+          "teams": [
+            {
+              "size": "M",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "claude_code",
+                  "model": "claude-haiku-5-5",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "図面検査（合意した計画や書類と食い違う所を、行間を読まず差し戻す）",
+                  "required": true
+                },
+                {
+                  "cli": "codex",
+                  "model": "gpt-6-astra",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "敵対（穴を探す。合格を出さない）",
+                  "required": false
+                },
+                {
+                  "cli": "claude_code",
+                  "model": "claude-opus-5-5",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "敵対（穴を探す。合格を出さない）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "substitute"
+            },
+            {
+              "size": "L",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "claude_code",
+                  "model": "claude-haiku-5-5",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "図面検査（合意した計画や書類と食い違う所を、行間を読まず差し戻す）",
+                  "required": true
+                },
+                {
+                  "cli": "codex",
+                  "model": "gpt-6-astra",
+                  "effort": "xhigh",
+                  "account": "",
+                  "place": "",
+                  "role": "敵対（穴を探す。合格を出さない）",
+                  "required": false
+                },
+                {
+                  "cli": "claude_code",
+                  "model": "claude-opus-5-5",
+                  "effort": "xhigh",
+                  "account": "",
+                  "place": "",
+                  "role": "敵対（穴を探す。合格を出さない）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "substitute"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "実装",
+      "skill": true,
+      "skill_name": "team-build",
+      "principles": "大きさSの仕事は、応援のAIを呼ばず、書類も作らず、リーダーが1人でやる。Fable 5.1を使わない。何を作るかが決まっていないなら、プランに戻す。旗艦を手数に使わない。実装した側は「完了」と言わない。完成の判定はレビューに渡す。\n入口は、人が承認した Plans.md と tasks.md（L のとき）。なければプランへ戻す。tasks.md を1件ずつ進め、途中で人に聞かない。1タスクが1つの会話に収まらないなら分割する。最初のタスクは失敗するテストを書くこと。並列にしてよいのは tasks.md で [P] の付いた、別ファイルのタスクだけ。ずれたときの戻り先: 作り方が計画とずれただけなら Plans.mdへ戻る。要件が抜けていたら機能の spec.md へ戻る。不変条件が動くならルートの spec.md へ戻る。コードが先に変わったら、同じ変更の中で spec.md か Plans.md を直す。古い spec を残さない。止めて聞くのは、範囲の拡大、不可逆な操作、製品の判断、検証コマンドを決められないとき、Stop conditions に当たったとき。秘密のファイル、本番の設定、破壊、main への直接 push は、AIの注意ではなく hook、deny、CI で機械的に止める。完了は scripts/verify.sh の exit code。自己申告は完了にしない。最後に verify.sh を走らせて evidence.md を書き、GOD_Plans.md の Index だけを更新する。完了の印は証拠を見てから付ける。",
+      "leaders": [
+        "claude_code",
+        "codex"
+      ],
+      "tasks": [
+        {
+          "task_id": "repo_feature",
+          "label": "実装",
+          "description": "決まった計画のとおりに作る。再現してすぐ直せる不具合の修正も、ここで扱う。大きさは相談して決まる。",
+          "memo": "始めるCLIの目安（本人向け）: 型や境界を壊したくない仕事はClaude Code、それ以外はCodex。リーダーのモデルは、3番の欄の切替に従う。 施工は、作業を分けて並列に頼む。図面検査のGLMは、Claudeの枠が使えないときの控え。 L: 実地検査は、施工とは別の会話で、テストの出力と成果物だけを見る。呼ぶのは、施工と逆の家系の1つだけ。穴探しと完成の判定は、レビューのLへ渡す。 L の実地検査の Codex は gpt-6.1-sol-ultrafast（chatgpt-1 だけ）。ultrafast は同じ仕事で standard の8倍の枠を使う。85% の線は起動前の観測で見るだけで、実行中の消費を予約しない。判定役の Astra も同じ chatgpt-1 の枠なので、使うほど Astra が chatgpt-2 へ移る日が早まり、chatgpt-2 も使えなければ判定が止まる。 2026-10-09 本人判断: ultrafast は向いている仕事で使う設定。大量のコードを書く施工を Codex に頼むときも、リーダーの判断で gpt-6.1-sol-ultrafast を選んでよい（書く量が多く待ち時間が効く仕事。小さな出力の仕事では速くならない。probe n=2）。 2026-10-19 本人指示: 施工の第一候補は opencode_ollama（Ollama Cloud Pro、deepseek-v4.1-flash:1017）。呼び方は team-review の施工役の表（opencode run --model ollama-cloud/deepseek-v4.1-flash:1017 --agent build --auto）。",
+          "sized": true,
+          "size": "",
+          "teams": [
+            {
+              "size": "M",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "opencode_ollama",
+                  "model": "deepseek-v4.1-flash:1017",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "施工（決めた作業を1件ずつ。完了条件を満たすまで）",
+                  "required": false
+                },
+                {
+                  "cli": "codex_glm",
+                  "model": "glm-5.3",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "施工（決めた作業を1件ずつ。完了条件を満たすまで）",
+                  "required": false
+                },
+                {
+                  "cli": "claude_code",
+                  "model": "claude-haiku-5-5",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "図面検査（合意した計画や書類と食い違う所を、行間を読まず差し戻す）",
+                  "required": true
+                },
+                {
+                  "cli": "codex_glm",
+                  "model": "glm-5.3-flash",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "図面検査（合意した計画や書類と食い違う所を、行間を読まず差し戻す）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "substitute"
+            },
+            {
+              "size": "L",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "opencode_ollama",
+                  "model": "deepseek-v4.1-flash:1017",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "施工（決めた作業を1件ずつ。完了条件を満たすまで）",
+                  "required": false
+                },
+                {
+                  "cli": "codex_glm",
+                  "model": "glm-5.3",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "施工（決めた作業を1件ずつ。完了条件を満たすまで）",
+                  "required": false
+                },
+                {
+                  "cli": "claude_code",
+                  "model": "claude-haiku-5-5",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "図面検査（合意した計画や書類と食い違う所を、行間を読まず差し戻す）",
+                  "required": true
+                },
+                {
+                  "cli": "claude_code",
+                  "model": "claude-opus-5-5",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "実地検査（施工と別の頭でverify.shを走らせ、報告と突き合わせる）",
+                  "required": false
+                },
+                {
+                  "cli": "codex",
+                  "model": "gpt-6.1-sol-ultrafast",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "実地検査（施工と別の頭でverify.shを走らせ、報告と突き合わせる）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "substitute"
+            }
+          ]
+        },
+        {
+          "task_id": "bulk_code",
+          "label": "量の多い単純作業",
+          "description": "同じ形の書き換えをたくさん行う。回数で勝つ仕事。",
+          "memo": "安いモデルに数をこなさせる。",
+          "sized": false,
+          "size": "M",
+          "teams": [
+            {
+              "size": "",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "codex_glm",
+                  "model": "glm-5.3-flash",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "施工（決めた作業を1件ずつ。完了条件を満たすまで）",
+                  "required": false
+                },
+                {
+                  "cli": "opencode_ollama",
+                  "model": "deepseek-v4.1-flash:1017",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "施工（決めた作業を1件ずつ。完了条件を満たすまで）",
+                  "required": false
+                },
+                {
+                  "cli": "codex",
+                  "model": "gpt-6-luna",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "施工（決めた作業を1件ずつ。完了条件を満たすまで）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "substitute"
+            }
+          ]
+        },
+        {
+          "task_id": "",
+          "label": "競作（複数の案を同時に作らせて選ぶ）",
+          "description": "解き方がいくつもあり、探すのが先の仕事。",
+          "memo": "旗艦を8並列にしない。勝った案は、レビューのLへ渡す。",
+          "sized": false,
+          "size": "L",
+          "teams": [
+            {
+              "size": "",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "grok_build",
+                  "model": "grok-4.7",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "並列競技（最大8並列）",
+                  "required": true
+                }
+              ],
+              "when_unavailable": "substitute"
+            }
+          ]
+        },
+        {
+          "task_id": "computer_use",
+          "label": "画面を操作する仕事",
+          "description": "AIがブラウザやアプリの画面を自分で操作して進める作業。",
+          "memo": "プレイブックにない仕事。今のルーティング表をそのまま写している。",
+          "sized": false,
+          "size": "",
+          "teams": [
+            {
+              "size": "",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "codex",
+                  "model": "gpt-6-astra",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "担当（この仕事を任せる）",
+                  "required": true
+                },
+                {
+                  "cli": "claude_code",
+                  "model": "claude-opus-5-5",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "控え（上のAIが使えないとき）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "substitute"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "レビュー",
+      "skill": true,
+      "skill_name": "team-review",
+      "principles": "実装した家系には合格を出させない。判定役は直さず、番号と証拠のそろった FAIL を差し戻すだけ。FAIL は依頼文の「確かめること」の番号の不成立に結び付け、番号、起きる条件、証拠を書く。Risk Gates（秘密、本番、お金）に触れる壊れは、その Risk Gate の名前を番号として書いてよい。番号を書けない指摘と改善案は残件で、PASS と両立する。PASS でその依頼のレビュー工程は閉じ、残件は人の ship、wait、reject へ渡す。再審に渡すのは、前回の判定文、前回判定した版からの差分、直した版の試験の実結果。再審で出た新しい指摘は、番号と証拠を示せるときだけ FAIL、示せなければ残件。番号か証拠が欠けた FAIL は一度だけ聞き直し、それでも欠けるか解釈が割れたままなら本人へ渡す。結果はPASS、FAIL、判定不能の3つで、判定不能をPASSにしない。「テストした」だけで中身のないPASSを出さない。判定役が使えないときは、同じ家系の別の契約、それもだめなら第3の家系が代理で判定し、代理だったことを記録する。全部の契約を毎回並べない。判定役の候補が複数並んでいても、呼ぶのは作った家系と逆の側の1つだけ。 Claude、Grokが作ったものの判定はCodexのAstra、Codex系が作ったものの判定はClaude。Ask Proは判定にも敵対にも使わない（2026-10-01 立花さん判断: Ask Pro は画像生成のときだけ使う）。\n出口は3段に重ねる（M と L。S は1段目だけ）。(1) 機械: scripts/verify.sh が exit 0。 (2) 別の家系の判定役: Lは、evidence.md と差分だけを読み、AC ごとに証拠があるかを確かめて PASS、FAIL、判定不能を返す。Mは、verify.sh の結果と差分を読む（Mは plan mode だけで、evidence.md を作らない）。チャットの自己申告は根拠にしない。verify.sh が走っていない、Lで evidence.md がない、Lで AC に対応する証拠がないときは判定不能。 (3) 人: ship、wait、reject を決める。実地検査は、自分で verify.sh を走らせ、結果が evidence.md と一致するかを確かめる。図面検査は、差分が Plans.md の「触るパス」と tasks.md の範囲に収まっているかを確かめる。\n敵対で Ask Pro を並列に走らせているときは、Astra（xhigh など）の敵対を重ねない（2026-10-04 立花さん判断。判定役とそれ以外は従来どおり）。",
+      "leaders": [
+        "claude_code",
+        "codex",
+        "grok_bot"
+      ],
+      "tasks": [
+        {
+          "task_id": "",
+          "label": "レビュー",
+          "description": "作ったものを、作った家系と逆の家系が判定する。大きさは、作った仕事の大きさに合わせる。",
+          "memo": "判定役は、作った家系と逆の側を1つだけ呼ぶ。Claude、Grokが作ったものはCodexのAstra（Astraの枠が薄いときはGPT-5.6 Solを「最大限」の深さで）。Codex系（Codex、GLM、DeepSeek）が作ったものはClaude（Mは Opus 5、公開前でFable 5.1の週の枠が残っているときはFable 5.1）。敵対（穴探し）は、判定役に判定のあとで同じ返事の中で頼み、別の敵対がいなかったことを記録する。判定役が使えないときは、まず代理（同じ家系の別の契約、次にGrok 4.7）を試し、それでも判定役が立たないときに止める。本番、お金、秘密に触れる仕事では、チェックの有無にかかわらず、セキュリティの最終確認を必須にする（既定はFable 5.1。Claudeの枠が推薦停止の線を超えているときは、逆の家系のCodex Astraが代理し、代理だったことを記録する）。安いモデルだけで合格を出さない。本番への適用ボタンを押すのは人間。作りながらの実地検査は、実装のLで済ませてある。（2026-10-01 立花さん判断: Ask Pro は画像生成のときだけ使う）",
+          "sized": true,
+          "size": "",
+          "teams": [
+            {
+              "size": "M",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "claude_code",
+                  "model": "claude-opus-5-5",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "判定（検証の結果と差分だけを読む。PASS／FAIL／判定不能）",
+                  "required": false
+                },
+                {
+                  "cli": "codex",
+                  "model": "gpt-6-astra",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "判定（検証の結果と差分だけを読む。PASS／FAIL／判定不能）",
+                  "required": false
+                },
+                {
+                  "cli": "claude_code",
+                  "model": "claude-haiku-5-5",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "図面検査（合意した計画や書類と食い違う所を、行間を読まず差し戻す）",
+                  "required": true
+                },
+                {
+                  "cli": "grok_build",
+                  "model": "grok-4.7",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "代理の判定（判定役が使えないとき）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "substitute"
+            },
+            {
+              "size": "L",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "claude_code",
+                  "model": "claude-opus-5-5",
+                  "effort": "xhigh",
+                  "account": "",
+                  "place": "",
+                  "role": "判定と、セキュリティの最終確認",
+                  "required": false
+                },
+                {
+                  "cli": "codex",
+                  "model": "gpt-6-astra",
+                  "effort": "xhigh",
+                  "account": "",
+                  "place": "",
+                  "role": "判定（検証の結果と差分だけを読む。PASS／FAIL／判定不能）",
+                  "required": false
+                },
+                {
+                  "cli": "claude_code",
+                  "model": "claude-haiku-5-5",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "図面検査（合意した計画や書類と食い違う所を、行間を読まず差し戻す）",
+                  "required": true
+                },
+                {
+                  "cli": "grok_build",
+                  "model": "grok-4.7",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "代理の判定（判定役が使えないとき）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "stop"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "オフィス",
+      "skill": true,
+      "skill_name": "team-office",
+      "principles": "Fable 5.1を使わない。\nGrok Bot側に任せるが、状況は相互に把握できる前提",
+      "leaders": [
+        "grok_bot",
+        "claude_code",
+        "codex"
+      ],
+      "tasks": [
+        {
+          "task_id": "trivial",
+          "label": "ふだんの用事",
+          "description": "調べもの、状況の確認、短い質問、段取り。",
+          "memo": "",
+          "sized": false,
+          "size": "S",
+          "teams": [
+            {
+              "size": "",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "grok_bot",
+                  "model": "default",
+                  "effort": "low",
+                  "account": "",
+                  "place": "",
+                  "role": "担当（この仕事を任せる）",
+                  "required": true
+                }
+              ],
+              "when_unavailable": "substitute"
+            }
+          ]
+        },
+        {
+          "task_id": "",
+          "label": "社外に出す文書",
+          "description": "質が要る対外文書。",
+          "memo": "深さは「ふつう」から、大事な相手には「しっかり」へ上げる。",
+          "sized": false,
+          "size": "M",
+          "teams": [
+            {
+              "size": "",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "grok_bot",
+                  "model": "default",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "控え（上のAIが使えないとき）",
+                  "required": false
+                },
+                {
+                  "cli": "claude_code",
+                  "model": "claude-sonnet-5-5",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "担当（この仕事を任せる）",
+                  "required": true
+                }
+              ],
+              "when_unavailable": "substitute"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "デザイン",
+      "skill": true,
+      "skill_name": "team-design",
+      "principles": "進める順番: (1) まず画像を作って立花さんと見た目の認識を合わせる。合意するまで作り始めない。 (2) 合意した画像を見本に、入っているデザイン系のSkillから場面に合うものを選んで作る。ThreeUI（契約済みの部品集。候補探しはMCP、部品が決まればCLI）、Mobbin（実在アプリの画面の実例）、hallmark（AIっぽい見た目を避ける）、landing-page-design（集客ページの型）、kit-compose-web（部品キット）、Stitch（画面の案を作る）、Figma、design-critiqueとaccessibility-review（仕上げの点検）。 (3) 仕上げの点検を通してから見せる。\nFable 5.1をCursorのAPI枠に流さない。デザインの決まりを言葉にして確定させるときは、プランに切り替え、機能の spec.md に書く。",
+      "leaders": [
+        "grok_bot",
+        "claude_code",
+        "codex"
+      ],
+      "tasks": [
+        {
+          "task_id": "",
+          "label": "まず画像で見た目を合わせる",
+          "description": "作り始める前に、完成イメージの画像を何枚か作って立花さんに見せ、「これで合っている」をもらう。",
+          "memo": "デザインの仕事は、かならずここから始める。合意した画像が、次の行の見本になる。控えのCodexは、Codex内蔵の画像生成（codex-image）を使う形で、Codexの枠を使う。 Codexのモデルが「おまかせ」なのは、画像を作るのがCodex内蔵の機能で、モデルを問わないため。",
+          "sized": false,
+          "size": "S",
+          "teams": [
+            {
+              "size": "",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "ask_pro",
+                  "model": "gpt-6-pro",
+                  "effort": "",
+                  "account": "",
+                  "place": "",
+                  "role": "デザイン立ち上げ、認識すり合わせ",
+                  "required": true
+                },
+                {
+                  "cli": "codex",
+                  "model": "",
+                  "effort": "",
+                  "account": "",
+                  "place": "",
+                  "role": "画像生成（Proを使うほどではない時）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "substitute"
+            }
+          ]
+        },
+        {
+          "task_id": "",
+          "label": "合意した画像をもとに作る",
+          "description": "上の行で合意した画像を見本に、Webページや画面を作る。言葉の説明だけから作る仕事も、先に画像を合わせてからここで作る。",
+          "memo": "上の行で合意した画像を見本にする。部品はThreeUI（候補探しはMCP、決まればCLI）、実例はMobbin。根拠: 2026-09-20のDesign Arena（画像から再現する部門）で、Gemini 3.8 Flashは4位。契約内ではAstraに次ぎ、約5倍速い。 ページの型はlanding-page-design、部品はThreeUIとkit-compose-web、AIっぽい見た目の点検はhallmark。",
+          "sized": false,
+          "size": "M",
+          "teams": [
+            {
+              "size": "",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "cursor_api",
+                  "model": "gemini-3.8-flash",
+                  "effort": "high",
+                  "account": "",
+                  "place": "local",
+                  "role": "担当（この仕事を任せる）",
+                  "required": true
+                },
+                {
+                  "cli": "codex",
+                  "model": "gpt-6-astra",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "控え（上のAIが使えないとき）",
+                  "required": false
+                },
+                {
+                  "cli": "claude_code",
+                  "model": "claude-opus-5-5",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "控え（上のAIが使えないとき）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "substitute"
+            }
+          ]
+        },
+        {
+          "task_id": "",
+          "label": "部品の設計で判断が割れる",
+          "description": "どの作りにするかで意見が分かれるとき。",
+          "memo": "先に、リーダーと逆の家系の1つへ判断を聞く（リーダーがClaudeならCodexのAstra）。聞いた相手は作らない。作るのは、下の担当と控え。部品はThreeUIで候補を探し、実例はMobbinで確かめる。（2026-10-01 立花さん判断: Ask Pro は画像生成のときだけ使う）",
+          "sized": false,
+          "size": "L",
+          "teams": [
+            {
+              "size": "",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "codex",
+                  "model": "gpt-6-astra",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "設計の判断（先に意見を聞く。作らない）",
+                  "required": true
+                },
+                {
+                  "cli": "cursor_api",
+                  "model": "gemini-3.8-flash",
+                  "effort": "xhigh",
+                  "account": "",
+                  "place": "",
+                  "role": "担当（この仕事を任せる）",
+                  "required": true
+                },
+                {
+                  "cli": "claude_code",
+                  "model": "claude-opus-5-5",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "控え（上のAIが使えないとき）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "substitute"
+            }
+          ]
+        },
+        {
+          "task_id": "",
+          "label": "画面を見ながらの細かい手直し",
+          "description": "余白、色、並びなどを、見た目を確かめながら何度も直す。",
+          "memo": "仕上げにdesign-critique（見た目の講評）とaccessibility-review（読みやすさと操作のしやすさの点検）を通す。",
+          "sized": false,
+          "size": "S",
+          "teams": [
+            {
+              "size": "",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "cursor_auto",
+                  "model": "composer-2.5",
+                  "effort": "",
+                  "account": "",
+                  "place": "local",
+                  "role": "担当（この仕事を任せる）",
+                  "required": false
+                },
+                {
+                  "cli": "codex",
+                  "model": "gpt-6-luna",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "控え（上のAIが使えないとき）",
+                  "required": false
+                },
+                {
+                  "cli": "claude_code",
+                  "model": "claude-sonnet-5-5",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "控え（上のAIが使えないとき）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "substitute"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "監視",
+      "skill": true,
+      "skill_name": "team-watch",
+      "principles": "Grok Botに実装やデプロイの権限を渡さない。長い会話を育てない。止めるかどうかを決めるのは人間。AIに聞くなら、リーダーと逆の家系の上位モデル1つに1回だけ相談し、答えは判断の材料にする。",
+      "leaders": [
+        "grok_bot"
+      ],
+      "tasks": [
+        {
+          "task_id": "",
+          "label": "見回りと定期確認",
+          "description": "利用枠や自動処理が止まっていないか、直した不具合が再び起きていないかを、決まった間隔で見る。",
+          "memo": "ふだんの見回りと、不具合を直したあとの見回りは、Grok Botが軽い深さで行う。たくさんの場所を同時に見るときと、Grok Botが使えないときは、CodexのGPT-6 Lunaを使う。監視の仕事はLunaかGrok Botに任せる（2026-09-29本人指定）。",
+          "sized": false,
+          "size": "S",
+          "teams": [
+            {
+              "size": "",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "codex",
+                  "model": "gpt-6-luna",
+                  "effort": "low",
+                  "account": "",
+                  "place": "",
+                  "role": "センサー（見張り）",
+                  "required": false
+                }
+              ],
+              "when_unavailable": "skip"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "リサーチ",
+      "skill": true,
+      "skill_name": "team-research",
+      "principles": "",
+      "leaders": [
+        "grok_bot",
+        "claude_code",
+        "codex"
+      ],
+      "tasks": [
+        {
+          "task_id": "",
+          "label": "調査",
+          "description": "技術や製品の調査、外の一次資料と似た事例、Xでのトレンド、原因がすぐには分からない不具合の原因調べ。",
+          "memo": "調査は、リーダーと逆の家系の1つだけを呼ぶ。外の一次資料と似た事例の調査も、その調査役にウェブ検索つきで頼む。調査役が手元で再現できないものは、再現と直しをリーダーが行う。調べる場所が多いときは、実装の「競作」と同じ形でGrok 4.7を並列に使う。（2026-10-01 立花さん判断: Ask Pro は画像生成のときだけ使う）",
+          "sized": false,
+          "size": "M",
+          "teams": [
+            {
+              "size": "",
+              "scope": "outside",
+              "members": [
+                {
+                  "cli": "claude_code",
+                  "model": "claude-opus-5-5",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "調査（リーダーと別の頭で原因を探す。1つだけ呼ぶ）",
+                  "required": false
+                },
+                {
+                  "cli": "codex",
+                  "model": "gpt-6.1-sol",
+                  "effort": "high",
+                  "account": "",
+                  "place": "",
+                  "role": "調査（リーダーと別の頭で原因を探す。1つだけ呼ぶ）",
+                  "required": false
+                },
+                {
+                  "cli": "grok_build",
+                  "model": "grok-4.7",
+                  "effort": "medium",
+                  "account": "",
+                  "place": "",
+                  "role": "X検索でのトレンドやベストプラクティスリサーチ",
+                  "required": true
+                }
+              ],
+              "when_unavailable": "substitute"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "tools": {
+    "grok_bot": {
+      "use": true,
+      "monitor": true,
+      "accounts": "",
+      "switching": "",
+      "memo": ""
+    },
+    "claude_code": {
+      "use": true,
+      "monitor": true,
+      "accounts": "",
+      "switching": "",
+      "memo": ""
+    },
+    "codex": {
+      "use": true,
+      "monitor": true,
+      "accounts": "",
+      "switching": "",
+      "memo": ""
+    },
+    "grok_build": {
+      "use": true,
+      "monitor": true,
+      "accounts": "",
+      "switching": "",
+      "memo": "X Subscription の週次共有枠（grok:10080）を Cursor models と共有する（2026-10-19 公式資料で確認）"
+    },
+    "cursor_api": {
+      "use": true,
+      "monitor": true,
+      "accounts": "",
+      "switching": "",
+      "memo": "他社モデルは共有枠に含まれず、API 定価のプリペイド課金。Cursor CLI の月次 API 表示は別の消費ガード（2026-10-19 公式資料で確認）"
+    },
+    "cursor_auto": {
+      "use": true,
+      "monitor": true,
+      "accounts": "",
+      "switching": "",
+      "memo": "X Subscription の週次共有枠（grok:10080）を Grok と共有する。Cursor CLI の月次表示は旧プランの表示（2026-10-19 公式資料で確認）"
+    },
+    "codex_glm": {
+      "use": true,
+      "monitor": true,
+      "accounts": "",
+      "switching": "",
+      "memo": ""
+    },
+    "glm_cc": {
+      "use": false,
+      "monitor": false,
+      "accounts": "",
+      "switching": "",
+      "memo": ""
+    },
+    "cursor_any": {
+      "use": false,
+      "monitor": false,
+      "accounts": "",
+      "switching": "",
+      "memo": ""
+    },
+    "ask_pro": {
+      "use": true,
+      "monitor": false,
+      "accounts": "",
+      "switching": "",
+      "memo": "画像生成のとき（デザインの最初の見本など）だけ使う。判定、敵対、計画への意見、調査には使わない（2026-10-01 立花さん判断）"
+    },
+    "opencode_ollama": {
+      "use": true,
+      "monitor": true,
+      "accounts": "",
+      "switching": "",
+      "memo": "Ollama Cloud Pro（$20/月・$60クレジット）。実装の第一候補（deepseek-v4.1-flash:1017）。clef と埋め込みモデルの動作確認にも使える（2026-10-19 本人指示）"
+    }
+  },
+  "note": "",
+  "leader_shift": {
+    "sizes": {
+      "S": {
+        "claude_code": {
+          "model": "",
+          "effort": "medium"
+        },
+        "codex": {
+          "model": "",
+          "effort": "medium"
+        },
+        "grok_bot": {
+          "model": "",
+          "effort": ""
+        }
+      },
+      "M": {
+        "claude_code": {
+          "model": "claude-opus-5-5",
+          "effort": "high"
+        },
+        "codex": {
+          "model": "gpt-6.1-sol",
+          "effort": "high"
+        },
+        "grok_bot": {
+          "model": "",
+          "effort": ""
+        }
+      },
+      "L": {
+        "claude_code": {
+          "model": "claude-opus-5-5",
+          "effort": "high"
+        },
+        "codex": {
+          "model": "gpt-6-astra",
+          "effort": "high"
+        },
+        "grok_bot": {
+          "model": "",
+          "effort": ""
+        }
+      }
+    },
+    "direction": "up",
+    "compact": "auto",
+    "compact_prompt": "/compact 次を必ず残して要約する。(1) 依頼の目的と完了条件。機能の spec.md があれば AC の番号。(2) 確定した判断とその理由、本人の指示の原文。(3) いまの作業位置。tasks.md のどのタスクまで終わり、次はどれか。(4) 触ったファイルのパスと、未コミットの変更の有無。(5) 走らせた検証コマンドと結果。(6) 未確認の事項と、置いた仮定。(7) 守る境界（Risk Gates、触ってはいけないもの）。捨ててよいもの: 試行錯誤の途中経過、ツール出力の全文、解決済みのエラーの詳細。",
+    "resume_prompt": "続きから再開する。モデルは {推奨モデル}、考える深さは {推奨の深さ} で進める。違っていたら、応援のAIを呼ぶ前に切り替える。まず機能の Plans.md と tasks.md（なければ作業先の Plans.md）を読み、圧縮後の要約と食い違いがないか確かめる。食い違えばファイルを正とする。次のタスクは {次のタスク}。"
+  },
+  "saved_at": "2026-10-19T00:00:00+00:00"
+}
+
+exec
+/bin/zsh -lc 'nl -ba specs/2026-10-universal-wiring/drafts/consolidated-plan-v3-beyond-reason.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc "sed -n '1,220p' scripts/verify.sh" in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'rg --files src scripts tests .github' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc "sed -n '70,110p' specs/2026-10-universal-wiring/drafts/research-v3-beyond-reason.md" in /Users/tachibanashuuta/LocalWork/Code/seamless
+ succeeded in 98ms:
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+verify_exit=0
+typecheck_exit=0
+echo "typecheck: start"
+tsc --noEmit --strict --allowImportingTsExtensions --target es2022 --module nodenext --moduleResolution nodenext --types node src/*.ts src/adapters/*.ts tests/*.ts tests/support/*.ts scripts/*.ts || typecheck_exit=$?
+echo "typecheck: exit=$typecheck_exit"
+if [ "$typecheck_exit" -ne 0 ]; then verify_exit=$typecheck_exit; fi
+node --test tests/*.test.ts || verify_exit=$?
+bash scripts/peer-secrets.sh || verify_exit=$?
+claude plugin validate --strict mods/seamless-band || verify_exit=$?
+(cd mods/seamless-band && claude plugin test .) || verify_exit=$?
+echo "verify: exit=$verify_exit"
+exit "$verify_exit"
+
+ succeeded in 98ms:
+
+### Grok 4.7（X 調査、required。到着 18:4x。X の投稿はリーダー未再確認）
+
+採用:
+- 乗り換えの決め手は「画面操作とコピペをやめる」「同僚の枝（repo、branch）が見える」「公開エンジン」。しょうへい氏は Computer Use の遅さから乗り換え（x.com/showheyohtaki/status/2111209287460815092、2026-10-16）。焼山氏は「同じフォルダへ数秒で push、8 秒」（x.com/8kyama/status/2112065669722419260、2026-10-19。1 人の 1 計測）。
+- 「受理をツール許可にするな」（hexablob 氏、x.com/hexablob/status/2111725409679355968、2026-10-18）。seamless の不変条件 3（届いた文は承認の代わりにならない）と一致。
+- agmsg 作者は「公式モニターが 30 分で切れるため socket と queue を選んだ」（x.com/fujibee/status/2110875185763283324、2026-10-15）。Claude の socket と `codex queue` を主経路にする判断と一致。
+- 案 4「1 日で消える郵便を真似しない。不在は未着として返す」、案 5「処理開始が無ければ成功と言わない」。v3 の軸 1 と H6 に一致。
+- Claude Code 純正の cross-session でも「届かずに成功」の報告（anthropics/claude-code #25135、2026-02-12）。公式経路でも証拠が要る根拠。
+- 「公式経路だけなら、より壊れにくく同等以上に速い」は 2026-10-19 の公開仕様では成り立たない（Codex 応援と同じ結論）。
+
+見送り:
+- 案 2「2〜5 人向けに repo、branch、busy の名簿を既定 hold で足す」。名簿そのものを持たず、SSH の hosts 一覧で遠隔の `who` を呼ぶ形（計画 v3 の 3 節）で代える。理由: 自前の名簿は漏洩面になる（Grok 自身の危険の指摘）。
+- 「Claude の socket は暫定」。公式文書が socket と env を「スクリプトから投稿する」用途で公開しているので（事実 A2）、暫定ではなく「文書化された挙動」として扱う。ただし安定 SDK ではない点は同じ。
+
+要確認:
+- 大田原氏「Orca で足りる」（x.com/cursorvers/status/2112083831368847470）。Orca（本人も使う worktree 管理アプリ）との役割分担を README に 1 行書くか。
+- Tincan 0.18 の電話承認（x.com/mvanhorn/status/2111665525768311227）は Reason への同梱が未確認。
+
+## 食い違い
+
+- Grok は「Claude の socket は暫定」、リーダーは「文書化された挙動」。根拠は A2 の公式文書。両者とも「安定 SDK ではない」では一致。
+
+- 前回レポート（2026-10-19 午前）は「Reason はアカウント必須、CLI 非公開」と書いた。README はアカウントなしモードと OSS の `reason-network` CLI を明記している（B7）。前回の採点「導入 5.0」「OSS 配布 4.0」は変えないが、「アカウント不要が seamless だけの売り」は成り立たない。
+- 統合プラン v2 は「Claude の主経路は Channels」とした。A1〜A4、A10 から、主経路は cross-session の socket（公式文書あり、`-p` でも動く）で、Channels は外部イベント用の補助にする。
+
+## 問いと範囲
+
+1. Reason が持っていて seamless が持たない価値のうち、個人と 2〜5 人に効くものは何か。Reason の設計上変えにくい弱点は何か。
+2. 公式の押し込み経路で、Reason より壊れにくく同等以上に速い配線が作れるか。
+3. 乗り換え、併用の決め手は何か。
+調べない範囲: 実装、侵入試験、法務の確定。harness-mem の検索は CLI の引数が合わず未実施（`harness-mem search` が「Unknown option」）。repo の `.claude/memory/` は存在しない。
+
+ succeeded in 100ms:
+     1	# seamless v3 計画案: Reason を超える軸を決めて、そこで勝つ（承認前）
+     2	
+     3	作成: 2026-10-19。v2（consolidated-plan.md）に、調査記録 v3（research-v3-beyond-reason.md）の事実を当てて書き直した。
+     4	立場: 製品仕様の正本ではない。承認後に team-plan で spec.md、Plans.md、tasks.md へ分ける。
+     5	
+     6	## 0. 一言
+     7	
+     8	**Reason は自分の網を作る。seamless は、あなたがもう持っている網を束ねる。**
+     9	Claude Code の公式メッセージ socket、Codex の `codex queue`、opencode の plugin、Grok Bot の webhook。オンライン機能は製品として持たない（2026-10-19 立花さん判断）。
+    10	自前の名簿、鍵、中継、常駐、本文の保存を持たない。届いたかは、相手の記録を読んで言う。
+    11	
+    12	## 1. 「超える」の定義（ここだけで勝つ。総合点では並ばない）
+    13	
+    14	| 軸 | 指標 | seamless v3 の目標 | Reason の現状（出典は調査記録 v3） |
+    15	|---|---|---|---|
+    16	| 届いたの正確さ | hold、busy、`/goal` 中に「届いた」と誤表示した件数 | 0 件。依頼 ID が相手の記録に現れるまで「預かり」。 | 受信デーモンの ack（stored / delivered / held）。#24 で誤表示があり修正済み。「delivered」≠「読んだ」。 |
+    17	| 持たないもの | 追加プロセス数、本文の保存バイト数、ローカル往復で接続する外部ホスト数 | 0、0、0 | デーモン 1、SQLite に本文、既定で n0 中継。 |
+    18	| 入口から初回往復 | 導入開始から宛先一覧が出るまでの秒数、1 往復までの操作回数、質問数 | 10 秒、3 操作、0 問 | install + setup + ブラウザ login（または init team）+ エージェント再起動。 |
+    19	| 身元と失効 | 自前の鍵・名簿の有無 | OS ユーザーだけ。名簿は Grok Bot の本人登録のみ。 | 自前の署名つき名簿。除名は「暗号的に無力にはならない（for friends）」。 |
+    20	| 非コーディングの相手 | 一覧に並ぶ非コーディングの相手 | Grok Bot（webhook）。Dot は phase 2。 | Grok Bot、Muse は Reason MCP 経由（アカウント要否は未確認）。 |
+    21	
+    22	勝てない軸（追わない）: 対応製品数（Reason 10）、チームの名簿と他人のマシン、オフライン郵便箱、LAN/P2P、ask_user の遠隔承認。
+    23	
+    24	## 2. v2 からの訂正（調査記録 v3 の A、B）
+    25	
+    26	1. **Claude の主経路は Channels ではなく、公式の cross-session messaging socket。** 文書が `CLAUDE_CODE_MESSAGING_SOCKET` を「スクリプトやフックから投稿する」用途で公開した。`-p` の会話にも届く。Channels は research preview で、カスタム channel は対話セッション限定、ACK なし。外部イベント（CI、webhook）用の補助に回す。
+    27	2. **Codex の書込みは `codex queue --thread`（公式、CLI 0.163.0 で確認）。** ただし保存時点で exit 0 を返し、消費されたかは分からない。Desktop の `/goal` 中は消費されない（#52705）。だから seamless の到達証拠（相手の記録を読む）が差別化になる。Desktop の記録読取りは現行の IPC（内部）か rollout ファイルの受動読取り。公式の読取り口は要望 #54252 が open。
+    28	3. **「アカウント不要」「OSS」は seamless だけの売りではない。** Reason のエンジンは `reason-network` CLI を含めて OSS で、アカウントなしの team link モードがある。売りは「持たない」と「届いたの正確さ」に絞る。
+    29	4. **「デーモンなし」は看板にしてよい。** v2 は「端末ごとに常駐 hub」としたが、v3 では hub を持たない。状態の所有者は予約ファイル（`~/.seamless/reservations/`）と、各製品の記録そのもの。照会のたびに読む。常駐が要る機能（起こす、見張る）は本人が明示したときだけ `launchd` に置く任意機能にする。
+    30	
+    31	## 3. アーキテクチャ
+    32	
+    33	```
+    34	[あなた / 今開いている AI]
+    35	   │  seamless "一言"  または MCP 道具（sessions / read / send / status）
+    36	   ▼
+    37	[seamless CLI（常駐なし。呼ばれたときだけ動く）]
+    38	   ├ 探す: Claude は /tmp/cc-socks-<uid> と sessions/<pid>.json、Codex は rollout と IPC owner、Grok CLI は hooks の受信箱、Grok Bot は名簿
+    39	   ├ 送る: Claude socket（公式）/ codex queue（公式）/ Grok CLI 受信箱 / Grok Bot webhook（HTTPS）
+    40	   ├ 確かめる: 相手の記録を読み、依頼 ID → 到達、ターン開始 → 処理開始、replyTo → 返答
+    41	   └ 予約: ~/.seamless/reservations/<id>（hash、状態、時刻だけ。本文なし）
+    42	   │
+    43	   （遠隔なし。Grok Bot の webhook だけが Mac の外へ出る）
+    44	```
+    45	
+    46	- **transport と会話操作を分ける。** ローカルは socket とファイル。Grok Bot は HTTPS webhook。遠隔の transport は持たない。
+    47	- **身元は借りる。** OS ユーザーだけ。自前の鍵と名簿を作らない。
+    48	- **権限を 4 つに分ける（v2 の採用 7 を維持）。** 閲覧、送信、会話の起動、操作の承認。起動は v1 で持たない（既存会話へ送るだけ。不変条件 2）。承認は持たない（不変条件 3。`humanApproval:true` を書かない）。
+    49	- **A2A は phase 3。** 既存 CLI 会話へ注入する口ではない（Codex 応援の指摘）。外部クライアント向けの AgentCard 公開だけを試作する。
+    50	
+    51	## 4. 経路表（公式性と証拠。v1 の 3 + 1）
+    52	
+    53	| 相手 | 探す | 送る | 到達の証拠 | 公式性 | 残る内部依存 |
+    54	|---|---|---|---|---|---|
+    55	| Claude Code | `/tmp/cc-socks-<uid>`、`~/.claude/sessions/<pid>.json`、`/list-agents` 相当 | 公式 socket に `{"type":"user",…}` | `~/.claude/projects/…/<id>.jsonl` に依頼 ID | socket と env は文書化。hold / refuse は文書どおり | sessions/<pid>.json の形式、jsonl の形式 |
+    56	| Codex（CLI / Desktop） | rollout ファイル、IPC の owner 照会 | `codex queue --thread <id> --message`（公式） | rollout に依頼 ID、turn 開始、replyTo | queue は公式。読取り口は未提供（#54252） | Desktop IPC（読取りと busy 判定） |
+    57	| Grok Bot | 名簿（本人登録） | webhook（HTTPS、署名） | 受理記録、返信の replyTo | 利用者設定の webhook | 玄関口は使わない（v1） |
+    58	| opencode（4 つ目） | plugin API の session 一覧 | plugin の `session.prompt`（公式） | plugin の応答、session event | plugin は公式 | busy 中の割込みは未確認 |
+    59	| Grok CLI（5 つ目） | `~/.grok/active_sessions.json`（内部） | 受信箱 + Stop hook（hooks は公式） | hook receipt、次の発話 | hooks は公式 | active_sessions の形式 |
+    60	
+    61	## 5. ユーザー体験（v2 の 5 節を維持。変更点だけ）
+    62	
+    63	- 最初の画面は宛先の一覧と送信欄だけ。行ごとに 3 状態（すぐ渡せる / 次の区切りで渡す / 起こすと届く）。
+    64	- 状態の言葉は 5 つ（預かり / 渡った / 処理中 / 返事 / 不明）。「渡った」は相手の記録で依頼 ID を見てから。
+    65	- **新規: 「相手が hold している」を区別して出す。** Claude の bypass モードや `crossSessionInbound: hold` では、socket への書込みは成功しても相手には届かない。相手の記録に現れなければ「預かり（相手が承認待ち）」と出し、「渡った」と言わない。Reason の #24 と同じ穴を、設計で塞ぐ。
+    66	- **新規: Codex の `/goal` 中は「次の区切りで渡す」ではなく「相手が手動 Steer するまで待ち」と出す**（#52705）。
+    67	
+    68	## 6. v1 の範囲（90 日）
+    69	
+    70	入れる: Claude Code、Codex、opencode、Grok Bot の 4 + Grok CLI。opencode は手元に入っているので検証できる（2026-10-19 立花さん指示）。CLI 1 本、MCP 4 道具、`setup` / `doctor`、予約、4 段階、hold 検出、README EN/JA、MIT、CI（Keychain と Claude CLI を外した hermetic）。
+    71	出さない: 常駐 hub、チーム名簿、P2P、中継、郵便箱、遠隔（SSH を含む）、独立受信箱、Grok Bot 玄関口、Dot、Channels のカスタム channel、A2A。
+    72	phase 2（v1 公開後）: Dot（通知のみ）、Channels を外部イベント用に。オンライン機能は製品として持たない。
+    73	
+    74	## 7. 90 日（週）
+    75	
+    76	| 週 | やること | 完了条件（観測値） |
+    77	|---|---|---|
+    78	| 1 | **最难関の実測。** Claude（idle、busy、hold、bypass）、Codex（idle、busy、`/goal`）、Grok Bot（起きている、スリープ）で各 5 往復。誤表示 0 を確かめる。 | 15 往復の記録。依頼 ID と返信 ID の一致。誤って「渡った」と出した件数 0。 |
+    79	| 2〜4 | `setup` / `doctor`、1 コマンド、5 状態、hold 検出、予約の再確認、Claude 2.1.303 / Codex 0.163.0 / Desktop 現行の互換表更新。 | 初見の Mac で 10 秒以内に一覧。3 操作で 1 往復。質問 0。 |
+    80	| 5〜6 | opencode を plugin で、Grok CLI を manifest + hook 1 枚で追加。公開面の削減（旧 `--registry`、band mod、status panel を外へ）。 | コアの差分 0 で 4 製品目。`npm pack --dry-run` に内部資料とアカウント情報 0。 |
+    81	| 7〜8 | Reason との比較実測（H3 承認後）。同じ Mac、同じ題材、同じ 5 指標。両方を同じ会話に同時に配線しない。 | 5 指標の表。seamless が 1 節の 4 軸で目標値を満たす。 |
+    82	| 9〜10 | 公開準備。README、LICENSE、NOTICE、SECURITY、秘密スキャン、npm provenance。 | 第三者が説明どおりに動かし issue を出せる。 |
+    83	| 11〜13 | 公開 β、issue 対応、互換表の月次追従。 | 第三者の issue に 1 週間以内に応答できる体制。 |
+    84	
+    85	## 8. 確かめること（Yes / No、観測値つき）
+    86	
+    87	1. 初見の Mac で、宛先一覧が 10 秒以内に出る。観測値: 秒数 3 回、質問数 0、変更した設定ファイル数。
+    88	2. Claude、Codex、Grok Bot の 3 つが、3 状態のどれかで出る。観測値: 製品数、状態、誤表示 0。
+    89	3. `seamless "…"` の 1 コマンドで既定の宛先に届き、返信 ID が依頼 ID と一致する。観測値: ID、秒数、操作回数。
+    90	4. 相手が hold（Claude の bypass 組み合わせ、`crossSessionInbound: hold`）のとき、「渡った」と出ない。観測値: 表示された状態、相手の記録に依頼 ID が無いこと。
+    91	5. Codex の `/goal` 中に送ったとき、「渡った」と出ず、「手動 Steer 待ち」と出る。観測値: 表示、rollout に依頼 ID が無いこと。
+    92	6. 送信直後に切断しても二重送信せず「不明」。照会で相手の記録から判定できる。観測値: 書込み回数 1、最終状態。
+    93	7. ローカル 1 往復で、追加プロセス 0、本文の保存 0 バイト、外部ホスト接続 0。観測値: `ps`、`~/.seamless` の中身、`lsof -i`。
+    94	8. Grok CLI が manifest + hook 1 枚で追加できる。観測値: コアの差分 0。
+    95	9. 公開物に内部 API の再現、アカウント情報、秘密が無い。観測値: スキャン 0 件。
+    96	10. Reason との 5 指標の実測値がある。観測値: 表。
+    97	11. opencode が plugin だけで追加でき、idle と busy で 1 往復が通る。観測値: コアの差分 0、依頼 ID と返信 ID の一致。
+    98	
+    99	## 9. 停止条件
+   100	
+   101	- S1: 確かめること 3 が週 1 で通らない。→ 製品数を増やさず原因へ戻る。
+   102	- S2: 確かめること 4 または 5 が通らない（hold や `/goal` を見分けられない）。→ 「渡った」の定義を「相手の記録で確認」だけに戻し、見分けられない製品は「不明」固定にする。
+   103	- S3: 確かめること 7 が通らない（常駐や本文保存が要る）。→ その機能を任意機能へ分け、既定から外す。
+   104	- S4: Codex Desktop の IPC が現行版で通らない。→ Codex は CLI（rollout 読取り + queue）だけを正式対応にし、Desktop は未確認と表示。
+   105	- S5: 公開物に内部 API やアカウント情報が混ざる。→ 該当アダプタを外す。
+   106	- S6: 法務・規約の確認が公開予定日までに終わらない。→ 公開を延期。
+   107	
+   108	## 10. Human gates
+   109	
+   110	- H1: v1 の公開範囲を「3 + Grok CLI、Grok Bot は webhook まで」に決める。
+   111	- H2: Codex Desktop の IPC（内部）を読取りと busy 判定に使い続けてよいか。CLI 限定にするか。
+   112	- H3: 比較実測のために Reason Network をこの Mac（または別ユーザー）に入れてよいか。外部ソフトの導入と、同じ会話への二重配線の回避。
+   113	- H4: 決定済み（2026-10-19）: オンライン機能は製品として持たない。
+   114	- H5: 名前、npm スコープ（`@chachamaru/seamless`）、ライセンス（MIT）、公開 β の時期。
+   115	- H6: 「本文を保存しない」を遠隔でも不変条件として維持するか（郵便箱を持たない代わりに、相手の Mac が起きていないと送れない）。
+   116	
+   117	## 11. 採点の再計算（予測。公開資料と計画からの判断で、侵入試験ではない）
+   118	
+   119	### 11a. セキュリティとオンライン（13 項目、前回と同じ重み）
+   120	
+   121	| # | 懸念 | 重み | Reason | seamless 現行 | v3 予測 | v3 の根拠 |
+   122	|---|---|---:|---:|---:|---:|---|
+   123	| 1 | 送り主の特定 | 12 | 5 | 4 | 4 | OS ユーザーとプロセスの親子。 |
+   124	| 2 | 宛先の許可 | 12 | 5 | 4 | 4.5 | limits と、鍵ごとの scope。 |
+   125	| 3 | 盗聴・暗号化 | 12 | 5 | 2 | 4.5 | ローカルは socket（網に出ない）。webhook は HTTPS。 |
+   126	| 4 | なりすまし | 9 | 4.5 | 4 | 4 | プロセスの親子。 |
+   127	| 5 | 二重送信 | 9 | 4 | 5 | 5 | 予約と内容ハッシュ。 |
+   128	| 6 | プロンプト注入 | 9 | 4 | 4 | 4 | 同僚の依頼として渡す。防げない。 |
+   129	| 7 | フックのコード実行 | 7 | 3 | 2 | 3 | コミュニティ製フックを配らない。forced command。 |
+   130	| 8 | 会話本文の保存 | 7 | 2 | 5 | 5 | 変えない。 |
+   131	| 9 | 監査 | 6 | 3 | 3 | 3 | 予約の記録。改ざん耐性はない。 |
+   132	| 10 | ファイル衝突 | 4 | 3 | 3 | 3 | 見える化だけ。 |
+   133	| 11 | 退会・失効 | 4 | 4 | 2 | 3 | limits と Grok Bot 名簿の削除。 |
+   134	| 12 | オンライン対応 | 5 | 5 | 1 | 1 | 持たない（製品の思想）。 |
+   135	| 13 | オフライン可用性 | 4 | 4 | 2 | 1.5 | 郵便箱を持たない。相手が起きていなければ「不明」。 |
+   136	| | **合計** | **100** | **4.14** | **3.37** | **3.82** | |
+   137	
+   138	純セキュリティ（重み 91）: Reason 4.10、v3 4.08。オンラインだけ（重み 9）: Reason 4.56、v3 1.22。
+   139	読み方: オンラインを持たない分、総合は Reason が上（0.32 差）。純セキュリティはほぼ同点。seamless が上なのは二重送信、本文の保存、受信側の権限を広げないこと。
+   140	
+   141	### 11b. 製品としての 10 観点（前回と同じ重み）
+   142	
+   143	| 観点 | 重み | Reason | 前回の推奨形 | v3 予測 | 差（Reason − v3） |
+   144	|---|---:|---:|---:|---:|---:|
+   145	| 導入、設定の簡単さ | 14 | 5.0 | 4.0 | 4.5 | 0.07 |
+   146	| つながる相手の広さ | 12 | 5.0 | 3.5 | 4.0 | 0.12 |
+   147	| 届く速さ、確実さ | 14 | 5.0 | 4.0 | 4.5 | 0.07 |
+   148	| 相手の文脈と選びやすさ | 10 | 5.0 | 3.5 | 4.0 | 0.10 |
+   149	| チーム、複数マシン | 12 | 5.0 | 1.5 | 1.5 | 0.42 |
+   150	| 外部、非コーディング入口 | 10 | 4.0 | 4.5 | 5.0 | −0.10 |
+   151	| 届いた証拠、監査性 | 8 | 4.0 | 5.0 | 5.0 | −0.08 |
+   152	| 安全境界 | 7 | 4.0 | 4.5 | 4.5 | −0.04 |
+   153	| 壊れにくさ、保守 | 8 | 4.0 | 3.0 | 3.5 | 0.04 |
+   154	| OSS 配布、説明 | 5 | 4.0 | 4.0 | 4.0 | 0.00 |
+   155	| **合計** | **100** | **4.62** | **3.68** | **4.01** | **0.61** |
+   156	
+   157	0.61 の内訳: チーム 0.42 + 相手の広さ 0.12 = 0.54 は追わない（オンラインを持たない思想）。残り 0.07 は導入、速さ、文脈、壊れにくさで、週 1〜4 の実測で詰める。seamless が上回るのは外部入口、証拠、安全境界の 3 観点（合計 0.22）。
+   158	
+   159	## 12. 未決（AI が決めない）
+   160	
+   161	1. v1 の範囲（H1）。
+   162	2. Codex Desktop の内部 IPC を使い続けるか（H2）。
+   163	3. Reason を実測のために入れるか（H3）。
+   164	4. （決定済み）オンライン機能は持たない。
+   165	5. 名前と配布（H5）。
+   166	6. 本文を保存しない不変条件を遠隔でも維持するか（H6）。
+   167	
+   168	## 13. X で言われていること（Grok 4.7 の報告。リーダー未再確認）
+   169	
+   170	- 乗り換えの決め手は「画面操作とコピペをやめる」「同僚の repo と branch が見える」「公開エンジン」。seamless の v1 は 1 つ目を守り、2 つ目は同じ Mac の範囲で出し、3 つ目は MIT で満たす。
+   171	- 「受理をツール許可にするな」（hexablob 氏）。不変条件 3 を変えない根拠。
+   172	- 「Orca で足りる」という声。README で Orca（worktree の管理）と seamless（会話への配送）の役割を 1 行で分ける。
+   173	
+   174	## 14. この案の危険
+   175	
+   176	- **Claude の socket は「文書化された挙動」であり、安定 SDK ではない。** `sessions/<pid>.json` と jsonl の形式は内部。版ごとの互換表と `doctor` で軽くする。
+   177	- **Codex Desktop の読取りは内部 IPC のまま。** 公式の読取り口（#54252）が出るまで、Desktop は「未確認」表示を許容する設計にする。
+   178	- **Reason も同じ公式経路を使う。** 速さで勝つ根拠はない。勝つのは正確さと持たないこと。
+   179	- **チームを求める利用者には届かない。** それは Reason の仕事と書き、併用（同じ会話に二重配線しない）を README に書く。
+   180	
+   181	## 15. 2026-10-19 の本人判断（反映済み）
+   182	
+   183	1. オンライン機能は製品の思想として持たない。SSH 遠隔案は取り下げ。採点は 11 節を更新済み（13 項目 3.82、10 観点 4.01）。
+   184	2. opencode（手元 v2.0.32）を v1 に入れる。Reason の issue #12（OpenCode 2.x で setup の plugin が読み込めない。10-18 に閉鎖）があるので、plugin API の版差を週 1 の実測に含める。
+   185	3. Codex Desktop の内部 IPC は読取りに使い続ける。
+   186	4. Reason の比較導入は同じ OS ユーザーで行う。条件: setup が書き換える設定ファイルの backup を先に確認、同じ会話に両方をつながない、計測は順番、終わったら leave → setup --remove。
+
+ exited 2 in 117ms:
+rg: .github: No such file or directory (os error 2)
+scripts/peer-secrets.sh
+scripts/peer-env-names.ts
+scripts/verify.sh
+scripts/peer-setup.sh
+scripts/peer-roster-write.ts
+tests/status-panel.test.ts
+tests/seen.test.ts
+tests/signed-inbound.test.ts
+tests/mcp.test.ts
+tests/peers.test.ts
+tests/process.test.ts
+tests/grok-scan.test.ts
+tests/inbound.test.ts
+tests/bot-send.test.ts
+tests/git-context.test.ts
+tests/caller-scan.test.ts
+tests/automatic.test.ts
+tests/status.test.ts
+tests/webhook-send.test.ts
+src/webhook-send.ts
+src/bot-sign.ts
+src/seen.ts
+src/signed-envelope.ts
+src/status.ts
+src/sessions-scan.ts
+tests/adapters.test.ts
+src/secrets.ts
+src/cli.ts
+src/mcp.ts
+src/status-exchanges.ts
+src/external-inbound.ts
+src/grok-inbox.ts
+tests/compat.test.ts
+tests/delivery.test.ts
+tests/limits.test.ts
+tests/grok-read.test.ts
+tests/band-performance.test.ts
+src/caller.ts
+src/delivery.ts
+src/git-context.ts
+src/bot-executor.ts
+src/native-runtime.ts
+src/compat-check.ts
+src/nonce-store.ts
+src/compat.ts
+src/request-store.ts
+src/discovery.ts
+src/limits.ts
+src/registry.ts
+src/automatic.ts
+src/protocol.ts
+src/io.ts
+src/grok-hook.ts
+src/peers.ts
+src/status-panel.html
+src/serve.ts
+src/status-panel.ts
+tests/fixtures/grok-updates.jsonl
+tests/wake.test.ts
+tests/grok-send.test.ts
+tests/secrets.test.ts
+tests/privacy.test.ts
+src/adapters/codex.ts
+src/adapters/claude.ts
+src/adapters/grok.ts
+src/adapters/session.ts
+src/adapters/read.ts
+src/inbound.ts
+tests/grok-status.test.ts
+tests/signature-cache.test.ts
+tests/compat-gates.test.ts
+tests/native-runtime.test.ts
+tests/grok-hook.test.ts
+tests/compat-check.test.ts
+tests/peer-setup.test.ts
+tests/bot-executor.test.ts
+tests/discovery.test.ts
+tests/branch-ticket.test.ts
+tests/support/fake-bin.ts
+tests/support/signed-fixture.ts
+tests/support/keychain-fixture.ts
+tests/support/serve-fixture.ts
+tests/support/band-fixtures.ts
+tests/support/automatic-cli.ts
+tests/support/privacy-fixture.ts
+tests/support/grok-fixture.ts
+tests/support/limits-writer.ts
+
+codex
+AC6 に対応するタスクがなく、AC1 の実導入検証が `--dry-run` に置き換わっています。30 分ループにも、依存タスクの完了確認と別家系の判定が閉鎖条件に入っていません。T3 は「socket が無い」という観測と、MCP で送れるという未実証の主張を分けて確認しています。
+
+exec
+/bin/zsh -lc 'command -v harness-mem' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc "rg -n -F -e 'canReceive' -e 'sessions' -e 'kind' -e 'socket' -e 'markUnapproved' -e 'humanApproval' -e 'ipc' src/adapters/claude.ts src/adapters/codex.ts src/delivery.ts" in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'cat package.json' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc "rg -n -F -e 'body' -e 'message' -e 'writeFile' -e 'appendFile' -e 'rename' src/grok-inbox.ts src/grok-hook.ts src/request-store.ts" in /Users/tachibanashuuta/LocalWork/Code/seamless
+ succeeded in 88ms:
+{
+  "name": "seamless",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.22.0" },
+  "scripts": { "test": "bash scripts/verify.sh" }
+}
+
+ succeeded in 88ms:
+/Users/tachibanashuuta/.local/bin/harness-mem
+
+ succeeded in 106ms:
+src/grok-hook.ts:1:import {readdir,rename,unlink} from 'node:fs/promises';
+src/grok-hook.ts:19:// The text Grok receives. It says what the message is not: a request from another conversation, not the person's approval.
+src/grok-hook.ts:34:  await rename(join(dir,'handed',name),join(dir,'unknown',m[1]+'.json')).catch(()=>{});
+src/grok-hook.ts:60:  if(!key||!envelope||envelope.recipient.nativeId!==sessionId||keyOf(envelope.sender,envelope.id)!==key){await rename(join(dir,'pending',name),join(dir,'failed',name)).catch(()=>{});continue;}
+src/grok-hook.ts:63:  // Taking it is one rename: of hooks running at once, exactly one wins, and the name says which process holds it.
+src/grok-hook.ts:65:  try{await rename(join(dir,'pending',name),handed);}catch{continue;}
+src/request-store.ts:16: try{f=await open(tmp,'wx',0o600);await f.writeFile(contents);await f.sync();await f.close();f=undefined;await link(tmp,path);return true;}catch(e){if((e as NodeJS.ErrnoException).code==='EEXIST')return false;throw e;}finally{await f?.close();await unlink(tmp).catch(()=>{});}
+src/grok-inbox.ts:8:// Every move is a rename inside one directory tree, so an envelope is in exactly one state at a time.
+src/grok-inbox.ts:54: try{f=await open(tmp,'wx',0o600);await f.writeFile(contents);await f.sync();await f.close();f=undefined;await link(tmp,path);return true;}
+
+ succeeded in 106ms:
+src/adapters/claude.ts:40: const dir=join(options.home??homedir(),'.claude','sessions');
+src/adapters/claude.ts:86:  if(r.type==='user'&&(r.origin?.kind==='peer'||!r.isMeta)){
+src/adapters/claude.ts:87:   const content=r.message?.content,peer=r.origin?.kind==='peer';
+src/adapters/claude.ts:93:  }else if(r.type==='attachment'&&r.attachment?.type==='queued_command'&&r.attachment.origin?.kind==='peer'&&typeof r.attachment.prompt==='string'){
+src/adapters/codex.ts:22:export type CodexOptions=CompatibilityOptions&{codexHome?:string;socketPath?:string;version?:()=>Promise<string|null>;timeoutMs?:number;owner?:(nativeId:string)=>Promise<string|null>};
+src/adapters/codex.ts:26:type Live={ipc:Ipc;client:string;owner:string;version:string};
+src/adapters/codex.ts:43:  if(!parent.isDirectory()||parent.uid!==uid||parent.mode&0o022||!endpoint.isSocket()||endpoint.uid!==uid)throw new Error('unsafe_ipc');
+src/adapters/codex.ts:56:   if(this.closed)throw new Error('ipc_closed');
+src/adapters/codex.ts:68:async function exchange(ipc:Ipc,frame:Frame){ipc.send(frame);return ipc.until(f=>f.type==='response'&&f.requestId===frame.requestId?f:undefined);}
+src/adapters/codex.ts:72: let ipc:Ipc;
+src/adapters/codex.ts:73: try{ipc=await Ipc.connect(options.socketPath??join(homedir(),'.codex','ipc','ipc.sock'),options.timeoutMs??8000);}catch{return {status:'unavailable' as const,reason:'ipc_connect'};}
+src/adapters/codex.ts:75:  const init=await exchange(ipc,request('initialize',{clientType:CLIENT_TYPE},'initializing-client',0));
+src/adapters/codex.ts:78:  const owner=options.owner?await options.owner(nativeId).then(id=>id?{resultType:'success',handledByClientId:id}:null):await exchange(ipc,request('thread-owner-discovery',{hostId:'local',conversationId:nativeId},client,1)).catch(()=>null);
+src/adapters/codex.ts:79:  if(owner?.resultType!=='success'||typeof owner.handledByClientId!=='string'){await ipc.close();const exists=await rolloutExists(nativeId,options);return exists===null?{status:'unavailable',reason:'rollout_unreadable'}:exists?{status:'unavailable',reason:'owner_offline'}:{status:'not_found',reason:'no_owner_no_rollout'};}
+src/adapters/codex.ts:80:  return {ipc,client,owner:owner.handledByClientId as string,version:version??'unknown'};
+src/adapters/codex.ts:81: }catch{await ipc.close();return {status:'unavailable' as const,reason:'ipc_protocol'};}
+src/adapters/codex.ts:92: if(await walk(join(home,'sessions'),3)||await walk(join(home,'archived_sessions'),0))return true;
+src/adapters/codex.ts:95:function following(ipc:Ipc,client:string,owner:string,nativeId:string,on:boolean){
+src/adapters/codex.ts:96: ipc.send({type:'broadcast',sourceClientId:client,targetClientIds:[owner],version:1,method:'thread-stream-following-changed',params:{hostId:'local',conversationId:nativeId,following:on}});
+src/adapters/codex.ts:107: if(h?.kind==='canonical')for(const island of h.history?.islands??[])for(const e of island.entries??[]){const t=h.history.entitiesByKey?.[e.value];if(t&&typeof t==='object')yield t;}
+src/adapters/codex.ts:134: return h?.kind==='canonical'&&c.isComplete===true&&(c.islands??[]).length===1&&state.turnsPagination?.hasLoadedOldest===true&&[...turns(state)].every(t=>t.itemsPagination?.hasLoadedOldest!==false);
+src/adapters/codex.ts:139: const {ipc,client,owner,version}=s;let followed=false;
+src/adapters/codex.ts:141:  following(ipc,client,owner,nativeId,true);followed=true;
+src/adapters/codex.ts:142:  let snap=await ipc.until(f=>snapshot(f,owner,client,nativeId),STEP_MS);
+src/adapters/codex.ts:145:   const ack=await exchange(ipc,load);
+src/adapters/codex.ts:147:   following(ipc,client,owner,nativeId,true);
+src/adapters/codex.ts:148:   snap=await ipc.until(f=>snapshot(f,owner,client,nativeId,ack.result.revision),STEP_MS);
+src/adapters/codex.ts:150:  const recheck=await exchange(ipc,request('thread-owner-discovery',{hostId:'local',conversationId:nativeId},client,1));
+src/adapters/codex.ts:154: }catch{return {status:'unavailable' as const,reason:'ipc_read'};}
+src/adapters/codex.ts:155: finally{try{if(followed)following(ipc,client,owner,nativeId,false);}finally{await ipc.close();}}
+
+exec
+/bin/zsh -lc 'harness-mem search --help' in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc "sed -n '1,170p' src/grok-inbox.ts" in /Users/tachibanashuuta/LocalWork/Code/seamless
+exec
+/bin/zsh -lc 'git diff --check' in /Users/tachibanashuuta/LocalWork/Code/seamless
+ succeeded in 78ms:
+import {constants} from 'node:fs';
+import {mkdir,open,link,unlink,readdir,lstat} from 'node:fs/promises';
+import {homedir} from 'node:os';
+import {join} from 'node:path';
+import {createHash,randomUUID} from 'node:crypto';
+// The inbox for one Grok CLI conversation (specs/202610-more-peers Plans.md, "配送"). seamless puts an envelope in pending/;
+// the Stop hook of that conversation's own TUI moves one envelope per Stop through handed/ to delivered/.
+// Every move is a rename inside one directory tree, so an envelope is in exactly one state at a time.
+//   pending    accepted by seamless, not yet taken by a hook
+//   handed     taken by a hook (file name carries the hook's pid) and being returned to Grok; if that hook dies here the
+//              outcome is unknown, and it is never put back
+//   delivered  the hook wrote its receipt (request id, conversation, generation, hook time, Stop reason, hook name)
+//   failed     the envelope could not be read, or is not this conversation's; the next one is delivered instead
+//   unknown    a handed envelope whose hook died; shown as "成否不明" and never delivered again
+export const STATES=['pending','handed','delivered','failed','unknown'] as const;
+export type InboxState=typeof STATES[number];
+export const MAX_GROK_TEXT=8000;
+export type GrokEnvelope={schemaVersion:1;id:string;sender:{id:string;nativeId:string;generation:string};recipient:{id:string;nativeId:string;generation:string};text:string;replyTo?:string;humanApproval?:false;acceptedAt:number};
+export type GrokReceipt={envelope:GrokEnvelope;sessionId:string;generation:string;hookAt:number;reason:string;promptId:string|null;hookName:string|null;hookPid:number};
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const MAX_FILE=65_536;
+export const inboxRoot=(home=homedir())=>join(home,'.seamless','grok-inbox');
+// A request is named by its sender and id together, as the reservation names it: two conversations may pick the same id.
+export type InboxSender={id:string;nativeId:string};
+export const keyOf=(sender:InboxSender,id:string)=>createHash('sha256').update(JSON.stringify([sender.id,sender.nativeId,id])).digest('hex');
+export function conversationDir(home:string,sessionId:string){if(!UUID.test(sessionId))throw new Error('invalid_session');return join(inboxRoot(home),sessionId);}
+async function isPrivateDir(path:string){
+ try{const s=await lstat(path);return s.isDirectory()&&!s.isSymbolicLink()&&s.uid===process.getuid?.()&&(s.mode&0o777)===0o700;}catch{return false;}
+}
+async function privateDir(path:string){
+ await mkdir(path,{recursive:true,mode:0o700});
+ if(!await isPrivateDir(path))throw new Error('unsafe_inbox');
+}
+// Whether every directory on the way to this conversation's inbox, and each state in it, is a real directory of this
+// user that no one else can enter. Checked again when the hook reads, since it may have changed after the write.
+export async function inboxSafe(home:string,sessionId:string):Promise<boolean>{
+ let dir:string;try{dir=conversationDir(home,sessionId);}catch{return false;}
+ for(const path of [join(home,'.seamless'),inboxRoot(home),dir,...STATES.map(state=>join(dir,state))])if(!await isPrivateDir(path))return false;
+ return true;
+}
+export async function ensureInbox(home:string,sessionId:string){
+ await privateDir(join(home,'.seamless'));await privateDir(inboxRoot(home));
+ const dir=conversationDir(home,sessionId);await privateDir(dir);
+ for(const state of STATES)await privateDir(join(dir,state));
+ return dir;
+}
+// A regular file owned by this user, mode 0600, not a link, and small; anything else is unreadable.
+export async function readPrivate(path:string):Promise<string|null>{
+ let f;try{f=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);const s=await f.stat();if(!s.isFile()||s.uid!==process.getuid?.()||(s.mode&0o777)!==0o600||s.size>MAX_FILE)return null;return await f.readFile('utf8');}catch{return null;}finally{await f?.close();}
+}
+// Written in full to a private temporary file, then linked into place: the name appears only with complete content.
+export async function publishFile(path:string,contents:string):Promise<boolean>{
+ const tmp=path+'.'+randomUUID()+'.tmp';let f;
+ try{f=await open(tmp,'wx',0o600);await f.writeFile(contents);await f.sync();await f.close();f=undefined;await link(tmp,path);return true;}
+ catch(e){if((e as NodeJS.ErrnoException).code==='EEXIST')return false;throw e;}
+ finally{await f?.close();await unlink(tmp).catch(()=>{});}
+}
+// The state that holds a request, or null. handed/ names carry the hook pid after the key.
+export async function stateOf(home:string,sessionId:string,sender:InboxSender,id:string):Promise<{state:InboxState;name:string}|null>{
+ const dir=conversationDir(home,sessionId),key=keyOf(sender,id);
+ for(const state of STATES){
+  let names:string[]=[];try{names=await readdir(join(dir,state));}catch{continue;}
+  const name=names.find(n=>n===key+'.json'||n.startsWith(key+'.')&&n.endsWith('.json')&&!n.endsWith('.tmp'));
+  if(name)return {state,name};
+ }
+ return null;
+}
+export function validEnvelope(v:any):v is GrokEnvelope{
+ const party=(p:any)=>p&&typeof p==='object'&&['id','nativeId','generation'].every(k=>typeof p[k]==='string'&&p[k].length>0&&p[k].length<=4096);
+ return !!v&&typeof v==='object'&&v.schemaVersion===1&&typeof v.id==='string'&&v.id.length>0&&v.id.length<=256&&typeof v.text==='string'&&[...v.text].length<=MAX_GROK_TEXT
+  &&party(v.sender)&&party(v.recipient)&&(v.replyTo===undefined||typeof v.replyTo==='string'&&v.replyTo.length>0)&&(!Object.hasOwn(v,'humanApproval')||v.humanApproval===false)&&Number.isFinite(v.acceptedAt);
+}
+// Puts an envelope in pending/. A request already present in any state is never put again.
+export async function putEnvelope(home:string,envelope:GrokEnvelope):Promise<{status:'written'}|{status:'exists';state:InboxState}>{
+ if(!validEnvelope(envelope))throw new Error('invalid_envelope');
+ const dir=await ensureInbox(home,envelope.recipient.nativeId);
+ const present=await stateOf(home,envelope.recipient.nativeId,envelope.sender,envelope.id);if(present)return {status:'exists',state:present.state};
+ const written=await publishFile(join(dir,'pending',keyOf(envelope.sender,envelope.id)+'.json'),JSON.stringify(envelope));
+ if(!written){const now=await stateOf(home,envelope.recipient.nativeId,envelope.sender,envelope.id);return {status:'exists',state:now?.state??'pending'};}
+ return {status:'written'};
+}
+export async function readJson<T>(path:string,valid:(v:any)=>v is T):Promise<T|null>{
+ const raw=await readPrivate(path);if(raw===null)return null;
+ try{const v=JSON.parse(raw);return valid(v)?v:null;}catch{return null;}
+}
+function validReceipt(v:any):v is GrokReceipt{
+ return !!v&&typeof v==='object'&&validEnvelope(v.envelope)&&typeof v.sessionId==='string'&&typeof v.generation==='string'&&Number.isFinite(v.hookAt)&&typeof v.reason==='string'&&(v.promptId===null||typeof v.promptId==='string')&&(v.hookName===null||typeof v.hookName==='string')&&Number.isSafeInteger(v.hookPid);
+}
+// Receipts the hook wrote for this conversation, oldest first. Unreadable ones are left out.
+export async function receipts(home:string,sessionId:string):Promise<GrokReceipt[]>{
+ let dir:string;try{dir=join(conversationDir(home,sessionId),'delivered');}catch{return [];}
+ let names:string[]=[];try{names=(await readdir(dir)).filter(n=>/^[0-9a-f]{64}\.json$/.test(n));}catch{return [];}
+ const out:GrokReceipt[]=[];
+ for(const n of names){const r=await readJson(join(dir,n),validReceipt);if(r&&r.sessionId===sessionId)out.push(r);}
+ return out.sort((a,b)=>a.hookAt-b.hookAt);
+}
+
+ succeeded in 92ms:
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+
+ exited 1 in 105ms:
+/Users/tachibanashuuta/.local/bin/harness-mem: line 149: cannot create temp file for here document: Operation not permitted
+
+codex
+T3 の受信判定には具体的な食い違いがあります。AC16 は `/tmp/cc-socks-<uid>` を見る一方、実機記録は `/tmp/cc-socks/<pid>.sock` です。本文保存 0 バイトという AC8 も、T10 が維持する Grok の受信箱実装と衝突しています。指摘を番号と修正箇所に絞っています。
+
+codex
+図面検査: **FAIL**。敵対: **16件（重大11、中4、軽微1）**。対象は `87a4162` と指定の未コミット文書。
+
+1. **No**。AC6の担当タスクなし。AC13の `compare` 実装タスクなし。
+2. **No**。T14「別の頭で読んで手順の抜け0」、T12「actか手動で通る」は判定手順が未指定。
+3. **No**。S4、S5、S7はAC失敗との対応なし。AC6の失敗を止める条件もない。
+4. **Yes**。決定済みH1〜H4、H7の記述自体は本人指示と一致。ただし実行計画に食い違いがある。
+5. **Yes**。Plansに不変条件1〜8を再定義する明文はない。ただし維持を検証する条件が不足。
+6. **No**。specにsocket、IPC、plugin、hooks、ファイルパスなどの実装指定が混在。
+7. **No**。AC16のsocketパスが実機記録と不一致。AC14、AC15の実動作を裏付ける記録はない。
+
+- **重大｜AC1** / 実際の配布物によるsetupを、Plans §8とT06ではローカル版の `--dry-run` に置換。設定反映も初回取得時間も測れない / 実導入3回と設定変更件数を検収に戻す。
+- **重大｜AC6、H2** / Plansはqueue書込み、T03はIPC書込みfallback。成否不明時の切替禁止がなく、AC6の実装担当もない / 未送信が確定した場合だけ切替可能とし、経路横断の重複防止試験を割り当てる。
+- **重大｜AC4、AC5、AC7** / T04は記録に出ないだけでheldにする。遅延、拒否、記録読取り失敗を区別できない。「reached生成はjsonl照合1箇所」もPlans §3のplugin event、hook receiptと食い違う / 状態と根拠の対応を製品別に定義する。
+- **重大｜AC8、S3** / T10が維持するGrok受信箱は本文入り封筒をファイル保存する。本文0バイトと両立しない。`ps`、`lsof`の瞬間観測でも一時的な保存や通信は否定できない / 保存経路を解消し、測定範囲と観測期間を定める。
+- **中｜AC9** / Plansはmainとの差分、T07は未コミット差分を測る。前者は基盤変更を含み、後者はcommit後に空になる / アダプタ追加直前と直後の版を比較する。
+- **中｜AC10、AC13** / T07は偽API試験だけ。T16は表の存在だけで、復帰成功率の分母や復帰条件がない / 実往復、測定回数、失敗の数え方をDoneに入れ、compare実装を割り当てる。
+- **重大｜AC14、AC15** / Plans §4はT3からMCPを呼べると断定するが、evidenceに実測なし。AC15の `html_render` を検証では `html_preview` に置換。T17はopencode実装T07にも依存していない / 未確認と明記し、3製品との往復と指定描画経路を実測する。
+- **重大｜AC16** / specは `/tmp/cc-socks-<uid>`、[evidence](/Users/tachibanashuuta/LocalWork/Code/seamless/specs/2026-10-universal-wiring/evidence.md:20)は `/tmp/cc-socks/<pid>.sock`。T3にはsessions JSONもないため、T02のJSON検査だけでは一覧への掲載を検証できない / T3の発見元、プロセスとの対応、socket確認方法を揃える。
+- **重大｜S1〜S7** / 30分ループに停止条件を評価する工程がない。S3には外部接続発生時の扱いもない。S2の「不明固定」はAC4、AC5の成立を回復しない / 発動条件、止める範囲、再開条件をループの遷移に組み込む。
+- **中｜H1、S5** / v1必須のAntigravityをS5でphase 2へ移せる一方、検収範囲変更の扱いがない。週1確認の担当T09は週5〜6 / 初週に確認し、不成立ならH1の変更判断待ちとして記録する。
+- **重大｜H7** / [Plans §6](/Users/tachibanashuuta/LocalWork/Code/seamless/specs/2026-10-universal-wiring/Plans.md:68)のラベル確認と取得は一体でなく、同時起動を排除できない。異常終了後のin-progressは全後続を止め、全件blockedでも定期起動が続く / 排他的取得、期限、復旧担当、休止条件を定める。
+- **重大｜H7** / 最若番号だけで選ぶため、T07が依存先T11より先に選ばれる。Issue別ブランチの成果を後続へ取り込む工程もない。T12以前は実環境依存のverifyが残る / 依存完了と基点版でreadyを決め、T12を先行させる。
+- **重大｜H7、AC4〜AC10** / verify終了0だけでIssueを閉じ、個別Doneとteam-reviewを飛ばす。DeepSeek 1017に渡すT03、T04、T11、T12は配送、状態、登録、検査自体を変更するため、この穴の影響が大きい / 個別Doneの実行結果と同一版への別家系判定を閉鎖条件にする。
+- **中｜Open decisions 1〜3、H5** / 未決の20秒、4,000文字、Issue別ブランチをT04、T03、Plans §6で確定値として使用。T14も未決のMITを要求 / 仮値と確定値を区別し、未決事項に依存する検収を保留する。
+- **重大｜AC12、H2、H6** / 内部IPCを継続しながら「内部APIの再現なし」の判定境界がない。秘密スキャンでは判定できず、ループの公開解禁条件にはH5しか書かれていない / 公開対象の内部依存を列挙し、H6も解禁条件に含める。
+- **軽微｜その他** / specの用語、AC8、AC16に内部形式と観測パスが入り、「何を、なぜ」と実装手段が混在 / 利用者に保証する振る舞いを残し、実装と検証手段をPlansへ移す。
+
+確信度: **high（文書間の食い違い）**。実機再試験なし。ファイル変更なし。
+tokens used
+64,571
+exit=0

@@ -1,0 +1,1146 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>seamless は誰のための配線か：統合プランVer と Reason Network の比較採点</title>
+<style>
+  :root{
+    --paper:#f6f2e9;
+    --paper-2:#fffdf7;
+    --ink:#171612;
+    --muted:#6b665c;
+    --line:#d8d1c3;
+    --soft:#ece5d7;
+    --reason:#33414d;
+    --current:#9b9486;
+    --plan:#b5451f;
+    --target:#1f5c4d;
+    --accent:#b5451f;
+    --radius:2px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,-apple-system,sans-serif;
+    font-size:15.5px;
+    line-height:1.9;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  .wrap{max-width:1120px;margin:0 auto;padding:44px 38px 96px}
+  a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line)}
+  a:hover{border-bottom-color:var(--accent)}
+  p{margin:0 0 1.1em}
+  strong{font-weight:700}
+  small{font-size:12px;color:var(--muted)}
+  code{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:.86em;
+    background:var(--soft);
+    padding:2px 5px;
+    border-radius:2px;
+  }
+  .mono{font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace}
+
+  /* header */
+  .topline{
+    display:flex;justify-content:space-between;gap:20px;
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--muted);
+    border-bottom:1px solid var(--ink);
+    padding-bottom:12px;
+  }
+  header{padding:20px 0 0}
+  .kicker{
+    margin-top:44px;
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--accent);
+  }
+  h1{
+    font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    font-weight:600;
+    font-size:clamp(38px,5.6vw,68px);
+    line-height:1.12;
+    letter-spacing:-.025em;
+    margin:14px 0 22px;
+  }
+  .lede{
+    font-size:19px;
+    line-height:1.85;
+    max-width:790px;
+    color:#2b2924;
+  }
+  .meta{
+    display:flex;flex-wrap:wrap;gap:10px 22px;
+    margin:22px 0 0;
+    font-size:12px;color:var(--muted);
+  }
+  .meta span::before{content:"●";color:var(--line);margin-right:8px;font-size:9px;vertical-align:1px}
+
+  /* verdict */
+  .verdict{
+    margin:38px 0 0;
+    background:var(--ink);
+    color:var(--paper);
+    padding:30px 32px 28px;
+    display:grid;
+    grid-template-columns:1.25fr .9fr;
+    gap:36px;
+    align-items:end;
+  }
+  .verdict .mini{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:#c9bfa9;margin-bottom:10px;
+  }
+  .verdict p{
+    font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    font-size:23px;line-height:1.55;margin:0;
+  }
+  .verdict .side{
+    border-left:1px solid #4a453b;
+    padding-left:30px;
+  }
+  .verdict .side b{
+    display:block;
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:13px;color:#c9bfa9;font-weight:400;letter-spacing:.06em;
+    margin-bottom:6px;
+  }
+  .verdict .side p{font-family:inherit;font-size:14px;line-height:1.8;color:#ded4c1;margin:0}
+
+  /* kpis */
+  .kpis{
+    display:grid;grid-template-columns:repeat(4,1fr);
+    border-bottom:1px solid var(--line);
+  }
+  .kpi{padding:24px 20px 22px;border-right:1px solid var(--line)}
+  .kpi:first-child{padding-left:0}
+  .kpi:last-child{border-right:0}
+  .kpi b{
+    display:block;
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:38px;line-height:1;letter-spacing:-.04em;font-weight:500;
+  }
+  .kpi .name{display:block;font-size:13px;margin-top:8px;font-weight:600}
+  .kpi .note{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+  .kpi.reason b{color:var(--reason)}
+  .kpi.plan b{color:var(--plan)}
+  .kpi.current b{color:var(--current)}
+  .kpi.target b{color:var(--target)}
+
+  /* toc */
+  .toc{
+    display:flex;flex-wrap:wrap;gap:8px 18px;
+    padding:18px 0 0;
+    font-size:12px;color:var(--muted);
+  }
+  .toc a{border-bottom:none;display:inline-flex;gap:7px;align-items:baseline}
+  .toc a b{font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;color:var(--accent);font-weight:500;font-size:10px}
+
+  /* sections */
+  main{padding-top:10px}
+  section{padding:58px 0 54px;border-bottom:1px solid var(--line)}
+  .sec-head{display:flex;align-items:baseline;gap:16px;margin-bottom:24px}
+  .sec-no{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:11px;color:var(--accent);letter-spacing:.12em;flex:0 0 auto;
+    padding-top:6px;
+  }
+  h2{
+    font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    font-weight:600;
+    font-size:clamp(26px,3.2vw,36px);
+    line-height:1.35;letter-spacing:-.02em;
+    margin:0;
+  }
+  h3{
+    font-size:17px;line-height:1.6;margin:32px 0 12px;
+    letter-spacing:-.01em;
+  }
+  h3:first-child{margin-top:0}
+  h4{font-size:14px;margin:22px 0 8px}
+  .sub{color:var(--muted);font-size:14px;margin:-10px 0 24px;max-width:780px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:34px}
+  .cols-3{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+  .stack{display:grid;gap:16px}
+
+  /* callouts */
+  .callout{
+    border-left:4px solid var(--accent);
+    background:var(--soft);
+    padding:20px 24px;
+    margin:24px 0;
+  }
+  .callout.green{border-left-color:var(--target);background:#e7eee8}
+  .callout.slate{border-left-color:var(--reason);background:#e9ebec}
+  .callout p:last-child{margin-bottom:0}
+  .callout .label{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+    display:block;margin-bottom:6px;
+  }
+  blockquote{
+    margin:24px 0;padding:0 0 0 22px;border-left:2px solid var(--ink);
+    font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    font-size:19px;line-height:1.7;
+  }
+  blockquote cite{display:block;font-family:inherit;font-size:11px;color:var(--muted);margin-top:8px;font-style:normal}
+
+  /* glossary */
+  .glossary{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:0 26px;
+    border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    padding:18px 0;margin:26px 0 0;
+  }
+  .glossary div{padding:6px 0}
+  .glossary dt{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);
+  }
+  .glossary dd{margin:1px 0 0;font-size:12px;line-height:1.7;color:#3d3932}
+
+  /* tables */
+  .table-wrap{overflow-x:auto;margin:18px 0 8px}
+  table.tight-first th:first-child,table.tight-first td:first-child{white-space:nowrap}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;line-height:1.65}
+  th{
+    text-align:left;font-weight:600;font-size:11px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted);
+    border-bottom:1px solid var(--ink);padding:0 10px 9px;
+    white-space:nowrap;
+  }
+  td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th:first-child,td:first-child{padding-left:0}
+  th:last-child,td:last-child{padding-right:0}
+  .num{text-align:right;font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .center{text-align:center}
+  .row-strong td{background:#f0eadc}
+  .row-strong td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  .muted{color:var(--muted)}
+  .small{font-size:12px}
+  .nowrap{white-space:nowrap}
+
+  /* tags */
+  .tag{
+    display:inline-block;font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:10px;letter-spacing:.06em;line-height:1.6;
+    border:1px solid var(--line);padding:1px 7px;border-radius:999px;
+    color:var(--muted);white-space:nowrap;
+  }
+  .tag.red{border-color:#d8a38f;color:#8e3518;background:#fbeee7}
+  .tag.green{border-color:#a8c3b6;color:#1f5c4d;background:#eaf1ed}
+  .tag.amber{border-color:#d9c08c;color:#7a5a14;background:#faf2df}
+  .tag.dark{border-color:var(--ink);color:var(--ink)}
+
+  /* score bars */
+  .bars{margin:26px 0 10px;display:grid;gap:13px}
+  .bar-row{display:grid;grid-template-columns:190px 1fr 52px;gap:14px;align-items:center}
+  .bar-label{font-size:13px;line-height:1.4}
+  .bar-label small{display:block;font-size:10px;margin-top:1px}
+  .bar-track{height:14px;background:#e5ddcd;position:relative;border-radius:1px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:1px}
+  .bar-fill.reason{background:var(--reason)}
+  .bar-fill.current{background:var(--current)}
+  .bar-fill.plan{background:var(--plan)}
+  .bar-fill.target{background:var(--target);opacity:.55}
+  .bar-row.goal .bar-track{background:transparent;border:1px dashed #9db9ad}
+  .bar-val{text-align:right;font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;font-size:15px}
+  .bar-note{font-size:11px;color:var(--muted);margin-top:4px}
+
+  /* signal lists */
+  .signals{display:grid;gap:0;border-top:1px solid var(--line)}
+  .signal{display:grid;grid-template-columns:28px 1fr;gap:12px;padding:15px 0;border-bottom:1px solid var(--line)}
+  .signal .mark{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:12px;color:var(--accent);padding-top:2px;
+  }
+  .signal.green .mark{color:var(--target)}
+  .signal.slate .mark{color:var(--reason)}
+  .signal b{display:block;font-size:14px;margin-bottom:2px}
+  .signal p{margin:0;font-size:13px;color:#3d3932;line-height:1.75}
+
+  /* wiring diagram */
+  .wiring{
+    display:grid;grid-template-columns:1fr 40px 1.2fr 40px 1fr;
+    gap:0;align-items:center;
+    background:var(--paper-2);
+    border:1px solid var(--line);
+    padding:26px 22px;
+    margin:24px 0;
+  }
+  .wiring-col{display:grid;gap:8px}
+  .wiring .arrow{text-align:center;color:var(--muted);font-size:18px}
+  .node{
+    border:1px solid var(--line);background:#fff;padding:9px 12px;
+    font-size:12.5px;text-align:center;line-height:1.45;
+  }
+  .node small{display:block;font-size:10px;margin-top:1px}
+  .node.optional{border-style:dashed;color:var(--muted);background:transparent}
+  .core{
+    background:var(--ink);color:var(--paper);padding:22px 18px;text-align:center;
+    font-family:"Hiragino Mincho ProN","Yu Mincho",serif;font-size:22px;line-height:1.3;
+  }
+  .core small{display:block;font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;font-size:10px;color:#c9bfa9;margin-top:6px;letter-spacing:.04em}
+
+  /* decisions */
+  .decisions{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:24px}
+  .decision{
+    background:var(--paper-2);border:1px solid var(--line);border-top:4px solid var(--accent);
+    padding:22px 20px 20px;display:flex;flex-direction:column;gap:0;
+  }
+  .decision .dno{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:10px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;
+  }
+  .decision h3{font-size:16px;margin:6px 0 14px;line-height:1.5}
+  .decision dl{margin:0;font-size:12.5px;line-height:1.7}
+  .decision dt{
+    font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+    margin-top:11px;
+  }
+  .decision dd{margin:2px 0 0}
+  .decision .rec{background:var(--soft);padding:8px 10px;margin:2px 0 0;font-weight:600}
+  .decision .reversible{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted)}
+
+  /* checklist */
+  .check-status{white-space:nowrap}
+  .status{
+    display:inline-block;font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:10px;padding:1px 7px;border-radius:999px;border:1px solid;
+  }
+  .status.todo{color:#8e3518;border-color:#d8a38f;background:#fbeee7}
+  .status.part{color:#7a5a14;border-color:#d9c08c;background:#faf2df}
+  .status.done{color:#1f5c4d;border-color:#a8c3b6;background:#eaf1ed}
+  .status.wait{color:#4b4a45;border-color:#c9c2b3;background:#f0ece2}
+
+  /* progress */
+  .progress-table td:first-child{font-weight:600;width:150px}
+  .progress-table td{font-size:13px}
+  .progress-visual{display:grid;gap:7px;margin:10px 0 4px;max-width:460px}
+  .progress-visual .prow{display:grid;grid-template-columns:104px 1fr 44px;gap:10px;align-items:center;font-size:11px}
+  .progress-visual .ptrack{height:8px;background:#e5ddcd;border-radius:999px;overflow:hidden}
+  .progress-visual .pfill{height:100%;background:var(--target)}
+  .progress-visual .pfill.plan{background:var(--accent)}
+  .progress-visual .pval{text-align:right;font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;font-size:11px}
+  .tasklist{margin:4px 0 0;padding-left:18px}
+  .tasklist li{margin:3px 0}
+
+  /* footer */
+  footer{padding:44px 0 0;color:var(--muted);font-size:12px;line-height:1.8}
+  footer h3{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);margin:0 0 10px}
+  .sources{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+  .sources ul{margin:0;padding:0;list-style:none}
+  .sources li{padding:4px 0;border-bottom:1px solid #e3dbcb}
+  .sources a{word-break:break-all}
+  .fine{border-top:1px solid var(--line);margin-top:30px;padding-top:18px;font-size:11px}
+
+  @media (max-width:900px){
+    .wrap{padding:28px 22px 70px}
+    .glossary{grid-template-columns:1fr}
+    .verdict{grid-template-columns:1fr;gap:22px}
+    .verdict .side{border-left:0;border-top:1px solid #4a453b;padding-left:0;padding-top:18px}
+    .kpis{grid-template-columns:1fr 1fr}
+    .kpi{padding:20px 14px}
+    .kpi:nth-child(2){border-right:0}
+    .kpi:nth-child(3){padding-left:14px;border-top:1px solid var(--line)}
+    .kpi:nth-child(4){border-top:1px solid var(--line)}
+    .cols,.cols-3,.decisions,.sources{grid-template-columns:1fr}
+    .bars .bar-row{grid-template-columns:1fr 48px;gap:6px 10px}
+    .bar-label{grid-column:1 / -1}
+    .wiring{grid-template-columns:1fr;gap:10px}
+    .wiring .arrow{transform:rotate(90deg)}
+    blockquote{font-size:17px}
+  }
+  @media print{
+    body{background:#fff;font-size:11pt}
+    .wrap{max-width:none;padding:0}
+    .toc{display:none}
+    section{break-inside:avoid}
+    .verdict{background:#171612 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .bar-fill{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    a{border-bottom:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="topline">
+    <span>Seamless / Strategy Review</span>
+    <span>2026-10-19 JST</span>
+  </div>
+  <div class="kicker">比較採点レビュー</div>
+  <h1>シームレスは、<br>誰のための配線か。</h1>
+  <p class="lede">
+    統合プランVer（seamless + botress）と Reason Network を、<br>
+    同じ10の観点で採点した。結論は「統合は正しい。ただし、全部入りで出すと負ける」。<br>
+    個人のMacの配線に絞れば、勝てる場所がある。
+  </p>
+  <div class="meta">
+    <span>対象: seamless 現行 / Nestra_v2 packages/seamless（統合プランVer）</span>
+    <span>競合: reasonmachines.com/network</span>
+    <span>点数は5点満点の重み付き</span>
+  </div>
+
+  <div class="verdict">
+    <div>
+      <div class="mini">ひとことで</div>
+      <p>Reason はチームの網。seamless は自分のMacの配線。同じ土俵で戦うと負けるが、個人の配線に絞れば、勝てる場所がある。</p>
+    </div>
+    <div class="side">
+      <b>このレポートで決めること</b>
+      <p>1. Grok Bot をどこまで v0.1 に含めるか（webhook まで / 玄関口も / 出さない）。<br>2. チーム機能を追うか、個人に絞るか。<br>3. 名前と配布をどうするか。</p>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi reason"><b>4.6</b><span class="name">Reason Network</span><span class="note">完成度の基準</span></div>
+    <div class="kpi plan"><b>3.4</b><span class="name">統合プランVer</span><span class="note">現行比 +0.6</span></div>
+    <div class="kpi current"><b>2.7</b><span class="name">現行 seamless</span><span class="note">2026-10-12 時点</span></div>
+    <div class="kpi target"><b>4.1</b><span class="name">現実的な到達点</span><span class="note">チームを追わない試算 4.05</span></div>
+  </div>
+
+  <nav class="toc">
+    <a href="#conclusion"><b>00</b> 結論</a>
+    <a href="#premise"><b>01</b> 比較の前提</a>
+    <a href="#reason"><b>02</b> 競合の正体</a>
+    <a href="#score"><b>03</b> 採点</a>
+    <a href="#plan"><b>04</b> 統合プランの精査</a>
+    <a href="#position"><b>05</b> 勝ち筋</a>
+    <a href="#release"><b>06</b> 推奨リリース形</a>
+    <a href="#checklist"><b>07</b> リリース前チェック</a>
+    <a href="#decision"><b>08</b> 判断材料</a>
+    <a href="#progress"><b>09</b> 進捗</a>
+  </nav>
+
+  <dl class="glossary">
+    <div><dt>OSS</dt><dd>誰でも見て、使って、直せる公開ソフト。</dd></div>
+    <div><dt>MCP</dt><dd>AIアプリから共通の道具を呼ぶための口。</dd></div>
+    <div><dt>CLI</dt><dd>コマンド画面から使う道具。</dd></div>
+    <div><dt>デーモン</dt><dd>裏で動き続ける常駐プログラム。</dd></div>
+    <div><dt>玄関口（gateway）</dt><dd>外のサービスへ入るための、決まった入口。</dd></div>
+    <div><dt>予約（reservation）</dt><dd>送る前に「このIDで送る」と残す記録。二重送信を防ぐ。</dd></div>
+  </dl>
+</header>
+
+<main>
+
+<!-- 00 -->
+<section id="conclusion">
+  <div class="sec-head"><div class="sec-no">00</div><h2>30秒でわかる結論</h2></div>
+
+  <div class="signals">
+    <div class="signal">
+      <div class="mark">01</div>
+      <div>
+        <b>Reason は「別の商品」で、正面から戦う相手ではない。</b>
+        <p>Reason は複数人、複数マシンのための網。seamless は1台、1人のための配線。Reason を基準にすると、チーム機能で0.42点、対応相手で0.18点、最初から負ける。この0.60点は、機能を足しても埋まらない。設計思想が違う。</p>
+      </div>
+    </div>
+    <div class="signal">
+      <div class="mark">02</div>
+      <div>
+        <b>統合の利得は +0.6点。その大半は「Grok Bot の玄関口まで届く」ことに集中している。</b>
+        <p>内訳は、外部の入口 +0.20、配送 +0.14、導入 +0.14、対応相手 +0.06、チーム +0.06、OSS +0.03。相手探索、証拠、安全はほとんど変わらない。つまり、統合の是非は「Grok Bot の玄関口まで公開物に含めるか」とほぼ同じ。</p>
+      </div>
+    </div>
+    <div class="signal">
+      <div class="mark">03</div>
+      <div>
+        <b>リリースの障害は、機能ではなく配布にある。</b>
+        <p>ライセンスがない。npm の <code>seamless</code> は取得済み。Grok Bot 側は <code>/usr/local/bin/python3</code> 固定で、Apple Silicon の標準環境では動かない。CI は Keychain を読む検査を外せない。README は旧方式のまま。互換表は10月2日で止まっている。ここを閉じないと、OSS（誰でも見て使える公開ソフト）として出しても「動かない」で終わる。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout green">
+    <span class="label">このレビューの立場</span>
+    <p><strong>統合そのものは正しい。</strong>botress は「Grok Bot 専用ツール」というブランド問題を抱えていて、単独で OSS にする理由が弱い。seamless の一機能にすると、予約、再送禁止、4段階の証拠に乗る。ただし、<strong>repo ごと抱えるのではなく、能力を分けて迎える</strong>のが安全で、説明も短くなる。v0.1 は既存の webhook 方式まで。玄関口（gateway）は法務確認後の任意アダプタにする。</p>
+  </div>
+</section>
+
+<!-- 01 -->
+<section id="premise">
+  <div class="sec-head"><div class="sec-no">01</div><h2>何を比べたか</h2></div>
+  <p class="sub">「統合プランVer」は、Nestra_v2 の <code>packages/seamless</code>（seamless 本体 + botress + gateway-send、ff38fe5 / 2026-10-18）を指す。公開リポジトリの seamless とは別物なので、混ぜない。</p>
+
+  <div class="table-wrap">
+    <table class="tight-first">
+      <thead>
+        <tr><th>観点</th><th>Reason Network</th><th>seamless 現行</th><th>統合プランVer</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>正体</td><td>チームの peer-to-peer 網（対等な端末どうしが直接つながる網）</td><td>1台の会話配線</td><td>1台の会話配線 + Grok Bot</td></tr>
+        <tr><td>つながる相手</td><td>Claude Code、Codex、Cursor、Gemini CLI、Copilot CLI、opencode、Grok、Pi、Reason など10以上</td><td>Claude Code、Codex Desktop、Grok CLI</td><td>同左 + Grok Bot（webhook / 玄関口）</td></tr>
+        <tr><td>常駐</td><td>1台に1デーモン（裏で動き続ける常駐プログラム）</td><td>なし（MCPの間だけ）</td><td>なし</td></tr>
+        <tr><td>届く範囲</td><td>同じチームの複数マシン。LAN直結、インターネット越し</td><td>同じMacの中</td><td>同じMacの中 + Grok Bot のクラウド</td></tr>
+        <tr><td>導入</td><td>1行インストール + <code>setup</code></td><td>手でMCP設定</td><td>手でMCP設定 + 手で <code>gateway.json</code></td></tr>
+        <tr><td>届いた証拠</td><td>ack（受け取ったという返事）、outbox（送信待ちの箱）、receipt（配達の記録）、既読</td><td>受理、到達、処理開始、返答完了の4段階</td><td>同左 + 受理記録、会話項目、echo ID の3点照合</td></tr>
+        <tr><td>ライセンス</td><td>エンジンは MIT または Apache-2.0。CLI は proprietary（非公開の専用ソフト）</td><td>なし（非公開）</td><td>なし（botress は MIT だが「非公開専用」方針）</td></tr>
+        <tr><td>現在地</td><td>公開中。GitHub 432 stars / 31 forks、v0.10.7</td><td>非公開。main 87a4162</td><td>Nestra 内で開発中。本物の送信は未実施</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout slate">
+    <span class="label">採点の読み方</span>
+    <p>点数は10観点の重み付きで、5点満点。重みは「個人が1台で使うときに、どれだけ効くか」を基準に置いた。絶対的な優劣ではなく、<strong>差がどこから来るか</strong>を見るための道具として読んでほしい。重みを変えれば点数は動く。</p>
+  </div>
+
+  <h3>調べた範囲</h3>
+  <div class="cols">
+    <div>
+      <p><strong>seamless 側</strong></p>
+      <ul>
+        <li>現行 repo の <code>src/</code> 全37ファイル、<code>spec.md</code>、<code>specs/202610-everyday-use</code>、<code>specs/202610-more-peers</code>。</li>
+        <li>Nestra_v2 の <code>packages/seamless</code>（<code>gateway-send.ts</code>、<code>botress/</code>、<code>tests/</code>）。</li>
+        <li>Nestra の <code>spec.md</code> O3、<code>o3-gateway.md</code>、判断記録 D22、D28、D34。</li>
+        <li>2026-10-19 時点の作業ツリー。試験は再実行していない（Keychain を読むため）。記録上の数字を使った。</li>
+      </ul>
+    </div>
+    <div>
+      <p><strong>Reason 側</strong></p>
+      <ul>
+        <li>公式サイト <code>reasonmachines.com/network</code>、docs の Network ページ。</li>
+        <li>GitHub <code>reason-machines/reason-network</code> の README と DESIGN.md（2026-10-19 取得）。</li>
+        <li>GitHub のメタデータ（stars、forks、ライセンス、最新リリース v0.10.7）。</li>
+        <li>Reason CLI の README（proprietary であることの確認）。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 02 -->
+<section id="reason">
+  <div class="sec-head"><div class="sec-no">02</div><h2>競合の正体</h2></div>
+  <p class="sub">Reason が強いのは、機能数ではない。「最初の10分」と「チームの文脈」を、製品として閉じているからだ。</p>
+
+  <blockquote>
+    「誰もやっていないのは、文脈つきの生きたセッションのチーム名簿だ。人、マシン、エージェント、リポジトリ、ブランチ、busy/idle、いま何をしているか。だからエージェントは、当てずっぽうに配信するのではなく、正しい相手を選べる。メッセージ送信は簡単な部分にすぎない。」
+    <cite>Reason Network DESIGN.md（2026-10-19 取得、要旨訳）</cite>
+  </blockquote>
+
+  <div class="cols">
+    <div>
+      <h3>強い理由</h3>
+      <div class="signals">
+        <div class="signal green">
+          <div class="mark">＋</div>
+          <div><b>導入が1行で終わる</b><p><code>curl … | bash</code> のあと <code>reason network setup</code>。10以上のエージェントを検出して、MCPとフックを書く。利用者はほとんど何も設定しない。</p></div>
+        </div>
+        <div class="signal green">
+          <div class="mark">＋</div>
+          <div><b>チームの文脈が最初からある</b><p>人 → マシン → セッションの階層。repo（コードの保管場所）@branch（作業の枝）、busy/idle（作業中/待機中）、doing（いま何をしているか）まで出る。誰に頼むかを、勘で決めなくていい。</p></div>
+        </div>
+        <div class="signal green">
+          <div class="mark">＋</div>
+          <div><b>届き方が速い</b><p>Claude Code、Codex、opencode、Pi、Reason はセッションの途中に届き、待機中なら起こす。同じLANなら直結。1.5〜2秒で返る、と公式が書いている。</p></div>
+        </div>
+        <div class="signal green">
+          <div class="mark">＋</div>
+          <div><b>チームの衝突を避ける設計</b><p>同じrepoで誰が動いているかが見える。オフラインの相手には郵便箱が1日預かる。hold（保留）/ refuse（拒否）、loop guard（AI同士の無限往復を止める仕組み）、ask_user（本人にポップアップで承認を取る道具）まである。</p></div>
+        </div>
+        <div class="signal green">
+          <div class="mark">＋</div>
+          <div><b>公開と勢いがある</b><p>エンジンは MIT または Apache-2.0。公開から3日で 432 stars / 31 forks。v0.10.7 が 2026-10-18 に出ている。コミュニティと会社が後ろにいる。</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h3>弱い理由（＝seamless の余地）</h3>
+      <div class="signals">
+        <div class="signal">
+          <div class="mark">−</div>
+          <div><b>チーム前提で、重い</b><p>1人で使うにも「チーム」と「招待」の概念を通る。デーモン、常駐サービス、自動更新、メニューバー。壊れたときの切り分けが、seamless より多い。</p></div>
+        </div>
+        <div class="signal">
+          <div class="mark">−</div>
+          <div><b>専用CLIは非OSS</b><p>エンジンだけが公開で、実際に使う <code>reason</code> CLI は proprietary（非公開の専用ソフト）。OSS の気軽さと、製品の都合が一致しない部分がある。</p></div>
+        </div>
+        <div class="signal">
+          <div class="mark">−</div>
+          <div><b>コーディングエージェント中心</b><p>日常のアシスタント（Grok Bot、Muse、Dot、LINE）は、あくまでコーディング網への入口。Grok Bot は Reason MCP 経由で参加する。アカウント無しの経路で使えるかは、資料からは確定できない（未確認）。</p></div>
+        </div>
+        <div class="signal">
+          <div class="mark">−</div>
+          <div><b>まだ若い</b><p>公開から3日、42コミット。M4（チーム機能）は未着手。仕様と配布がこれから動く。長く使う前提だと、更新の荒波を浴びる。</p></div>
+        </div>
+        <div class="signal">
+          <div class="mark">−</div>
+          <div><b>「届いた証拠」は、seamless ほど厳密ではない</b><p>ack と receipt はあるが、seamless の「同じIDは再送しない」「不明なら送らない」「受理と会話項目と echo ID の3点照合」ほど、送信の重複と誤認に神経質ではない。</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <span class="label">大事な線引き</span>
+    <p>Reason を買う人は「チームで、複数マシンで、なるべく設定せずに使いたい人」。seamless を買う人は「1台で、静かに、自分の会話だけをつなぎたい人」。<strong>同じ棚に並ぶ商品ではない。</strong>比較採点は、負けを宣告するためではなく、どこで戦わないかを決めるために使う。</p>
+  </div>
+</section>
+
+<!-- 03 -->
+<section id="score">
+  <div class="sec-head"><div class="sec-no">03</div><h2>採点</h2></div>
+  <p class="sub">10観点、合計100の重み。点数は「個人が1台で使う」場面を基準にした。推奨形は、このレポートの 06 で提案する形（コア + webhook + 任意の玄関口）。</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>観点</th><th class="num">重み</th><th class="num">Reason</th><th class="num">現行</th><th class="num">統合プラン</th><th class="num">推奨形</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>導入、設定の簡単さ</td><td class="num">14</td><td class="num">5.0</td><td class="num">2.0</td><td class="num">3.0</td><td class="num">4.0</td></tr>
+        <tr><td>つながる相手の広さ</td><td class="num">12</td><td class="num">5.0</td><td class="num">3.0</td><td class="num">3.5</td><td class="num">3.5</td></tr>
+        <tr><td>届く速さ、確実さ</td><td class="num">14</td><td class="num">5.0</td><td class="num">3.0</td><td class="num">4.0</td><td class="num">4.0</td></tr>
+        <tr><td>相手の文脈と選びやすさ</td><td class="num">10</td><td class="num">5.0</td><td class="num">3.0</td><td class="num">3.0</td><td class="num">3.5</td></tr>
+        <tr><td>チーム、複数マシン</td><td class="num">12</td><td class="num">5.0</td><td class="num">1.0</td><td class="num">1.5</td><td class="num">1.5</td></tr>
+        <tr><td>外部、非コーディング入口</td><td class="num">10</td><td class="num">4.0</td><td class="num">3.0</td><td class="num">5.0</td><td class="num">4.5</td></tr>
+        <tr><td>届いた証拠、監査性</td><td class="num">8</td><td class="num">4.0</td><td class="num">5.0</td><td class="num">5.0</td><td class="num">5.0</td></tr>
+        <tr><td>安全境界</td><td class="num">7</td><td class="num">4.0</td><td class="num">4.0</td><td class="num">4.0</td><td class="num">4.5</td></tr>
+        <tr><td>壊れにくさ、保守</td><td class="num">8</td><td class="num">4.0</td><td class="num">2.0</td><td class="num">2.0</td><td class="num">3.0</td></tr>
+        <tr><td>OSS配布、説明</td><td class="num">5</td><td class="num">4.0</td><td class="num">2.0</td><td class="num">2.5</td><td class="num">4.0</td></tr>
+        <tr class="row-strong"><td><strong>合計</strong></td><td class="num"><strong>100</strong></td><td class="num"><strong>4.62</strong></td><td class="num"><strong>2.72</strong></td><td class="num"><strong>3.37</strong></td><td class="num"><strong>3.68</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bars">
+    <div class="bar-row">
+      <div class="bar-label">Reason Network<small>チームの網。完成度の基準</small></div>
+      <div class="bar-track"><div class="bar-fill reason" style="width:92.4%"></div></div>
+      <div class="bar-val">4.62</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">統合プランVer<small>seamless + botress</small></div>
+      <div class="bar-track"><div class="bar-fill plan" style="width:67.3%"></div></div>
+      <div class="bar-val">3.37</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">現行 seamless<small>2026-10-12 時点</small></div>
+      <div class="bar-track"><div class="bar-fill current" style="width:54.4%"></div></div>
+      <div class="bar-val">2.72</div>
+    </div>
+    <div class="bar-row goal">
+      <div class="bar-label">推奨形の到達目標<small>導入、文脈、速さを埋めた試算</small></div>
+      <div class="bar-track"><div class="bar-fill target" style="width:81.0%"></div></div>
+      <div class="bar-val">4.05</div>
+    </div>
+  </div>
+  <p class="bar-note">※ 4.05 は、推奨形のうち導入5.0、文脈4.5、配送4.5、壊れにくさ3.5、OSS 4.5 にした場合の試算。約束ではない。</p>
+
+  <h3>差が大きい5つ</h3>
+  <div class="signals">
+    <div class="signal">
+      <div class="mark">1</div>
+      <div><b>チーム、複数マシン：5.0 対 1.5</b><p>Reason は最初から複数マシン。seamless は1台。ここは後付けの機能ではなく、製品の形そのもの。追うなら別製品になる。</p></div>
+    </div>
+    <div class="signal">
+      <div class="mark">2</div>
+      <div><b>導入：5.0 対 3.0</b><p>Reason は1行。統合プランは、MCP設定、<code>peers.json</code>、<code>gateway.json</code> を手で書く。初見の人が最初の10分で挫折する。ここは <code>setup</code> と <code>doctor</code> で埋められる。</p></div>
+    </div>
+    <div class="signal">
+      <div class="mark">3</div>
+      <div><b>届く速さ：5.0 対 4.0</b><p>Reason は待機中のセッションも起こす。seamless は Claude と Codex は起こせるが、Grok CLI は次の Stop まで待つ。Grok Bot は起こせるが、コーディングエージェントの起こしに差が残る。</p></div>
+    </div>
+    <div class="signal">
+      <div class="mark">4</div>
+      <div><b>相手の文脈：5.0 対 3.0</b><p>Reason は「誰が、どのrepoの、どのbranchで、何をしているか」まで出す。seamless は repo / branch / busy まで。doing（いま何をしているか）がない。</p></div>
+    </div>
+    <div class="signal">
+      <div class="mark">5</div>
+      <div><b>壊れにくさ：4.0 対 2.0</b><p>Reason はフックとMCP中心で、公開に近い。seamless は Claude の socket、Codex の IPC、Grok の内部ファイル。3つとも非公開で、更新のたびに壊れ得る。互換表も10月2日で止まっている。</p></div>
+    </div>
+  </div>
+
+  <h3>差の内訳（Reason 4.62 − 推奨形 3.68）</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>差の内訳</th><th class="num">点数差</th><th>意味</th></tr></thead>
+      <tbody>
+        <tr><td>チーム、複数マシン</td><td class="num">−0.42</td><td>設計思想。追うなら別製品。</td></tr>
+        <tr><td>つながる相手の広さ</td><td class="num">−0.18</td><td>opencode / Cursor / Gemini / Copilot。v0.3 以降。</td></tr>
+        <tr><td>相手の文脈</td><td class="num">−0.15</td><td>doing とチーム名簿。個人なら不要にできる。</td></tr>
+        <tr><td>導入</td><td class="num">−0.14</td><td>setup / doctor で埋まる。</td></tr>
+        <tr><td>届く速さ</td><td class="num">−0.14</td><td>Grok CLI の起こし。構造的な差。</td></tr>
+        <tr><td>壊れにくさ</td><td class="num">−0.08</td><td>内部API依存。doctor と互換CIで軽くする。</td></tr>
+        <tr><td>届いた証拠</td><td class="num">+0.08</td><td>seamless が上。ここは譲らない。</td></tr>
+        <tr><td>外部、非コーディング入口</td><td class="num">+0.05</td><td>Grok Bot / Dot。ただし任意アダプタ。</td></tr>
+        <tr><td>安全境界</td><td class="num">+0.04</td><td>同等以上。説明できるかが課題。</td></tr>
+        <tr><td>OSS配布、説明</td><td class="num">0.00</td><td>どちらもこれから。</td></tr>
+        <tr class="row-strong"><td><strong>合計</strong></td><td class="num"><strong>−0.94</strong></td><td><strong>チーム0.42 + 相手0.18 = 0.60 は、カテゴリの違い。残り0.34は個人でも埋められる。</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout green">
+    <span class="label">読み取れること</span>
+    <p><strong>0.60点は追わない。0.34点は追う。</strong>チームと全エージェント対応を追うと、Reason の劣化コピーになる。導入、文脈、配送、脆さの0.34点を埋めると、個人の配線として 4.0 が見える。証拠、外部、安全で返している0.17点が、seamless の取り柄になる。</p>
+  </div>
+</section>
+
+<!-- 04 -->
+<section id="plan">
+  <div class="sec-head"><div class="sec-no">04</div><h2>統合プランの精査</h2></div>
+  <p class="sub">良い点と危ない点を分ける。統合の価値は「Grok Bot に届くこと」に集中していて、それ以外は配布の整備で上がる。</p>
+
+  <h3>良い点</h3>
+  <div class="signals">
+    <div class="signal green">
+      <div class="mark">＋</div>
+      <div><b>設定と入口が1つになる</b><p><code>~/.seamless</code>、MCP 1本、CLI 1本。利用者は「seamless を使う」とだけ覚えればよい。botress と seamless を行き来する必要がない。</p></div>
+    </div>
+    <div class="signal green">
+      <div class="mark">＋</div>
+      <div><b>送信の安全規則に乗る</b><p>botress の送信が、seamless の予約、同一内容の重複防止、再送禁止、4段階に乗る。二重送信の防止が一本化される。これは botress 単体では持っていなかった強み。</p></div>
+    </div>
+    <div class="signal green">
+      <div class="mark">＋</div>
+      <div><b>届いた証拠が強い</b><p>Grok Bot の玄関口（gateway）は、受理の記録、会話の項目、<code>echoEntryId</code>（会話に残った印）の3つが揃ったときだけ「届いた」とする。受理だけで済ませない。競合の ack（受け取ったという返事）より厳密。</p></div>
+    </div>
+    <div class="signal green">
+      <div class="mark">＋</div>
+      <div><b>Grok Bot は「コーディング以外」の入口</b><p>Reason はコーディングエージェントの網。seamless は、自分の Grok Bot や ChatGPT Dot へも届く。日常のアシスタントと、開発の会話をつなぐ価値がある。</p></div>
+    </div>
+    <div class="signal green">
+      <div class="mark">＋</div>
+      <div><b>botress のブランド問題を解消する</b><p>「Grok Bot 専用ツール」は単独で OSS にする理由が弱い。seamless の一機能なら、「配線アプリの対応先の1つ」として説明できる。</p></div>
+    </div>
+  </div>
+
+  <h3>危ない点</h3>
+  <div class="signals">
+    <div class="signal">
+      <div class="mark">!</div>
+      <div><b>法務：botress は「非公開専用」と書いている</b><p><code>botress/README.md</code> は「内部APIの再現と、アカウント固有の情報を含むため公開しない」と明記している。2026-10-16 の判断でも「公開したらまずい」としている。OSS にすると、この判断を覆す。Grok Bot の利用規約、自動アクセス、逆コンパイルの扱いを確認するまで、<strong>玄関口は公開しない方が安全</strong>。webhook 方式も非公式だが、アプリの保存領域を復号して内部APIを叩く玄関口より、説明と露出は小さい。いずれも法務の専門家の確認が必要。</p></div>
+    </div>
+    <div class="signal">
+      <div class="mark">!</div>
+      <div><b>実行環境：Python のパスが固定</b><p><code>src/gateway-send.ts</code> は <code>/usr/local/bin/python3</code> を固定で使う。Apple Silicon の Homebrew は <code>/opt/homebrew/bin/python3</code>。システムの <code>/usr/bin/python3</code> は 3.9 で、botress が要求する <code>cryptography</code> が入っていない。初見のMacで動かない可能性が高い。</p></div>
+    </div>
+    <div class="signal">
+      <div class="mark">!</div>
+      <div><b>脆さ：非公開の内部APIが3つ</b><p>Grok Bot の gateway、Claude の socket（同じMacの中の通信用の口）、Codex の IPC（アプリ同士が話す内部の口）。どれも公式の安定SDKではない。更新で同時に壊れ得る。互換表は Claude 2.1.284/286、Codex 26.930 のままで、現行の 2.1.302 / 26.1007 は未確認。</p></div>
+    </div>
+    <div class="signal">
+      <div class="mark">!</div>
+      <div><b>表面積：同じ repo に全部入っている</b><p>旧 <code>--registry</code> 方式、status panel、Claude Desktop の band mod、Dot の実験。OSS の README で全部説明すると、何のアプリか分からなくなる。公開する面を削る必要がある。</p></div>
+    </div>
+    <div class="signal">
+      <div class="mark">!</div>
+      <div><b>サポート：1人で抱える</b><p>Reason は会社とコミュニティがいる。seamless は1人。機能数に比例して issue が増える。v0.1 で約束する範囲を狭くしないと、維持できなくなる。</p></div>
+    </div>
+  </div>
+
+  <h3>まだ確かめていないこと</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>項目</th><th>状態</th><th>何が起きるか</th></tr></thead>
+      <tbody>
+        <tr><td>H6: 玄関口を通る最初の本物の送信</td><td><span class="status todo">未実施</span></td><td>受理、会話項目、echo ID の3点が、本物の会話で揃うか。ここが通るまで「届いた」とは言えない。</td></tr>
+        <tr><td>T23: confirm の本文照合</td><td><span class="status wait">コード完了 / 判定未完了</span></td><td>本文が入れ子の欄にあると <code>item: not_found</code> になる。H6 で実際の欄を見て直す。</td></tr>
+        <tr><td>現行版の互換</td><td><span class="status todo">未確認</span></td><td>Claude 2.1.302、Codex 26.1007 で read/send が通るか。互換表が古い。</td></tr>
+        <tr><td>T3 Code の Codex</td><td><span class="status todo">対象外の見込み</span></td><td>T3 の Codex は Desktop IPC ではない。seamless から見えない。T3 で使うなら Claude 側だけ。</td></tr>
+        <tr><td>アカウント無しの Reason + Grok Bot</td><td><span class="status wait">不明</span></td><td>競合の比較に影響するが、公開資料からは確定できない。推測で埋めない。</td></tr>
+        <tr><td>botress の公開可否</td><td><span class="status wait">判断待ち</span></td><td>規約と法務の確認。ここが通るまで、公開物に含めない。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <span class="label">統合の判定</span>
+    <p><strong>能力は迎える。repo は抱えない。</strong>コア（会話の探索、読み取り、送信、証拠）と、Grok Bot の玄関口アダプタ（Python / Keychain / 内部API）を分ける。玄関口は任意で、入れなくても seamless は動く。webhook 方式は v0.1 から使える。これが、法務、サポート、説明の3つを同時に軽くする唯一の形。</p>
+  </div>
+</section>
+
+<!-- 05 -->
+<section id="position">
+  <div class="sec-head"><div class="sec-no">05</div><h2>勝ち筋</h2></div>
+  <p class="sub">Reason と同じ棚に並ばない。個人のMacで、静かに、確実につなぐ。この一点に絞る。</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th></th><th>Reason Network</th><th>seamless</th></tr></thead>
+      <tbody>
+        <tr><td>使う人</td><td>2人以上。チーム。</td><td>1人。個人。</td></tr>
+        <tr><td>マシン</td><td>複数。LAN / インターネット。</td><td>1台。</td></tr>
+        <tr><td>中心の価値</td><td>チームの衝突を避ける。誰に頼むかが分かる。</td><td>自分の会話の続きを、別の入口から進める。</td></tr>
+        <tr><td>相手</td><td>コーディング10以上。</td><td>コーディング3 + Grok Bot / Dot。</td></tr>
+        <tr><td>導入</td><td>1行 + setup。</td><td>MCP 1本 + 任意アダプタ。</td></tr>
+        <tr><td>壊れたとき</td><td>doctor とコミュニティ。</td><td>doctor と、狭い対応表。</td></tr>
+        <tr><td>向いている人</td><td>チームで、複数マシンで、設定を考えたくない人。</td><td>1台で、プライバシーを重視し、日本語で、自分のBotもつなぎたい人。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h3>3つの約束</h3>
+      <div class="signals">
+        <div class="signal green"><div class="mark">1</div><div><b>アカウントも常駐もなし。</b><p>MCP を1本足すだけ。デーモンも、クラウド中継も、ワークスペースも要らない。</p></div></div>
+        <div class="signal green"><div class="mark">2</div><div><b>いま開いている会話に、そのまま届く。</b><p>別プロセスを起こして「成功」としない。会話IDと世代を照合して、その会話へ書く。</p></div></div>
+        <div class="signal green"><div class="mark">3</div><div><b>届いた証拠を残す。不明なら送らない。</b><p>受理、到達、処理開始、返答完了を分ける。同じ依頼を二度送らない。結果が分からないときは、分からないと返す。</p></div></div>
+      </div>
+    </div>
+    <div>
+      <h3>3つの「しない」</h3>
+      <div class="signals">
+        <div class="signal"><div class="mark">×</div><div><b>チームの網にならない。</b><p>招待、名簿、常駐デーモン、P2P。これは Reason の仕事。追わない。</p></div></div>
+        <div class="signal"><div class="mark">×</div><div><b>クラウド中継をしない。</b><p>外部サービスを挟まない。Grok Bot は、自分のアカウントへの直接の道だけ。</p></div></div>
+        <div class="signal"><div class="mark">×</div><div><b>エージェント実行基盤にならない。</b><p>モデルを選ばない。仕事を実行しない。配線だけを持つ。</p></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout green">
+    <span class="label">売り文句の候補</span>
+    <p><strong>「チームの網は要らない。自分のMacの会話を、ちゃんとつなぐ。」</strong><br>補足: アカウントなし、常駐なし。Claude Code、Codex、Grok CLI、そして自分の Grok Bot へ。届いたことは、会話で確かめる。</p>
+  </div>
+</section>
+
+<!-- 06 -->
+<section id="release">
+  <div class="sec-head"><div class="sec-no">06</div><h2>推奨リリース形</h2></div>
+  <p class="sub">v0.1 は「配線」に絞る。Grok Bot は既存の webhook 方式まで。玄関口（gateway）は任意アダプタ。コアは Node だけで動き、アダプタは Python がなくても壊れない。</p>
+
+  <div class="wiring">
+    <div class="wiring-col">
+      <div class="node">Claude Code<small>Desktop / CLI / SDK</small></div>
+      <div class="node">Codex Desktop<small>既存の会話</small></div>
+      <div class="node">Grok CLI<small>受信箱 + Stop hook</small></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="core">seamless<small>MCP 1本 / CLI 1本 / 設定1か所</small></div>
+    <div class="arrow">→</div>
+    <div class="wiring-col">
+      <div class="node">同じ作業場所の会話<small>read / send / status</small></div>
+      <div class="node optional">Grok Bot<small>webhook は v0.1 / 玄関口は任意</small></div>
+      <div class="node optional">ChatGPT Dot<small>実験。v0.1 では出さない</small></div>
+    </div>
+  </div>
+
+  <h3>v0.1 の範囲</h3>
+  <div class="cols-3">
+    <div>
+      <h4>入れる</h4>
+      <ul>
+        <li>Claude Code / Codex Desktop / Grok CLI の探索、読み取り、送信。</li>
+        <li>Grok Bot（既存の webhook 方式）。</li>
+        <li>4段階の証拠と、再送しない規則。</li>
+        <li>MCP 4道具（sessions / read / send / status）。</li>
+        <li><code>setup</code> / <code>who</code> / <code>ask</code> / <code>send</code> / <code>status</code> / <code>doctor</code>。</li>
+        <li>任意の制限（<code>limits.json</code>）。</li>
+        <li>日本語 / 英語の README。</li>
+        <li>MIT ライセンスと NOTICE。</li>
+      </ul>
+    </div>
+    <div>
+      <h4>出さない</h4>
+      <ul>
+        <li>旧 <code>--registry</code> 方式（内部と試験だけに残す）。</li>
+        <li>Claude Desktop の band mod（別パッケージへ）。</li>
+        <li>status panel（実験として <code>contrib/</code> へ）。</li>
+        <li>Dot の実験コード。</li>
+        <li>botress のレポート、Bot ID、ホスト名、アカウント情報。</li>
+        <li>Grok Bot の玄関口（gateway）アダプタ。</li>
+      </ul>
+    </div>
+    <div>
+      <h4>後回し</h4>
+      <ul>
+        <li>opencode / Cursor / Gemini / Copilot。</li>
+        <li>チーム、P2P、招待、常駐デーモン。</li>
+        <li>Windows / Linux。</li>
+        <li>LINE / Linee 連携。</li>
+        <li>Homebrew、メニューバー。</li>
+        <li>Grok Bot の玄関口（gateway）方式。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>公開する面</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>入口</th><th>何をする</th><th>例</th></tr></thead>
+      <tbody>
+        <tr><td><code>seamless setup</code></td><td>エージェントを検出し、MCP設定を書く。dry-run と backup つき。</td><td><code>npx @chachamaru/seamless setup</code></td></tr>
+        <tr><td><code>seamless who</code></td><td>いまつながる相手を一覧。repo / branch / busy を出す。</td><td><code>seamless who</code></td></tr>
+        <tr><td><code>seamless ask</code></td><td>送って、返事を待って、表示する。</td><td><code>seamless ask api-claude "この差分を見て"</code></td></tr>
+        <tr><td><code>seamless send</code></td><td>送るだけ。返事は待たない。</td><td><code>seamless send api-claude "..."</code></td></tr>
+        <tr><td><code>seamless status</code></td><td>依頼ごとの4段階を表示する。</td><td><code>seamless status &lt;id&gt;</code></td></tr>
+        <tr><td><code>seamless doctor</code></td><td>Node、OS、各エージェント、socket / IPC、権限、互換を確かめる。</td><td><code>seamless doctor</code></td></tr>
+        <tr><td>MCP</td><td><code>sessions</code> / <code>read</code> / <code>send</code> / <code>status</code> の4つ。</td><td>Claude Code / Codex から呼ぶ</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>公開範囲の3案</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>案</th><th>中身</th><th>長所</th><th>短所</th><th>判定</th></tr></thead>
+      <tbody>
+        <tr class="row-strong">
+          <td><strong>A. コア + webhook</strong></td>
+          <td>seamless 本体と、既存の Grok Bot webhook 方式。玄関口は入れない。</td>
+          <td>法務、サポート、説明が軽い。Grok Bot の価値も伝わる。</td>
+          <td>玄関口の「起こす、読む、確かめる」は使えない。</td>
+          <td><span class="tag green">推奨 / v0.1</span></td>
+        </tr>
+        <tr>
+          <td><strong>B. コア + 玄関口アダプタ</strong></td>
+          <td>botress の玄関口を任意パッケージで同梱。入れなくても動く。</td>
+          <td>1つの説明で全部カバー。必要な人だけ入れる。</td>
+          <td>Python / Keychain / 内部APIのサポートが残る。</td>
+          <td><span class="tag amber">v0.2 以降</span></td>
+        </tr>
+        <tr>
+          <td><strong>C. 全部入り</strong></td>
+          <td>botress もレポートもアカウント情報も公開。</td>
+          <td>見た目は最強。</td>
+          <td>非公開方針を覆す。法務、サポートのリスクが最大。</td>
+          <td><span class="tag red">×</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>出すまでの3段階</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>段</th><th>やること</th><th>完了条件</th><th class="num">目安</th></tr></thead>
+      <tbody>
+        <tr><td><strong>1. 整える</strong></td><td>公開面の削減、<code>setup</code> / <code>doctor</code>、README EN/JA、LICENSE、CI、互換表の更新。</td><td>初見のMacで、説明どおりに10分で一覧が出る。</td><td class="num">2週間</td></tr>
+        <tr><td><strong>2. 確かめる</strong></td><td>現行版で10往復、セキュリティ、法務、ドライラン、秘密スキャン。</td><td>10往復の記録と、法務の判断が揃う。</td><td class="num">1〜2週間</td></tr>
+        <tr><td><strong>3. 出す</strong></td><td>private beta → public repo → npm → 告知。</td><td>第三者が、issue を出せる状態で動く。</td><td class="num">1週間</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="small muted">※ 目安は、1人で進める場合の粗い見積もり。法務と現行版の実機確認は、外の条件で伸びる。</p>
+</section>
+
+<!-- 07 -->
+<section id="checklist">
+  <div class="sec-head"><div class="sec-no">07</div><h2>リリース前チェック</h2></div>
+  <p class="sub">「機能はあるのに、出せない」を解消するリスト。必須が1つでも残れば、公開しない。</p>
+
+  <h3>必須（公開ブロッカー）</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>項目</th><th>状態</th><th>何をする</th><th>根拠</th></tr></thead>
+      <tbody>
+        <tr><td>LICENSE / NOTICE</td><td><span class="status todo">未</span></td><td>コアは MIT。band mod の上流 MIT を NOTICE に収録。</td><td>seamless repo に LICENSE がない。mods には上流ライセンスあり。</td></tr>
+        <tr><td>Grok Bot の玄関口の公開範囲</td><td><span class="status wait">判断待ち</span></td><td>A（webhook まで）を v0.1 の既定にする。玄関口は法務確認後。</td><td><code>botress/README.md</code> が「非公開専用」と明記。</td></tr>
+        <tr><td>Python パス / 依存</td><td><span class="status todo">未</span></td><td><code>python3</code> を PATH から検出。venv か uv で <code>cryptography</code> を入れる。無ければアダプタを無効化。</td><td><code>src/gateway-send.ts</code> の <code>/usr/local/bin/python3</code> 固定。</td></tr>
+        <tr><td>Node / TypeScript の配布</td><td><span class="status todo">未</span></td><td>npm にはビルド済み JS を入れる。Node の下限を下げる（22.18+ など）。</td><td><code>package.json</code> は private、<code>src/*.ts</code> を直接実行。</td></tr>
+        <tr><td>CI</td><td><span class="status todo">未</span></td><td>Keychain と Claude CLI を外した hermetic CI。型検査、単体、秘密スキャン、macOS matrix。</td><td><code>verify.sh</code> が <code>peer-secrets.sh</code> と <code>claude plugin</code> を呼ぶ。</td></tr>
+        <tr><td>README EN/JA</td><td><span class="status todo">未</span></td><td>旧 <code>--registry</code> 中心から、<code>setup</code> / <code>who</code> / <code>ask</code> 中心へ書き直す。</td><td>現 README は登録方式が主役で、自動方式の説明が薄い。</td></tr>
+        <tr><td>互換表</td><td><span class="status todo">未</span></td><td>Claude 2.1.302、Codex 26.1007、Grok 現行で read/send/reply を確認。</td><td><code>compat.md</code> は 2.1.284/286、26.930 のまま。</td></tr>
+        <tr><td>秘密、アカウント情報</td><td><span class="status part">一部</span></td><td>Bot ID、ホスト末尾、アカウント照合値、レポートを公開ツリーから外す。履歴も走査。</td><td>botress はアカウント固有情報を含むと明記。</td></tr>
+        <tr><td><code>setup</code> / <code>doctor</code></td><td><span class="status todo">未</span></td><td>検出、dry-run、backup、壊れ検知。最初の10分を製品にする。</td><td>現状は手で MCP 設定を書く。</td></tr>
+        <tr><td>エラー文案</td><td><span class="status todo">未</span></td><td><code>caller_unobserved</code> などを、理由と次の一手を含む日本語/英語へ。</td><td>仕様 AC11 が文案の必要性を書いている。</td></tr>
+        <tr><td>非公式ディスクレーマー</td><td><span class="status todo">未</span></td><td>Anthropic / OpenAI / xAI と無関係であること、非公開API依存で壊れ得ることを明記。</td><td>Claude socket、Codex IPC、Grok 内部ファイルを使う。</td></tr>
+        <tr><td>併用警告</td><td><span class="status todo">未</span></td><td>Reason Network と同じセッションに入れない。doctor で検出して警告。</td><td>両方ともフック/MCPで会話に注入する。</td></tr>
+        <tr><td>npm 名 / スコープ</td><td><span class="status todo">未</span></td><td><code>@chachamaru/seamless</code> を使う。unscoped は取得済み。</td><td><code>npm view seamless</code> は 1.4.2 を返す。</td></tr>
+        <tr><td>バージョン / CHANGELOG</td><td><span class="status todo">未</span></td><td>0.1.0 から。破壊的変更の予告を書く。</td><td>内部API依存のため、版の約束が必要。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>推奨（信頼を作る）</h3>
+  <div class="cols">
+    <div>
+      <ul>
+        <li>スクリーンショットと30秒のGIF（<code>who</code>、<code>ask</code>、<code>status</code>）。</li>
+        <li>CONTRIBUTING、SECURITY、CODE_OF_CONDUCT、issue テンプレート。</li>
+        <li>「これは何ではないか」を README の冒頭に書く。</li>
+        <li>アンインストール手順（MCP設定の戻し方）。</li>
+      </ul>
+    </div>
+    <div>
+      <ul>
+        <li>GitHub Actions の release workflow と npm provenance。</li>
+        <li>互換の pin と、月1回の追従試験。</li>
+        <li>エラーの再現手順を集める <code>doctor --json</code>。</li>
+        <li>ライセンスとプライバシーの説明（本文を保存しないこと）。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>後回し（v0.2 以降）</h3>
+  <p>opencode / Cursor / Gemini / Copilot、チーム、P2P、Windows / Linux、LINE / Linee、Homebrew、メニューバー、status panel / band の再パッケージ化、Grok Bot の玄関口（gateway）方式。</p>
+
+  <div class="callout">
+    <span class="label">最初にやる1つ</span>
+    <p>迷ったら <strong><code>setup</code> と <code>doctor</code></strong> から。機能を足すより、初見の人が10分で「一覧が出た」に到達する方が、OSS の評価は上がる。Reason が勝っているのも、まさにそこ。</p>
+  </div>
+</section>
+
+<!-- 08 -->
+<section id="decision">
+  <div class="sec-head"><div class="sec-no">08</div><h2>判断材料</h2></div>
+
+  <div class="cols">
+    <div>
+      <h3>本質はどこか</h3>
+      <p>統合するかどうか、ではない。<strong>公開する範囲をどこで切るか</strong>と、<strong>誰のための商品にするか</strong>。この2つで、サポート量と法務リスクが決まる。</p>
+
+      <h3>何が変わるか</h3>
+      <p><strong>前:</strong> botress は Grok Bot 専用の別ツール。seamless は会話配線。2つのブランド、2つの説明、2つの設定。</p>
+      <p><strong>後:</strong> 1つの配線アプリ。Grok Bot は webhook 方式で v0.1 から使え、玄関口は任意アダプタ。設定は <code>~/.seamless</code> に寄る。</p>
+    </div>
+    <div>
+      <h3>あなたから見て何が変わるか</h3>
+      <p>作業時間は少し増える（アダプタを分ける分）。その代わり、公開後の問い合わせと法務の説明が減る。Grok Bot のリスクを、本体のリリースから切り離せる。</p>
+      <p>「全部入り」を諦める代わりに、<strong>v0.1 を確実に出せる</strong>。出すことが、次の改善を呼ぶ。</p>
+
+      <h3>最終的な仕様への影響</h3>
+      <p>v0.1 の約束を狭くするほど、後から広げやすい。コアの不変条件（再送しない、受信側の権限を広げない、証拠を残す）は変えない。ここを変えると、seamless の意味がなくなる。</p>
+    </div>
+  </div>
+
+  <div class="decisions">
+    <div class="decision">
+      <div class="dno">Decision 01</div>
+      <h3>Grok Bot をどこまで v0.1 に含めるか</h3>
+      <dl>
+        <dt>何を決めるか</dt>
+        <dd>既存の webhook 方式までか、botress の玄関口（gateway）まで入れるか。</dd>
+        <dt>推奨</dt>
+        <dd class="rec">webhook まで（A）。玄関口は v0.2 以降、法務確認後の任意アダプタ。</dd>
+        <dt>許可すると何が起きるか</dt>
+        <dd>Grok Bot の価値を保ちつつ、Python / Keychain / 内部API のリスクを切り離せる。初見の10分で動く。</dd>
+        <dt>今回はしないこと</dt>
+        <dd>玄関口の公開、botress のレポート、Bot ID、ホスト末尾、アカウント情報の公開。</dd>
+      </dl>
+      <div class="reversible">戻せるか: 戻せる。玄関口は後から足せる。逆に、公開してから引っ込めるのは難しい。</div>
+    </div>
+
+    <div class="decision">
+      <div class="dno">Decision 02</div>
+      <h3>チーム機能を追うか、個人に絞るか</h3>
+      <dl>
+        <dt>何を決めるか</dt>
+        <dd>Reason と同じ「チームの網」を目指すか、1台の配線に絞るか。</dd>
+        <dt>推奨</dt>
+        <dd class="rec">個人の配線に絞る。チームは別製品として考える。</dd>
+        <dt>許可すると何が起きるか</dt>
+        <dd>機能を増やさず、導入、文脈、証拠に投資できる。試算で 4.0 が見える。Reason と正面衝突しない。</dd>
+        <dt>今回はしないこと</dt>
+        <dd>P2P、招待、常駐デーモン、クラウド中継、メニューバー。</dd>
+      </dl>
+      <div class="reversible">戻せるか: 戻せるが、チームは別製品として作る方が安い。後から同じ repo に足すと、説明が崩れる。</div>
+    </div>
+
+    <div class="decision">
+      <div class="dno">Decision 03</div>
+      <h3>名前と配布をどうするか</h3>
+      <dl>
+        <dt>何を決めるか</dt>
+        <dd><code>seamless</code> のまま、npm スコープ + GitHub Releases で出すか。改名するか。</dd>
+        <dt>推奨</dt>
+        <dd class="rec">名前は維持。npm は <code>@chachamaru/seamless</code>。GitHub Releases と <code>npx</code>。</dd>
+        <dt>許可すると何が起きるか</dt>
+        <dd>既存の repo / URL / 文書を捨てずに済む。検索では埋もれるが、説明とリンクで補える。</dd>
+        <dt>今回はしないこと</dt>
+        <dd>有料化、Homebrew、PyPI の botress 公開、名前の変更。</dd>
+      </dl>
+      <div class="reversible">戻せるか: 名前は後から変えられるが、リンクと記憶は失われる。今変えるなら早い方が安い。</div>
+    </div>
+  </div>
+</section>
+
+<!-- 09 -->
+<section id="progress">
+  <div class="sec-head"><div class="sec-no">09</div><h2>進捗</h2></div>
+
+  <div class="table-wrap">
+    <table class="progress-table">
+      <tbody>
+        <tr><td>プロジェクトの目的</td><td>立花さんが、どの入口から話しても同じ仕事の続きを進められるようにする。今回は、その配線アプリ「seamless」を OSS として出せる形に整えるための判断材料を渡す。</td></tr>
+        <tr><td>全体進捗</td><td>
+          <strong>レビューは100%。リリース準備は約10%。</strong>
+          <div class="progress-visual">
+            <div class="prow"><span>レビュー</span><div class="ptrack"><div class="pfill" style="width:100%"></div></div><span class="pval">100%</span></div>
+            <div class="prow"><span>リリース準備</span><div class="ptrack"><div class="pfill plan" style="width:10%"></div></div><span class="pval">10%</span></div>
+          </div>
+          100% の定義: v0.1 が公開され、第三者が説明どおりに動かし、issue を出せる状態。<br>内訳: 比較、方針、障害の特定まで済み。実装、配布、法務は未着手。
+        </td></tr>
+        <tr><td>今やっている作業</td><td>2つのスレッド（NestraV2、botress）を読み、seamless 現行 / 統合プランVer / Reason Network の一次資料を突き合わせ、10観点で採点した。リリースブロッカーを洗い出した。</td></tr>
+        <tr><td>何のためにやるのか</td><td>「統合するか」ではなく「どこまで公開するか」を、感覚ではなく根拠で決めるため。公開後に戻せない判断（法務、名前、範囲）を先に分けるため。</td></tr>
+        <tr><td>次に進めるべきタスク</td><td>
+          <ul class="tasklist">
+            <li><strong>この回答までに進めた:</strong> 比較採点、統合プランの精査、リリース形の提案、必須チェックリスト。</li>
+            <li><strong>次にAIが続ける:</strong> v0.1 の範囲表の確定、<code>setup</code> / <code>doctor</code> の設計、README EN/JA の骨子、CI の分割案。完了条件は、初見のMacで10分の手順が通る設計になること。</li>
+            <li><strong>本人の判断が必要:</strong> 08 の3カード。特に Decision 01（Grok Bot を v0.1 に含めるか）。</li>
+            <li><strong>外部条件待ち:</strong> Grok Bot の規約、法務の確認、現行版（Claude 2.1.302 / Codex 26.1007）の実機確認、npm スコープの最終確認。</li>
+          </ul>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout green">
+    <span class="label">このレビューの一言</span>
+    <p>「全部入りで出す」をやめるのが、いちばん安い改善。<strong>コアは4機能、Grok Bot は webhook まで、玄関口は任意アダプタ、チームは追わない。</strong>これで 3.4 → 3.7（整備後 4.0 試算）まで上がり、説明もサポートも軽くなる。</p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="sources">
+    <div>
+      <h3>出典（競合）</h3>
+      <ul>
+        <li>Reason Network 公式: <a href="https://reasonmachines.com/network">reasonmachines.com/network</a></li>
+        <li>Docs: <a href="https://docs.reasonmachines.com/docs/network">docs.reasonmachines.com/docs/network</a></li>
+        <li>Engine repo: <a href="https://github.com/reason-machines/reason-network">github.com/reason-machines/reason-network</a>（README / DESIGN.md、2026-10-19 取得）</li>
+        <li>Reason CLI: <a href="https://github.com/reason-machines/reason-cli">github.com/reason-machines/reason-cli</a>（proprietary の確認）</li>
+        <li>GitHub メタデータ: 432 stars / 31 forks / v0.10.7（2026-10-18）</li>
+      </ul>
+    </div>
+    <div>
+      <h3>出典（seamless / Nestra）</h3>
+      <ul>
+        <li><code>seamless</code> main 87a4162（2026-10-12）: <code>README.md</code>、<code>spec.md</code>、<code>src/</code>、<code>specs/202610-everyday-use</code>、<code>specs/202610-more-peers</code></li>
+        <li><code>Nestra_v2/packages/seamless</code> ff38fe5（2026-10-18）: <code>gateway-send.ts</code>、<code>botress/</code>、<code>tests/</code></li>
+        <li><code>Nestra_v2/specs/2026-10-nestra-fork/spec.md</code>（O3 / O5）、<code>o3-gateway.md</code></li>
+        <li>スレッド: NestraV2「構想整理と完成イメージの可視化」、botress「botressへの名称統一」</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 style="margin-top:28px">確信度</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>項目</th><th>確信度</th><th>理由</th></tr></thead>
+      <tbody>
+        <tr><td>競合の事実（機能、ライセンス、数値）</td><td><span class="tag green">high</span></td><td>公式サイト、docs、GitHub の一次資料。2026-10-19 取得。</td></tr>
+        <tr><td>seamless の事実（機能、コード、制約）</td><td><span class="tag green">high</span></td><td>ソース、仕様、作業ツリーを直接確認。試験は未再実行。</td></tr>
+        <tr><td>点数と重み</td><td><span class="tag amber">medium</span></td><td>判断の補助。重みを変えれば動く。ベンチマークではない。</td></tr>
+        <tr><td>法務リスク</td><td><span class="tag amber">medium</span></td><td>規約の一次確認は未実施。専門家の確認が必要。法的助言ではない。</td></tr>
+        <tr><td>H6 / 現行版の互換</td><td><span class="tag green">high（未確認であること）</span></td><td>本物の送信と現行版の実機確認は、記録上まだ行っていない。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="fine">
+    <p>このレポートは比較と判断のための派生物であり、製品仕様の正本ではない。点数は「個人が1台で使う」場面を基準にした主観的な重み付き評価で、絶対的な優劣を意味しない。競合の数値は 2026-10-19 JST 時点。法務、規約の判断は、必ず専門家と一次資料で確認すること。</p>
+    <p>作成: 2026-10-19 / 対象: seamless 現行 87a4162、統合プランVer ff38fe5、Reason Network v0.10.7</p>
+  </div>
+</footer>
+
+</div>
+</body>
+</html>

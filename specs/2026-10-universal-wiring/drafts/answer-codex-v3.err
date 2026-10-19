@@ -1,0 +1,579 @@
+codex-headless: chatgpt-1 has no room; running on chatgpt-2
+Reading additional input from stdin...
+OpenAI Codex v0.163.0
+--------
+workdir: /Users/tachibanashuuta/LocalWork/Code/seamless
+model: gpt-6.1-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: none
+reasoning summaries: none
+session id: 01a1536d-aec1-79c1-89d2-c758af07523d
+--------
+user
+あなたはリーダー（Claude）と別の家系の調査役です。下の共通依頼を読み、問い1と2を一次資料（公式 docs、GitHub の README/DESIGN.md/issues/src）から答え、問い3は GitHub issues と公開記事の範囲で答えてください。ウェブ検索を使ってください。コードを書かず、ファイルを変更しないでください。
+
+# 調査依頼（読み取り専用。コードを書かない。ファイルを変更しない）
+
+## 目的
+seamless（1台のMacの中で、Claude Code、Codex、Grok CLI、Grok Bot の「いま開いている会話」へ一言を届ける OSS の配線）を、競合 Reason Network（reasonmachines.com/network、github.com/reason-machines/reason-network）より上の製品にするための判断材料を集める。
+
+## 対象の版
+- seamless 現行: /Users/tachibanashuuta/LocalWork/Code/seamless main 87a4162。spec.md、README.md、specs/2026-10-universal-wiring/drafts/consolidated-plan.md（統合プラン v2、承認前）を読んでよい。
+- Reason Network: 公開資料（公式サイト、docs.reasonmachines.com/docs/network、GitHub の README と DESIGN.md、issues、2026-10-19 時点）。
+
+## 既に分かっていること（前提。再調査しなくてよい）
+- Reason: 端末ごとに1デーモン、iroh（ed25519 鍵、QUIC、LAN 直結 → ホールパンチ → n0 中継）、署名つき名簿（team→person→machine→session）、push/turn/pull の3段配送、accept/hold/refuse、loop guard、ask_user、outbox と1日の郵便箱、SQLite。エンジンは MIT OR Apache-2.0、`reason` CLI は非公開。Claude Code への push は Claude の内部 inbox socket 経由。アカウントなしの team link モードあり。M4（ファイル衝突警告、web dashboard）は未着手。
+- seamless 現行: 常駐なし、本文を保存しない、予約ファイルで二重送信を防ぐ、4段階の証拠（受理、到達、処理開始、返答完了）、同じMac限定、Claude の内部 socket と Codex Desktop の IPC に依存、Grok Bot は webhook で往復済み。
+- 前回の採点（公開資料ベース）: セキュリティとオンラインの総合で Reason 4.15、seamless 現行 3.37、統合プラン v1 予測 3.84。
+
+## 問い（この3つに答える。推測は「推測」と書く）
+1. Reason が持っていて seamless が持たない価値のうち、個人と2〜5人の小チームに実際に効くものはどれか。逆に、Reason の設計上変えにくい弱点（たとえば Claude の内部 socket 依存、1日で消える郵便箱、人ごとの権限がない、承認署名が「speed bump」、50台上限、CLI 非公開）は何か。
+2. 公式の押し込み経路（Claude Code Channels [code.claude.com/docs/en/channels と channels-reference]、Codex app-server / `codex queue`、opencode plugin、A2A v1.0）を使えば、Reason より壊れにくく、同等以上に速い配線が作れるか。各経路の公式性、制約（research preview、allowlist、認証条件）、配送段階を出典つきで書く。
+3. 利用者が Reason から乗り換える、または併用する決め手は何か。GitHub issues、X、ブログ、Hacker News、Reddit などで、Reason Network や類似ツール（agmsg、claude-swarm、tincan など）への不満と要望を集める。出典 URL と日付を付ける。
+
+## 書き方
+- 事実、仮説、未確認を分ける。事実には出典（URL、日付）を付ける。
+- 「Reason を超える」ための具体案を、最大5つ、優先順に。各案に「本質」「何が変わるか（前→後）」「根拠」「危険」を1〜2行ずつ。
+- 日本語。3000字以内。先頭に結論3行。
+2026-10-19T09:11:01.357451Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when AuthRequired(AuthRequiredError { www_authenticate_header: "Bearer resource_metadata=\"https://mcp.firecrawl.dev/.well-known/oauth-protected-resource/v2/mcp-oauth\", error=\"invalid_token\", error_description=\"Firecrawl credentials required: OAuth access token (Authorization: Bearer fco_...) or API key (x-firecrawl-api-key)\"" })
+codex
+公式資料と公開の利用者報告を照合します。公式経路の制約と、乗り換え理由を裏づける実例を優先して調べます。
+web search: 
+exec
+/bin/zsh -lc 'cat spec.md README.md specs/2026-10-universal-wiring/drafts/consolidated-plan.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+ succeeded in 28ms:
+# claudex
+
+> 2026-10-04 に claudex から seamless へ改名した（独立リポジトリ）。本文の claudex、`~/.claudex`、実行したコマンドは記録当時の旧名のまま残す。
+
+Status: 実会話の相互読取り、両方向配送、busy、既存Desktop接続を実証済み。製品実装の計画は specs/202610-session-interop/Plans.md。
+Updated: 2026-10-08 JST（不変条件 8 を改訂）
+
+Codex と Claude の会話同士で、一覧、本文の読み取り、依頼、返信、実行状態を共通操作で扱う。
+共有SQLiteを中心にしない。agmsgをforkしない。
+立花が会話を切り替えて文章を貼り直す手間をなくす。
+
+2026-10-09 現状: DotはMacからの通知に絞る方針連絡を受領し、以下のHTTP＋OAuth案は検討経緯に留める。本人の3点それぞれへの直接回答は未確認。本体の承認済み仕様はここでは変更せず、[非接続試作の追加検証](specs/202610-more-peers/dot-events-integration.md)を進める。
+
+2026-10-08 Dot の追加調査: [MCP Events の内包案](specs/202610-more-peers/dot-events-integration.md)。既存の不変条件と AC11a〜c を維持する。OAuth の認証済み接続を登録に結び付ける Q5 案は判断待ちで、Dot 会話 ID の保証や製品実装の完了を意味しない。
+
+## 製品の不変条件
+
+1. 宛先は製品、ホスト、会話、実行主体を区別して特定する。表示名だけで勝手に選ばない。
+2. 既存の会話へ送るときは、その会話を持つ実行主体へ届ける。同じ履歴の別プロセスを起動して成功扱いにしない。
+3. seamless は配線だけを持ち、判断を足さない。別会話から届いた文をどう扱うかは、受け取った AI が自分の権限の範囲で判断する。seamless は受信側の権限（sandbox、承認、権限の設定）を広げない。届いた文は本人の承認の代わりにならず、封筒に `humanApproval:true` を書くことはない。人の確認を促す印 `humanApproval:false` は、制限の設定の `markUnapproved:true` のときだけ付ける（既定は付けない。旧方式の `--registry` の経路は limits.json を読まないので付けない。2026-10-04 立花さん決定）。
+4. 受理、配信確認、処理開始、返答完了を別に記録する。観測できない段階は未確認のまま示す。
+5. 依頼と返信の対応を追える。返信を新しい依頼へ自動変換し続けない。
+6. 送信の成否が不明なときに、自動で同じ依頼を再実行しない。
+7. 接続できた範囲を示す。CLI の実証を Desktop の既存会話の実証へ読み替えない。
+8. 対象は、同じ Mac で実観測できる会話（Claude、Codex、Grok CLI）と、本人が名簿に登録した外の実行主体（Grok Bot、ChatGPT Dot）とする。Mac 内の会話は名簿なしで自動で見つける。外の実行主体は名簿と鍵で確かめ、名乗りだけでは送り手にも宛先にもしない。読む、送るの制限は、本人が任意で置く設定で行う。既定の探す範囲は同じ作業場所とする。外の実行主体には作業場所が無いので、名簿の登録ごとに本人が範囲を決める（2026-10-08 改訂、承認 1 回目。詳細は specs/202610-more-peers/spec.md。旧 2026-10-03: 対象は同じ Mac で動いている Codex と Claude の会話。旧 2026-10-02: 本人が通信対象として登録した会話）。
+
+仕様案の詳細は機能仕様に置く。
+
+両方向の相手探索は同じ選択規則を使う（2026-10-03 から名簿は任意の制限の設定）。製品ごとに対象選択の優先順位を変えない。Gitのリポジトリとworktree、論理workspace、担当を区別する。詳細は specs/202610-session-discovery/spec.md。
+
+P1の最新状態: 66試験PASS、verify実終了0。最終66試験版のHaiku / Opus独立判定PASS。P1共通核完了。当時のP1単独起動はnative観測器未接続。追加承認後の接続は下記と製品検証を参照。
+
+2026-10-02 現在の実装工程: 本人が登録した既存会話のペアで、native観測、相互read、単一write経路と返信相関を製品へ接続中。初回のnative往復は成功したが、製品全体の検収は未完了。既存の不変条件を維持する。
+
+2026-10-02 製品接続の最新検収: [既存会話ペアの証拠](specs/202610-session-interop/product-evidence.md)。起動済みの双方の元会話でread/send/replyを観測。最終配送再判定と機械検証を実施中。過去の方式検証と、今回の製品実装の証拠を分けて記録する。
+
+最終更新: 既存ペアの5操作を実会話で検収完了。100試験PASS/実終了0、strict終了0、source hash前後一致。read APPROVE、配送Opus PASS（重大0/中0）、図面Haiku PASS。[製品検証](specs/202610-session-interop/product-evidence.md)が現行状態。常用MCP設定導入は未実施で今回範囲外。
+# seamless
+
+CodexとClaudeが、許可された元セッションを同じ条件で探す共通処理です。
+登録、一覧、候補選択、元会話のread/sendと返信相関を実装しています。
+`--native` を明示すると、対応版の既存Codex DesktopとClaude Codeの実行体へ接続します。省略時は探索用の窓口だけを起動し、native状態はunknownです。
+グローバル設定への常用導入は行っていません。検収の最新状態は [今回の製品検証](specs/202610-session-interop/product-evidence.md) に記録します。
+
+## 試す
+
+Node.js 22.22.xを使います。追加パッケージ、会話本文の保存、SQLiteはありません。
+
+```sh
+bash scripts/verify.sh
+node src/cli.ts context /Users/tachibanashuuta/LocalWork/Code/seamless
+node src/cli.ts sessions --registry specs/202610-session-discovery/bootstrap-example.json --caller codex-example
+node src/cli.ts sessions --registry specs/202610-session-discovery/bootstrap-example.json --caller claude-example
+```
+
+登録例は実会話ではありません。ファイルはmode0600が必要です。
+登録には公開登録キー、製品、native会話ID、世代、host、表示名、任意の担当、宣言workspace、操作能力、向き付きgrantsを置きます。
+秘密の鍵、本文、status、観測時刻は入力項目にありません。未知項目は拒否します。
+workspaceの宣言だけでは、その会話がそこで動いている証拠になりません。
+
+許可は、呼出し元のoutboundと受信先のinboundの両方がそろった操作だけです。
+一覧にはreadかsendを許可された相手を出します。相手のgrantsや本文は返しません。
+名簿は明示された1ファイルを要求ごとに再読込みします。
+同じOSユーザーが名簿を変更できる前提です。caller引数自体は認証ではありません。
+
+## CLIとMCP
+
+```sh
+node src/cli.ts serve --registry specs/202610-session-discovery/bootstrap-example.json --caller codex-example
+```
+
+持続serveへJSON行を送ります。
+
+```json
+{"id":1,"method":"sessions","params":{"operation":"send","scope":"current_work"}}
+{"id":2,"method":"select","params":{"operation":"send","role":"review"}}
+{"id":3,"method":"revalidate","params":{"binding":"selectが返したID"}}
+```
+
+通常起動のselectはcaller_unobservedとなり、bindingを発行しません。
+成功する往復はtests/supportの専用観測器で検証しています。環境変数やJSONから試験観測器を有効にできません。
+bindingは同一プロセス内で60秒有効です。再照合は1回だけ成功し、送信済みを意味しません。
+
+```sh
+node src/cli.ts mcp --registry specs/202610-session-discovery/bootstrap-example.json --caller claude-example
+```
+
+MCPはstdio、protocolVersion 2025-06-18です。
+initializeとnotifications/initializedの後、sessionsを呼べます。`--native` 起動ではreadとsendも提供します。
+入力operationはreadまたはsendです。一覧はreadかsendを双方で許可した相手を返し、各操作の可否を表示します。operationによる選択判定と操作実行は、このMCP一覧では行いません。
+selectとrevalidateは内部の宛先照合とCLI探索に使います。MCPの製品操作はsessions/read/sendの3つです。
+このコマンドは常用MCP設定を変更しません。
+
+[stdio仕様](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)と[初期化仕様](https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle)に合わせ、stdoutはJSON行だけ、通知への応答なし、EOFで終了としています。
+
+## 相手の選び方
+
+| scope | 候補にする作業場所 |
+|---|---|
+| current_work（既定） | 同じ論理workspace、同じworktree、同じbranch/HEAD状態 |
+| same_repository | 同じローカルGit common directoryまで |
+| any_registered | 同じhostの認可済み登録まで |
+
+順位は同じ作業場所、同じrepo、別repoの順です。
+同順位が複数ならambiguous。状態が古い相手を飛ばして別の相手へ自動で乗り換えません。
+明示targetにも認可、scope、担当、最新観測を適用します。
+同じremote URLの別cloneは別ローカルrepoです。
+Git外、detached、unborn、取得失敗を区別します。
+dirtyは未コミット変更の有無だけで、変更内容の一致は保証しません。submodule内部はdirty対象外です。
+
+## 正本と検証
+
+- [仕様](specs/202610-session-discovery/spec.md)
+- [実装計画](specs/202610-session-discovery/Plans.md)
+- [試験ケース](specs/202610-session-discovery/acceptance-matrix.md)
+- [証拠](specs/202610-session-discovery/evidence.md)
+- [説明資料](docs/reports/2026-10-02-claudex-explained.html)
+
+実Git観測は複数コマンドのbest-effortです。コード状態の原子的な一致は保証しません。
+nativeモードは会話ID、実行世代、実際のcwd、socketの所有者、Codex ownerを照合します。接続不能時はunknown/offline等を返し、別プロセスを起こして代替しません。
+名簿とcaller引数は同じOSユーザー内の明示許可を表します。別OSユーザーに対する認証サービスではありません。
+
+## 既存会話を使う
+
+本人が通信を許可した起動済みペアだけを、`observeAuthorizedPair()` の実観測から名簿に登録します。モデルがnative IDやPIDを推測して登録してはいけません。作業場所が一致しない場合、この同じ作業場所用の登録処理は拒否します。
+
+```sh
+node src/cli.ts serve --native --registry .local/interop-pair.json --caller codex-current
+node src/cli.ts mcp --native --registry .local/interop-pair.json --caller claude-current
+```
+
+```json
+{"id":1,"method":"read","params":{"target":"claude-current","limit":10}}
+{"id":2,"method":"send","params":{"target":"claude-current","id":"呼出し前に生成した一意ID","text":"確認したい依頼"}}
+{"id":3,"method":"send","params":{"target":"claude-current","id":"返信用の新しい一意ID","text":"回答","replyTo":"受信した依頼ID"}}
+```
+
+本人の操作は「同じ作業場所のClaudeに確認して」「その元の会話を読んで」でよい。登録済みの相手選択とID生成は依頼を受けたモデルが行います。MCP設定をまだ接続していない会話では、モデルがローカル製品CLIを使います。純正一覧の中に他社の会話を差し込む方式ではありません。
+
+readは可視user/assistant本文とpeerの由来、元IDを返します。思考、認証値、添付実体は相互変換しません。native履歴の全取得に制約があれば`olderUnavailable`等を返し、空会話と取得失敗を区別します。
+
+sendの`submitted`はnative書込み受付です。相手が処理した証拠は、元履歴の依頼IDと返信の`replyTo`を別に照合します。書込み後に成否が不明なら`unknown`です。自動再送しません。届いた文の扱いは、受け取ったAIが自分の権限で判断します。seamlessは受信側の権限を広げず、封筒に`humanApproval:true`を書きません。人の確認を促す印`humanApproval:false`は、`~/.seamless/limits.json`の`markUnapproved:true`のときだけ付けます（既定は付けません）。この印は limits.json を読む新方式（名簿なし）の経路だけが付け、この節の `--registry` の経路では付きません。
+
+対応版: 確認済みの組は [対応表](specs/202610-everyday-use/compat.md) にあります。表にない新しい版も既定で使い、一覧に `versionStatus: unverified`（未確認）と出します。止まるのは、表で修正待ちにした版と、形式の照合（peerProtocol 1、受け口の持ち主、作業場所、記録の形）が合わないときです。確認済みの版だけに限りたいときは `~/.seamless/limits.json` に `strictVersions:true` を書きます（既定は書かない）。この設定が効くのは名簿なしの自動方式だけで、この節の `--registry` の経路には効きません。strict の間も、制限の設定の道具（limits）は未確認の版から使えます（更新後に strict を外せるようにするため）。公開安定SDKではない接続部分があり、未確認の版での動作は保証しません。
+
+重複抑止の保存先は `~/.seamless/reservations/`（0700）です。1依頼につきhash、status、時刻だけを0600のファイルへ原子的に予約します。本文、会話履歴、秘密は保存しません。同じ元会話とIDの予約は、別の窓口プロセスや再起動後も使います。書込み前に予約した状態が残ればunknownとし、再配送しません。SQLiteや配送待ちキューではありません。
+# seamless が Reason Network に挑む計画（M・統合版 v2）
+
+作成: 2026-10-19。叩き台 v1、A2A案 v2、Haiku 5.5 の図面検査、Codex Astra の敵対、Grok 4.7 の使い心地を統合したもの。まだ承認前。
+
+## 1. 目的
+
+今開いているAIに、そのまま一言届く。相手が読むまで、届いたと言わない。Claude Code、Codex、Grok Botが同じ一覧に並び、製品差を意識せず1往復できる。完全OSS。Reasonのチーム網とは違う、個人と小チームの配線で勝つ。
+
+非目的:
+- Reasonと同じチーム網を最初に作ること。
+- 全CLIを90日で正式対応すること。
+- 新しいP2Pプロトコルを発明すること。
+- 内部APIの再現を公開物の中心にすること。
+- 独立した受信箱アプリを作ること。
+- ユーザーにtransport、push/turn/pull、常駐かstdioかを選ばせること。
+
+## 2. 3人の指摘で変わったこと
+
+### 採用
+
+1. **MCPは道具の口であり、押し込みの口ではない。ただしClaude Code Channelsは公式の押し込み。** 「MCPでは届かない」と一般化しない。
+2. **公式チャネル/フックを先に使う。** Claude CodeはChannels、Codexはapp-server/queue、Grok CLIはhooks、opencodeはplugin。内部socket/IPCは最後の手段。
+3. **共通化するのは依頼形式と状態の意味まで。** 配送の速さと保証は製品ごとに違う。画面に3状態を残す。
+4. **v1の最初の一覧は3つ。** Claude Code、Codex、Grok Bot。Grok CLIは4つ目、opencodeはアダプタSDKの試験。8製品は90日に入れない。
+5. **端末ごとに1つの常駐hub。** stdioは接続窓口に限定する。状態の所有者を1つにする。「デーモンなし」を看板にしない。
+6. **依頼IDと製品側のメッセージIDを結ぶ。** 4段階の証拠だけでは往復を保証できない。不明は照会で解消する。無条件の再送はしない。
+7. **権限を分ける。** 閲覧、送信、会話の起動、操作の承認を別にする。コミュニティ製フックはインストール時にコードを実行する入口なので、manifestに権限と配布元を書く。
+8. **勝ち指標を決める。** 対応製品数ではなく、最初の画面までの時間、初回往復までの時間、操作回数、既存会話への復帰成功率、届いた表示の正確さ、アダプタ追加時間でReasonと比べる。
+9. **最初の1週間で最难関を検証する。** Claude Code Channels、Codex app-server、Grok Bot webhookで、busy、idle、再起動、承認待ちを含む1往復。
+10. **ユーザーに見せるのは宛先の一覧と送信欄だけ。** MCP、manifest、transport、push/turn/pullは、アダプタを書く人の文書にだけ残す。
+11. **独立した受信箱を作らない。** 返事は送り先のCLIの画面に出る。送った側は同じ場所に1行の状態を持つ。
+12. **最初の説明文で名乗る製品は、最初の一覧に出す。** v1でDotを名乗らない。Dotはphase 2。
+
+### 見送り
+
+1. 90日で8製品。
+2. 「デーモンなし」を絶対の看板にすること。
+3. 「MCPでは全製品に届かない」という一般化。
+4. 「OSSだから勝つ」「アカウント不要だから勝つ」という単独の理由。
+5. Remote Control、Dot、Grok Botを、宛先指定・起動・返信照合の実証前に共通transportへ数えること。
+6. A2Aを最初から標準の堀と決めつけること。外部実装者が1者もいない段階で標準化を前提にしない。
+7. Reasonエンジンのforkを最初の手段にすること。互換が必要なら、まずブリッジで確かめる。
+8. ユーザーに配送段階や常駐方式を選ばせる質問。
+
+### 要確認（立花さんの判断）
+
+1. A2Aをv1に入れるか、phase 2に回すか。
+2. v1の最初の一覧を Claude Code + Codex + Grok Bot にするか。
+3. hubをlaunchdで常時動かすか、必要なときだけ起動するか。
+4. チーム機能をv1に入れるか、個人に絞るか。
+5. Reasonブリッジを「互換」と名乗るか、移行補助にするか。
+6. Grok Botの玄関口など内部APIを使うアダプタを、公開物に含めるか。
+
+## 3. 事実（出典つき）
+
+| 事実 | 出典 | 状態 |
+|---|---|---|
+| Claude Code Channels は、MCPサーバーから開いている会話へイベントを押し込む。`--channels`、allowlist、Anthropic認証、組織設定の条件がある。research preview。 | code.claude.com/docs/en/channels（2026-10-19取得） | 確認済み |
+| Claude Code の標準MCPは、何もセッションへ押し込まない。 | 同上の比較表 | 確認済み |
+| Claude Code Remote Control は、claude.ai/Claudeアプリからローカル会話を操作する。Anthropic契約限定。API key不可。 | code.claude.com/docs/en/remote-control（2026-10-19取得） | 確認済み |
+| Codex は app-server、`codex queue --thread`、hooks、MCP を持つ。Desktop IPC は非公開。 | Reason Network DESIGN.md、seamless の調査記録 | 一部未確認 |
+| Grok CLI は PostToolUse/Stop hooks と MCP を持つ。`~/.grok/active_sessions.json` は内部。 | Reason Network DESIGN.md、seamless の調査記録 | 一部未確認 |
+| A2A v1.0 は Linux Foundation の下で2026-03に安定版。Apache-2.0。HTTP/JSON-RPC/gRPC、AgentCard、Task、Message、push、SSE。 | a2a-protocol.org（2026-10-19取得） | 確認済み |
+| Reason Network のエンジンは MIT または Apache-2.0。CLI は proprietary。アカウントなしのチーム作成もある。 | reason-network README、reason-cli README | 確認済み |
+| Reason は push/turn/pull の3段を明示し、MCP通知はモデルに渡らないと書く。 | Reason Network DESIGN.md | 確認済み |
+
+## 4. アーキテクチャ
+
+```
+[他のエージェント / A2Aクライアント / クラウド]
+        │ A2A（phase 2。AgentCard、Task、Message、push、SSE）
+        ▼
+[seamless hub（端末に1つ）]
+  - ディレクトリ（製品、native session ID、世代、cwd、repo、branch、busy/idle、doing）
+  - 依頼IDと製品側IDの対応
+  - 4段階の証拠と照会
+  - 権限（閲覧、送信、起動、承認）
+  - アダプタmanifestと配布元
+        │ 公式チャネル/フック/プラグイン
+        ▼
+[Claude Code: Channels] [Codex: app-server/queue] [Grok Bot: webhook] [Grok CLI: hooks] [opencode: plugin]
+```
+
+- **hub**: 端末に1つ。stdioのMCPサーバーはhubへの接続窓口。状態の所有者を1つにする。
+- **MCP**: ローカルのAIが使う道具。`list_agents`、`send_message`、`check_inbox`、`status`、`ask_user`。
+- **channel/adapter**: 製品ごとの押し込み。公式を先に使う。manifestに発見、同一性、配送段階、証拠、権限、install手順を書く。
+- **A2A**: phase 2の外部境界。hubが各セッションをA2Aエージェントとして公開する。v1ではプロトタイプ1本に留める。
+- **transport**: ローカルはUnix socket。遠隔はA2A over HTTPS、SSH、Tailscale、Cloudflare Tunnel。通信路と会話操作を別層にする。
+
+## 5. ユーザー体験（Grok 4.7の指摘を採用）
+
+### 最初の画面
+
+```
+いま開いている相手
+  Claude Code   api-claude   テストを直している    すぐ渡せる
+  Codex         api-codex    差分を確認中          次の区切りで渡す
+  Grok Bot      茶々丸       スリープ中            起こすと届く
+
+  [ このテスト、落ちてる                         ] 送る
+```
+
+- 宛先の一覧と送信欄だけ。MCP、manifest、transport、push/turn/pullは出さない。
+- 今渡せない行には送信ボタンを出さない。
+- 送信欄の下に「移るのは、今書いた一文だけ」と固定する。
+
+### 1つのコマンド
+
+```sh
+seamless "このテスト、落ちてる"
+```
+
+- 宛先の既定は、今開いている会話。曖昧なときだけ一覧を出す。
+- `who`、`ask`、`inbox`、`status` を覚えさせない。`inbox` は独立した製品にしない。
+- 返事は送り先のCLIの画面に出る。送った側は同じ場所に1行の状態を持つ。
+
+### 状態の言葉
+
+| 内部の段階 | 画面の言葉 |
+|---|---|
+| accepted | 預かりました。まだ相手には渡していません |
+| reached | Claude Code に渡りました。まだ読んでいません |
+| processing | 相手が処理を始めました |
+| replied | 返事が来ました |
+| unknown | 届いたか確認中です。二重には送りません |
+
+「届いた」は、依頼IDと製品側のメッセージIDが結び付き、製品側の記録で確認できたときだけ出す。受理だけで「届いた」としない。
+
+### 名乗る範囲
+
+- v1の最初の説明文で名乗るのは、Claude Code、Codex、Grok Bot。
+- Dotはphase 2。最初の一覧に入るまで、最初の説明文で名乗らない。
+- 「Reasonの通知は相手のモデルに届かないことがある。seamlessは相手の画面に出るまで届いたと言わない」を移行の入口にする。チームの見回りはReasonに残してよいと書く。
+
+## 6. v1の範囲
+
+### 最初の一覧（3つ）
+
+1. **Claude Code（Channels）**: 公式の押し込み。research previewの条件とallowlistを確認する。既存のsocketアダプタはlegacyとして残すが、公開v1の主経路にしない。
+2. **Codex（app-server/queue）**: 公式の起動とメッセージ投入。Desktop IPCはlegacy。CLIのapp-serverを主経路にする。
+3. **Grok Bot（webhook）**: 既に実会話で往復している。webhookの受理と返信照合を使う。玄関口はv1に入れない。
+
+### 4つ目以降
+
+4. **Grok CLI（hooks）**: 既に実会話で往復している。hooksの公式性とStop時の挙動を再確認してから正式対応。
+5. **opencode（plugin）**: 公式plugin API。アダプタSDKの「コア変更なしで追加できる」実証に使う。
+
+### 出さない
+
+- Cursor、Gemini CLI、Copilot CLI、Pi、Amp、DeepSeek Harnessの正式対応。
+- Claude Codeの内部socket、Codex DesktopのIPCを公開v1の主経路にすること。
+- Grok Botの玄関口、Dotの逆方向、Reasonの独自プロトコルのブリッジ。
+- チーム機能、P2P、クラウド中継、独立した受信箱。
+
+## 7. 90日（改訂）
+
+| 週 | やること | 完了条件（観測値） |
+|---|---|---|
+| 1 | 最难関の検証。Claude Code Channels、Codex app-server、Grok Bot webhookで、busy、idle、再起動、承認待ちを含む1往復。 | 3製品それぞれで、依頼IDと返信IDが一致する1往復。失敗時は「不明」と理由が出る。 |
+| 2〜4 | hub、MCP道具、依頼ID対応、4段階、照会、allowlist、最初の画面、1コマンド、状態の言葉。 | 初見のMacで、最初の画面が10秒以内に出る。1コマンドで1往復。手動設定はMCP登録の1回だけ。 |
+| 5〜6 | Grok CLIのhooksを再確認して4製品目。opencodeでアダプタmanifestと適合試験の最小形。 | 4製品が同じ画面で一覧・送信・状態になる。新製品の追加がmanifest + フック1枚で済む。 |
+| 7〜8 | 遠隔の hardening。Grok Botのスリープ、再起動、返信照合。Dotは通知だけなら試験。 | 遠隔1製品で、宛先指定、送信、返信照合がそろう。Dotは通知のみと明記。 |
+| 9〜10 | A2Aプロトタイプ。hubが1セッションをAgentCardとして公開し、外部A2Aクライアントから1往復。 | 外部クライアント1つで、AgentCard発見、message/send、tasks/getが通る。 |
+| 11〜13 | 導入、README EN/JA、LICENSE、CI、アダプタ登録所、Reasonとの比較実測。 | 第三者が説明どおりに動かし、アダプタを1つ追加できる。比較指標5つの実測値がある。 |
+
+## 8. 確かめること（Yes/No、観測値つき）
+
+1. 初見のMacで、最初の画面が10秒以内に出る。観測値: 画面が出るまでの秒数、質問の数0、設定ファイルの変更数。
+2. 最初の画面に、Claude Code、Codex、Grok Botの3つが、3状態のどれかで出る。観測値: 製品数、状態の種類、誤表示0。
+3. `seamless "..."` の1コマンドで、既定の宛先に届き、返信IDが依頼IDと一致する。観測値: 依頼ID、返信ID、所要時間、操作回数。
+4. 今渡せない行には送信ボタンが出ない。観測値: 送信不可の行数、押した回数0。
+5. 送信後に接続を切った場合、二重送信せず「不明」と出る。その後の照会で、届いたかどうかを製品側の記録から判定できる。観測値: 送信回数1、照会回数、最終状態。
+6. Grok CLIが、コアのコード変更なしでmanifest + フック1枚で追加できる。観測値: 変更したファイル数、コアの差分0。
+7. 遠隔のGrok Bot webhookで、宛先指定、送信、返信照合がそろう。観測値: 受理、返信ID、所要時間。
+8. A2Aの外部クライアント1つが、hub経由で1セッションを発見し、1往復できる。観測値: AgentCard、message/send、tasks/getの応答。
+9. 公開物にproprietaryなコード、アカウント固有情報、秘密が含まれない。観測値: 秘密スキャン0件、ライセンス検査、アカウント情報0件。
+10. Reasonとの比較指標5つ（最初の画面までの時間、初回往復時間、操作回数、復帰成功率、届いた表示の正確さ）の実測値がある。観測値: 各指標の数値と測定条件。
+
+### ACと検証の対応
+
+| AC | 検証コマンド/手順 | 週 |
+|---|---|---|
+| 1 | `setup` を実行し、画面が出るまでの秒数を3回測る。質問数を数える。`git diff --stat` で設定変更数を確認。 | 2〜4 |
+| 2 | `seamless who --json` を実行し、3製品と3状態を検査する。誤表示0を確認。 | 2〜4 |
+| 3 | `seamless "…"` を実行し、`seamless status <id>` で依頼IDと返信IDを比較する。操作回数を数える。 | 1〜4 |
+| 4 | 3状態の行を作り、送信不可の行に送信ボタンがないことを画面検査する。 | 2〜4 |
+| 5 | 送信直後にhubを止め、`seamless status` を2回。送信回数1、状態unknown、照会でreached/repliedを確認。 | 2〜4 |
+| 6 | Grok CLIのmanifestとフックだけを追加し、`git diff --stat` でコア0を確認。`seamless who` にGrok CLIが出る。 | 5〜6 |
+| 7 | 偽webhookで自動試験。本物はH3の承認後に1回。`seamless status` で受理と返信IDを確認。 | 7〜8 |
+| 8 | A2Aの外部クライアント（a2a-sdkのサンプル）でAgentCardを取得し、message/sendとtasks/getを実行。 | 9〜10 |
+| 9 | `scripts/peer-secrets.sh`、`git grep` でアカウント情報、`npm pack --dry-run` で同梱物を検査。 | 11〜13 |
+| 10 | Reasonとseamlessを同じMacで同じ題材に使い、5指標を計測して表に記録。 | 11〜13 |
+
+## 9. 停止条件（AC番号に対応）
+
+- S1: 確かめること3が、1週間の検証で通らない。→ 製品数を増やさず、原因をPlanに戻す。
+- S2: 確かめること5で、二重送信を避けながら未達を救う経路がない。→ 「不明」を許容する設計に戻すか、製品側の重複排除が使える経路だけに絞る。
+- S3: 確かめること6で、コアのコード変更が必要になる。→ manifestの設計をやり直す。製品数を増やさない。
+- S4: 確かめること7で、遠隔の1往復が法務・認証・製品仕様で通らない。→ 遠隔をv1から外す。
+- S5: 確かめること8で、A2Aの必須項目がライブセッションの同一性と両立しない。→ A2Aをphase 2へ送る。
+- S6: 確かめること9で、公開物に内部APIの再現やアカウント情報が混ざる。→ 該当アダプタを公開物から外す。
+- S7: 1人+コミュニティで、4製品の保守が回らない。→ v1を3製品に減らす。
+- S8: 法務・規約の確認が、公開予定日までに終わらない。→ 公開を延期する。内部APIアダプタは出さない。
+
+## 10. Human gates
+
+- H1: Claude Code Channels のresearch preview条件、allowlist、組織設定を確認し、v1の主経路に使ってよいと決める。
+- H2: Codex app-server/queue の利用条件を確認し、v1の主経路に使ってよいと決める。
+- H3: Grok Bot webhook、Grok CLI hooks、Dot MCP Events の利用規約を確認し、公開物に含めてよいと決める。
+- H4: A2Aを前面に出すか、MCP hubとして地味に出すか。
+- H5: 名前、ライセンス、公開β、GitHub public化。
+- H6: 内部API（Claude socket、Codex Desktop IPC、Grok Bot玄関口）を使うアダプタの公開可否。
+- H7: v1の最初の説明文で名乗る製品を、最初の一覧に限定すること。
+
+## 11. Reasonとの比較指標
+
+| 指標 | 測り方 | 勝ちの条件 |
+|---|---|---|
+| 最初の画面までの時間 | 導入開始から、宛先の一覧が出るまで | Reasonより短い、または同等 |
+| 初回往復までの時間 | 一覧が出てから、1通の返信まで | Reasonより短い、または同等 |
+| 操作回数 | 導入から1往復までのクリック/コマンド数 | Reasonより少ない、または同等 |
+| 既存会話への復帰成功率 | 既に開いている会話へ送り、返信IDが一致した割合 | 3製品で80%以上 |
+| 届いた表示の正確さ | 受理だけで「届いた」と表示した件数 | 0件 |
+| アダプタ追加時間 | 新製品1つをmanifest + フックで追加するまでの時間 | 1日以内 |
+
+## 12. 未決（AIが勝手に決めない）
+
+1. A2Aをv1に入れるか、phase 2に回すか。
+2. v1の最初の一覧を Claude Code + Codex + Grok Bot にするか。
+3. hubをlaunchdで常時動かすか、必要なときだけ起動するか。
+4. チーム機能をv1に入れるか、個人に絞るか。
+5. Reasonブリッジを「互換」と名乗るか、移行補助にするか。
+6. 内部APIアダプタを公開物に含めるか、別配布にするか。
+
+## 13. 3人の指摘（要約）
+
+### Haiku 5.5（図面検査）
+
+- ACが判定不能。対象製品、手順、観測値を書く。
+- 90日が過積載。最初は1アダプタ+hubに絞る。
+- 最初の3製品が曖昧。公式hooks/pluginと現行資産で選ぶ。
+- 法務・セキュリティの穴。内部APIの規約、送信先の認可、リモートの鍵管理。
+- 未決を前提に使っている。仮定と明記するか、段取りから外す。
+
+### Codex Astra（敵対）
+
+- OSSやアカウント不要だけでは勝てない。比較指標を決める。
+- MCPの限界を一般化しすぎ。Claude Code Channelsは公式の押し込み。
+- transportと会話操作を混ぜている。Remote Control、Dotは実証前にtransportに数えない。
+- 同じルールと、同じ保証を混同している。配送段階を画面に残す。
+- 4段階だけでは往復を保証できない。依頼IDと製品側IDを結ぶ。
+- stdioかhubか未決のまま見積もっている。v1は端末に1つのhub。
+- 1人の保守をコミュニティで水増ししている。v1は2製品。
+- 権限と承認が未決。閲覧、送信、起動、承認を分ける。
+- ReasonのOSS再利用を切り捨て、標準化に根拠なく期待している。A2Aは外部実装2つで確かめる。
+- 90日が製品数の拡大を優先している。1週目に最难関を検証する。
+
+### Grok 4.7（使い心地）
+
+- 初見の10分は、この計画のままだとReasonに負ける。
+- 最初の画面は宛先の一覧と送信欄だけ。MCP、manifest、transport、配送段階を出さない。
+- 名乗る製品は最初の一覧に出す。DotとGrok Botを名乗るなら、初回に入れる。
+- 同じ一覧でも、同じことができると思わせない。3状態を出し、今渡せない行は送信不可にする。
+- 「届いた」と言われたのに相手が知らないのが一番信用を壊す。画面の言葉を3つにする。
+- 独立した受信箱を作らない。返事は送り先のCLIの画面に出す。
+- 最初に捨てるのは、独立した受信箱と、届き方を選ばせる質問。
+- 説明文の候補: 「今開いているAIに、そのまま一言届く。相手が読むまで、届いたとは言いません。」
+
+web search: site:github.com/reason-machines/reason-network DESIGN.md ...
+web search: 
+web search: https://github.com/reason-machines/reason-network
+exec
+/bin/zsh -lc 'cat /Users/tachibanashuuta/.agents/skills/openai-docs/SKILL.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+ exited 1 in 27ms:
+cat: /Users/tachibanashuuta/.agents/skills/openai-docs/SKILL.md: No such file or directory
+
+web search: 
+web search: "reason-network" issues bug ...
+exec
+/bin/zsh -lc 'cat /Users/tachibanashuuta/LocalWork/Code/routecli/.local/monitor/profiles/chatgpt-2/skills/.system/openai-docs/SKILL.md' in /Users/tachibanashuuta/LocalWork/Code/seamless
+ succeeded in 15ms:
+---
+name: "openai-docs"
+description: "Use for Codex models/pricing, scheduled tasks, skills, settings, setup, troubleshooting, customization, automations, and self-knowledge—including 'you,' 'your,' 'this app,' or 'this coding agent' when they refer to Codex—and for OpenAI APIs/products and ChatGPT Work. Also use for model choice/migration, prompting, SDKs, Responses, Realtime, agents, evals, and Chat/Work/Codex comparisons. Do not use for generic app/software tasks that merely mention Codex."
+metadata:
+  short-description: "Codex models/pricing, scheduled tasks, skills, settings, setup, troubleshooting, and self-knowledge; OpenAI APIs and ChatGPT Work. 'You'/'this app' means Codex only."
+---
+
+# OpenAI Docs
+
+Provide current, cited OpenAI product, API, model, and Codex guidance. Read zero or one primary reference.
+
+**First substantive action:** Search the user's exact requested official OpenAI documentation topic and any explicitly named model using a concise, topic-specific query of 2-6 essential terms. When an already-available direct official documentation search and page-retrieval capability is present, use it first: search, then fetch or open the matching official page before general web search. Otherwise, immediately use official-domain web search, then actually open or fetch the relevant official page. Complete this source order before reading a reference, inspecting local or repository files, running a Codex manual or model resolver, drafting a plan, or answering from memory. Use the actual fetched page, not a search snippet or an unopened link. If one official search or page does not establish the answer, search another appropriate official domain and actually open or fetch the result. Preserve the exact requested model; never substitute a newer model.
+
+**Only exception:** An explicitly requested, genuinely broad, cross-topic Codex setup, orientation, or system-map synthesis may use the manual first when shell execution and an allowed temporary cache are available. A specific Codex feature, setting, command, error, model, or requested citation remains docs-first. Mixed Chat/Work/Codex comparisons are official documentation questions, not manual-first Codex requests.
+
+For generic software tasks, answer the software task directly. OpenAI implementation, debugging, SDK, API, prompting, agent, and eval requests are not generic.
+
+For a straightforward factual or citation-only request, follow the source order and do not read a route reference. This includes straightforward API facts, ChatGPT Work or mixed Chat/Work/Codex comparisons, model tiers, aliases, Pro mode, reasoning settings, factual migration baselines, and narrow Codex facts. Prioritize `learn.chatgpt.com` for ChatGPT Work.
+
+## Choose one primary route
+
+Use the first matching route, and read its reference only when the requested task needs that specialized workflow:
+
+- **Explicitly requested local documentation integration:** Read [integration guidance](references/mcp-diagnostics.md) only when the user explicitly requests that local integration.
+- **Model migration, upgrades, or model-specific prompting:** Read [model-migration.md](references/model-migration.md) for actual migration planning, implementation, dynamic target resolution, or prompt changes. Preserve an explicitly requested target.
+- **Model selection and comparisons:** Read [model-selection.md](references/model-selection.md) only when nuanced current, latest, default, cost, latency, quality, or modality tradeoffs need more guidance. Do not run a migration resolver for selection alone.
+- **Product, API, ChatGPT Work, and mixed Chat/Work/Codex documentation:** Read [official-docs.md](references/official-docs.md) only when fetched official pages leave source selection, API schemas, or the requested implementation unresolved. This route is not manual-first.
+- **Explicitly broad Codex setup, orientation, or cross-topic synthesis:** Read [codex-self-knowledge.md](references/codex-self-knowledge.md) when the eligible Codex manual or deeper Codex procedures are needed.
+
+Read at most one primary reference. Do not open every route, bundled model guide, or helper script. Read a supporting reference or run a helper only when the chosen workflow demonstrably needs it.
+
+## Source and execution boundaries
+
+- Search, open, fetch, and cite only `developers.openai.com`, `platform.openai.com`, and `learn.chatgpt.com`. Cite the page that supports the claim. State uncertainty when official sources do not establish pricing, availability, account access, limits, or behavior.
+- Preserve an explicitly requested model for selection, migration, and prompting. Resolve an unspecified latest or current migration target only after searching and fetching current official guidance.
+- Use `references/latest-model.md` only as a disclosed fallback after current official model guidance does not answer the question. Read `references/upgrading-to-gpt-6-astra.md` only for an actual, requested GPT-6 migration; read `references/prompting-guide.md` only for requested prompting work.
+- Before building, running, editing, debugging, or testing an API-backed app or tool, use `openai-platform-api-key` first when available. Documentation, conceptual examples, model selection, and read-only guidance do not require an API key.
+- Say "OpenAI Docs" or "official OpenAI documentation" in user-facing answers. Keep exact official citations and examples concise.
+
+codex
+Codexの公式 app-server は確認できました。ただし、既存Desktop会話を操作できるかは別の確認が必要です。OpenAI Docs skillに沿って確認を続けます。Reason固有の不満はまだ裏づけが薄いため、類似製品の利用者報告と分けて扱います。
+web search: 
+web search: 'preview'
+web search: 
+web search: site:github.com/reason-machines/reason-network/issues/  ...
+web search: 
+web search: https://github.com/fujibee/agmsg/issues/88
+web search: 
+web search: site:github.com/openai/codex "queue" "--thread" ...
+codex
+公式経路への移行は有効ですが、「Reason以上の速さ」は未実証です。Reason自身も同じ公式経路を使います。  
+勝ち筋は、既存会話への一言を少ない操作で届け、受理と処理を取り違えないことです。  
+統合プランv2は、Channelsの認証条件とCodex queueの保証を修正すべきです。確信度：medium。
+
+**1．Reasonの価値と弱点**
+
+事実の確認日は、特記以外すべて2026-10-19。seamlessの指定3文書を読み、コードとファイルは変更していません。
+
+個人には、複数端末の会話を探せることと、離席中の通知が効きます。2〜5人には「誰が、どのrepoとbranchで何をしているか」が見える名簿が効きます。問い合わせ先を人間が探す手間を減らすためです。オフライン配送もseamless現行との差です。ただし、有用性は仮説で、利用効果の比較測定はありません。[README](https://github.com/reason-machines/reason-network)
+
+設計上の制約は次のとおりです。[DESIGN](https://github.com/reason-machines/reason-network/blob/main/DESIGN.md)
+
+| 制約の事実 | 判断 |
+|---|---|
+| 全メンバーが招待と除名を行える | 友人同士には簡単。役割別管理への変更は名簿設計に及ぶ |
+| 承認署名は端末上の鍵に依存。「speed bump」と明記 | 端末を操作できるソフトウェアから人間承認を隔離できない |
+| 消えた会話の未読郵便は原則1日で破棄 | 保存期間は変更可能。構造的な弱点とは言い切れない |
+| 全端末間を接続し、約50台までを想定 | ハード上限ではない。2〜5人では弱点になりにくい |
+| Claudeは内部socketが主経路。公式fallbackもある | 依存は存在するが、撤去不能ではない |
+
+補足：「CLI非公開」は`reason`製品CLIの話です。公開エンジンには`reason-network` CLIがあります。「OSSだから乗り換える」だけでは差が弱いです。[README](https://github.com/reason-machines/reason-network)
+
+**2．公式経路で壊れにくくできるか**
+
+| 経路 | 公式性、制約、配送段階 |
+|---|---|
+| Claude Code Channels | 公式だがresearch preview。`--channels`で会話ごとに有効化し、Anthropicまたは組織の許可リストが必要。独自開発用flagあり。**claude.ai認証に加えConsole API keyも対応**。Bedrock等は対象外。開いている会話へpushする。[公式](https://code.claude.com/docs/en/channels) |
+| Channelsの確認応答 | 通知の書込み成功は処理成功ではない。ClaudeからACKがなく、設定不適合では黙って破棄される。busy時は次turnでまとめて処理。返信用toolによる相関確認が必要。[reference](https://code.claude.com/docs/en/channels-reference) |
+| Codex app-server | 公式のプログラム用インターフェース。`turn/start`、実行中への`turn/steer`、`turn/started`と`turn/completed`で開始と終了を観測できる。モデル認証が別途必要。WebSocketはexperimentalで、公開時は接続認証が必要。**自分が接続したserverと、既存Desktop会話の所有serverは区別する**。[公式](https://learn.chatgpt.com/docs/app-server) |
+| `codex queue` | 公式repoに実装。ただしqueue登録と消費は別。既存会話の返信取得を求めるissueが未解決。CLI終了0を「到達」にできない。[src](https://github.com/openai/codex/blob/main/codex-rs/cli/src/main.rs)、[要望、10/15](https://github.com/openai/codex/issues/54252) |
+| OpenCode plugin | 公式の拡張口。SDK clientと会話イベントを利用でき、`session.prompt`は通常AI応答を返す。`noReply`は文脈追加のみ。中央許可リストは文書上なく、モデル認証はprovider次第。busy中の割込み保証は未確認。[plugin](https://opencode.ai/docs/plugins/)、[SDK](https://opencode.ai/docs/sdk/) |
+| A2A v1.0 | エージェント間通信の標準。タスク状態、ストリーム、認証方式を定義する。認証情報の取得は別手続き。**既存CLI会話へ注入する口ではない**ため、各製品adapterは残る。[v1.0仕様](https://a2a-protocol.org/v1.0.0/specification/) |
+
+推測：内部仕様への依存を減らせば保守しやすくなります。ただしReasonもCodex queue/app-serverとOpenCode pluginを使用しています。Channelsはbusy時に次turnまで待つため、速度優位は断定できません。[Reasonの経路表](https://github.com/reason-machines/reason-network/blob/main/DESIGN.md#getting-messages-into-agents)
+
+**3．公開された不満と乗り換え条件**
+
+Reasonの公開issues一覧は確認時点でopen 0件。閉鎖済み全件とXの網羅確認は未完了です。Reasonからの移行需要は確認できず、以下は類似製品の事例です。[一覧](https://github.com/reason-machines/reason-network/issues)
+
+- **導入後も人間が司会する負担**：agmsg利用者は会話が1通で止まり、双方の起動、参加、受信確認が重かったと報告。「動いている会話から呼べる」が定着条件。2026-10-03公開。[記事](https://zenn.dev/kaz_hira/articles/multi-agent-env-3weeks-measured)
+- **空振り起動の資源消費**：agmsg関連運用で3分ごとにCodexを起動し、約3時間で約60会話を生成。メモリ不足を報告。通信層そのものの欠陥とは区別されている。2026-06-19。[#163](https://github.com/fujibee/agmsg/issues/163)
+- **環境差による導入失敗**：Windowsでinstaller、`ps`、`uuidgen`等が動かず、対応を要望。2026-06-06。Mac製品への直接需要とは限らない。[#88](https://github.com/fujibee/agmsg/issues/88)
+- **受理しても読まれない**：Codexの`/goal`中に外部queueが待ち続け、手動Steerが必要という報告。2026-10公開。公式入口でも配送証拠が必要な根拠です。[#52705](https://github.com/openai/codex/issues/52705)
+
+**優先案**
+
+1. **本質：配送証拠。** 前→後：書込み成功→受理、到達、開始、返答をIDで照合。根拠：ChannelsのACK不在とqueue報告。危険：モデルの自己申告を実観測と混同する。
+2. **本質：既存会話の維持。** 前→後：両画面を監視→今の画面から依頼と返信確認。根拠：定着しなかった利用者事例。危険：同じ履歴の別プロセスを元会話と誤認する。
+3. **本質：接続の保守性。** 前→後：内部接続中心→公式adapter優先。根拠：上表。危険：previewとDesktop所有serverの制約。まず既存会話で比較実測する。
+4. **本質：権限の分離。** 前→後：通信参加→閲覧、送信、起動、承認を別許可。根拠：Reasonの対等な名簿。危険：設定負担が初回往復を遅らせる。
+5. **本質：併用から獲得。** 前→後：Reason全面代替→Mac内はseamless、端末間はReasonとの橋渡し。根拠：Reasonの強みを再実装せず試せる。危険：二重配送と権限変換。需要は未検証。
+
+調査は完了。製品優位の判定は未完了です。次の検証は、同じ既存会話でidle、busy、承認待ちを比較し、往復時間と誤った成功表示を測ることです。
+tokens used
+88,591
+exit=0

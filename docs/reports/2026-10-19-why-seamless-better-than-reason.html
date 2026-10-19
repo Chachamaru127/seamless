@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reasonより、seamlessが良いのはどんな人か</title>
+<style>
+  :root{
+    --paper:#fbf7ef;
+    --paper-2:#fffdf7;
+    --ink:#1c1a16;
+    --muted:#6f685c;
+    --line:#ddd3c2;
+    --soft:#f0e8d8;
+    --seamless:#b5451f;
+    --reason:#33414d;
+    --green:#1f5c4d;
+    --amber:#8a641c;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,-apple-system,sans-serif;
+    font-size:16px;
+    line-height:1.9;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:980px;margin:0 auto;padding:40px 32px 96px}
+  p{margin:0 0 1.1em}
+  small{font-size:12px;color:var(--muted)}
+  code{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:.86em;background:var(--soft);padding:2px 6px;border-radius:2px;
+  }
+  .topline{
+    display:flex;justify-content:space-between;gap:20px;
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+    border-bottom:1px solid var(--ink);padding-bottom:12px;
+  }
+  .kicker{
+    margin-top:44px;color:var(--seamless);
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:12px;letter-spacing:.16em;text-transform:uppercase;
+  }
+  h1{
+    font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    font-weight:600;
+    font-size:clamp(36px,6vw,60px);
+    line-height:1.16;
+    letter-spacing:-.025em;
+    margin:12px 0 22px;
+  }
+  .lede{
+    font-size:19px;line-height:1.9;max-width:760px;color:#2b2924;
+  }
+  .lede b{color:var(--seamless)}
+  .hero{
+    margin:30px 0 0;background:var(--ink);color:var(--paper);
+    padding:30px 32px;
+  }
+  .hero .label{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#c9bfa9;
+    display:block;margin-bottom:8px;
+  }
+  .hero p{
+    font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    font-size:23px;line-height:1.6;margin:0;
+  }
+  .hero p b{color:#f0b49c;font-weight:600}
+
+  section{padding:54px 0 50px;border-bottom:1px solid var(--line)}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:22px}
+  .sec-no{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:11px;color:var(--seamless);letter-spacing:.12em;flex:0 0 auto;padding-top:5px;
+  }
+  h2{
+    font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    font-weight:600;font-size:clamp(25px,3.4vw,34px);line-height:1.4;
+    letter-spacing:-.02em;margin:0;
+  }
+  h3{font-size:17px;line-height:1.6;margin:28px 0 10px}
+  h3:first-child{margin-top:0}
+  .sub{color:var(--muted);font-size:14px;margin:-8px 0 24px;max-width:760px}
+
+  .flow{
+    display:grid;grid-template-columns:1fr 42px 1fr 42px 1fr;
+    align-items:center;gap:0;margin:26px 0;
+  }
+  .flow .node{
+    border:1px solid var(--line);background:var(--paper-2);padding:16px 14px;
+    min-height:98px;display:flex;flex-direction:column;justify-content:center;
+  }
+  .flow .node .who{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+    margin-bottom:4px;
+  }
+  .flow .node .what{font-size:14px;line-height:1.6}
+  .flow .node.you{border-top:3px solid var(--seamless)}
+  .flow .node.them{border-top:3px solid var(--reason)}
+  .flow .node.hub{border-top:3px solid var(--green)}
+  .flow .arrow{text-align:center;color:var(--muted);font-size:20px}
+  .flow .arrow small{display:block;font-size:9px;color:var(--muted);margin-top:2px}
+  .flow-caption{font-size:12px;color:var(--muted);margin-top:-10px}
+
+  .before-after{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:24px 0}
+  .ba{border:1px solid var(--line);background:var(--paper-2);padding:22px 20px}
+  .ba h3{margin:0 0 12px;font-size:15px}
+  .ba.old h3{color:var(--reason)}
+  .ba.new h3{color:var(--seamless)}
+  .ba ol{margin:0;padding-left:20px;font-size:13.5px;line-height:1.85}
+  .ba li{margin:4px 0}
+  .ba .time{
+    display:inline-block;margin-top:12px;font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:11px;color:var(--muted);border-top:1px solid var(--line);padding-top:8px;width:100%;
+  }
+  .count-chart{
+    border:1px solid var(--line);background:var(--paper-2);
+    padding:16px 18px;margin:0 0 24px;
+  }
+  .count-head{font-size:11px;color:var(--muted);margin-bottom:8px}
+  .count-row{
+    display:grid;grid-template-columns:90px 1fr 44px;gap:10px;align-items:center;
+    font-size:12px;margin:7px 0;
+  }
+  .count-track{height:10px;background:#e8dfcf;border-radius:999px;overflow:hidden}
+  .count-fill{height:100%}
+  .count-fill.old{background:var(--reason)}
+  .count-fill.new{background:var(--seamless)}
+  .count-row b{
+    text-align:right;font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:12px;font-weight:500;
+  }
+
+  .reasons{display:grid;gap:0;border-top:1px solid var(--line)}
+  .reason-item{display:grid;grid-template-columns:34px 1fr;gap:14px;padding:18px 0;border-bottom:1px solid var(--line)}
+  .reason-item .num{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:12px;color:var(--seamless);padding-top:3px;
+  }
+  .reason-item b{display:block;font-size:15px;margin-bottom:3px}
+  .reason-item p{margin:0;font-size:13.5px;color:#3d3932;line-height:1.8}
+
+  .table-wrap{overflow-x:auto;margin:18px 0 6px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;line-height:1.7}
+  th{
+    text-align:left;font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--muted);border-bottom:1px solid var(--ink);padding:0 10px 9px;white-space:nowrap;
+  }
+  td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th:first-child,td:first-child{padding-left:0}
+  th:last-child,td:last-child{padding-right:0}
+  td:first-child{font-weight:600;white-space:nowrap}
+  .win{color:var(--seamless);font-weight:600}
+  .lose{color:var(--reason);font-weight:600}
+  .muted{color:var(--muted)}
+
+  .timeline{margin:24px 0;display:grid;gap:18px}
+  .tl-row{display:grid;grid-template-columns:120px 1fr;gap:16px;align-items:start}
+  .tl-label{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:11px;letter-spacing:.06em;color:var(--muted);padding-top:4px;
+  }
+  .tl-steps{display:flex;flex-wrap:wrap;gap:8px}
+  .step{
+    border:1px solid var(--line);background:var(--paper-2);padding:8px 10px;
+    font-size:12px;line-height:1.5;
+  }
+  .step b{display:block;font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;font-size:9px;color:var(--muted);letter-spacing:.06em}
+  .step.hot{border-color:#d8a38f;background:#fbeee7}
+  .step.cool{border-color:#a8c3b6;background:#eaf1ed}
+
+  .status-demo{
+    margin:22px 0;border:1px solid var(--line);background:var(--paper-2);padding:20px;
+  }
+  .bubble{
+    max-width:78%;padding:10px 14px;font-size:13px;line-height:1.7;margin:8px 0;
+    border:1px solid var(--line);background:#fff;
+  }
+  .bubble.you{margin-left:auto;background:#fbeee7;border-color:#d8a38f}
+  .bubble.them{background:#eaf1ed;border-color:#a8c3b6}
+  .bubble .meta{
+    display:block;font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:9px;letter-spacing:.06em;color:var(--muted);margin-bottom:2px;
+  }
+  .status-line{
+    margin-top:12px;padding-top:10px;border-top:1px solid var(--line);
+    font-size:12px;color:var(--muted);
+  }
+  .status-line b{color:var(--green)}
+
+  .choose{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:24px 0}
+  .choice{border:1px solid var(--line);background:var(--paper-2);padding:22px 20px}
+  .choice.reason{border-top:4px solid var(--reason)}
+  .choice.seamless{border-top:4px solid var(--seamless)}
+  .choice h3{margin:0 0 10px;font-size:16px}
+  .choice.reason h3{color:var(--reason)}
+  .choice.seamless h3{color:var(--seamless)}
+  .choice ul{margin:0;padding-left:18px;font-size:13px;line-height:1.8}
+  .choice li{margin:4px 0}
+  .choice .pick{
+    margin-top:14px;padding-top:10px;border-top:1px solid var(--line);
+    font-size:12px;color:var(--muted);
+  }
+
+  .note{
+    background:var(--soft);border-left:4px solid var(--amber);
+    padding:20px 22px;margin:24px 0;
+  }
+  .note p:last-child{margin-bottom:0}
+  .note b{color:var(--amber)}
+  .quote{
+    font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    font-size:21px;line-height:1.7;border-left:2px solid var(--ink);
+    padding-left:20px;margin:24px 0;
+  }
+  .quote cite{display:block;font-family:inherit;font-size:11px;color:var(--muted);margin-top:8px;font-style:normal}
+
+  .summary{
+    background:var(--ink);color:var(--paper);padding:30px 32px;margin:30px 0 0;
+  }
+  .summary .label{
+    font-family:"SFMono-Regular","JetBrains Mono",ui-monospace,monospace;
+    font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#c9bfa9;
+    display:block;margin-bottom:8px;
+  }
+  .summary p{
+    font-family:"Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif;
+    font-size:21px;line-height:1.65;margin:0;
+  }
+  .summary b{color:#f0b49c;font-weight:600}
+
+  footer{padding:36px 0 0;color:var(--muted);font-size:12px;line-height:1.8}
+  footer h3{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);margin:0 0 8px}
+  footer ul{margin:0;padding:0;list-style:none}
+  footer li{padding:4px 0;border-bottom:1px solid #e7dfcf}
+  .fine{border-top:1px solid var(--line);margin-top:22px;padding-top:14px;font-size:11px}
+
+  @media (max-width:760px){
+    .wrap{padding:28px 20px 70px}
+    .flow{grid-template-columns:1fr;gap:8px}
+    .flow .arrow{transform:rotate(90deg)}
+    .before-after,.choose{grid-template-columns:1fr}
+    .tl-row{grid-template-columns:1fr;gap:6px}
+    .tl-label{padding-top:0}
+    h1{font-size:34px}
+    .hero p{font-size:20px}
+  }
+  @media print{
+    body{background:#fff;font-size:11pt}
+    .wrap{max-width:none;padding:0}
+    section{break-inside:avoid}
+    .hero,.summary{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topline">
+    <span>seamless / やさしい説明</span>
+    <span>2026-10-19</span>
+  </div>
+
+  <div class="kicker">Reasonと比べる</div>
+  <h1>Reasonより、<br>seamlessが良いのは<br>どんな人か。</h1>
+  <p class="lede">
+    Reasonは「チームの網」です。seamlessは「今開いているAIへの、ひとこと」です。
+    <b>ひとりで、静かに、自分の会話をつなぎたい人</b>には、seamlessの方が向いています。<br>
+    このページでは、その理由を、専門用語をできるだけ使わずに説明します。
+  </p>
+
+  <div class="hero">
+    <span class="label">ひとことで</span>
+    <p>Reasonは、<b>誰が忙しいかを見る網</b>。seamlessは、<b>あなたのひとことが相手の画面に出る配線</b>。チームならReason、1人ならseamless。</p>
+  </div>
+
+  <section>
+    <div class="sec-head"><div class="sec-no">01</div><h2>実際の場面で比べる</h2></div>
+    <p class="sub">あなたはClaude Codeでテストを直しています。Grok Botに「このテスト、落ちてる」と伝えたい。この1つの用事で比べます。</p>
+
+    <div class="before-after">
+      <div class="ba old">
+        <h3>いま（手でやる場合）</h3>
+        <ol>
+          <li>Claude Codeの画面で、エラーをコピーする。</li>
+          <li>Grok Botの画面を開く。</li>
+          <li>貼り付けて、送る。</li>
+          <li>返事を待つ。Claude Codeに戻る。</li>
+          <li>返事をコピーして、Claude Codeに貼る。</li>
+        </ol>
+        <span class="time">行ったり来たりが5回。集中が切れる。</span>
+      </div>
+      <div class="ba new">
+        <h3>seamlessの場合</h3>
+        <ol>
+          <li>Claude Codeの画面で、こう打つ。</li>
+          <li><code>seamless "このテスト、落ちてる"</code></li>
+          <li>Grok Botの画面に、その一文が出る。</li>
+          <li>返事が来たら、同じ場所に1行で出る。</li>
+        </ol>
+        <span class="time">行ったり来たりが0回。1つの画面で終わる。</span>
+      </div>
+    </div>
+
+    <div class="count-chart">
+      <div class="count-head">行ったり来たりの回数（説明用）</div>
+      <div class="count-row"><span>いま</span><div class="count-track"><div class="count-fill old" style="width:100%"></div></div><b>5回</b></div>
+      <div class="count-row"><span>seamless</span><div class="count-track"><div class="count-fill new" style="width:0%"></div></div><b>0回</b></div>
+    </div>
+
+    <div class="flow">
+      <div class="node you">
+        <span class="who">あなた</span>
+        <span class="what">Claude Codeで<br><code>seamless "…"</code></span>
+      </div>
+      <div class="arrow">→<small>預ける</small></div>
+      <div class="node hub">
+        <span class="who">seamless</span>
+        <span class="what">相手を選び、<br>届いたかを確かめる</span>
+      </div>
+      <div class="arrow">→<small>届ける</small></div>
+      <div class="node them">
+        <span class="who">相手</span>
+        <span class="what">Grok Botの画面に<br>その一文が出る</span>
+      </div>
+    </div>
+    <p class="flow-caption">図のとおり、あなたが覚えるのは「ひとこと打つ」だけです。MCPやmanifestやtransportは、裏方の言葉です。</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><div class="sec-no">02</div><h2>Reasonより良いと言える3つの理由</h2></div>
+
+    <div class="reasons">
+      <div class="reason-item">
+        <div class="num">01</div>
+        <div>
+          <b>チームを作らなくていい。</b>
+          <p>Reasonは、まずワークスペースに入り、チームを作り、招待します。1人で使うにも、その考え方を通ります。seamlessは、アカウントもチームも要りません。今開いている会話を選ぶだけです。</p>
+        </div>
+      </div>
+      <div class="reason-item">
+        <div class="num">02</div>
+        <div>
+          <b>「届いた」の意味が、正直。</b>
+          <p>Reasonも、配達の記録を持っています。seamlessは、その記録と相手の画面の両方がそろうまで「届いた」と言いません。受け取ったことと、相手が読んだことを分けるのが違いです。</p>
+        </div>
+      </div>
+      <div class="reason-item">
+        <div class="num">03</div>
+        <div>
+          <b>新しい網を覚えなくていい。</b>
+          <p>Reasonは、新しい仲間の網に入ります。seamlessは、あなたがもう使っているClaude Code、Codex、Grok Botの接続を使います。新しいアプリを1つ増やすのではなく、今の画面に1行足す感じです。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="quote">
+      「サーバーが受け取ったこと」と「相手が読んだこと」は別です。seamlessは、相手の画面に出るまで「届いた」と言いません。
+      <cite>Grok 4.7（使い心地の相談役）の指摘をもとに、表現を調整</cite>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><div class="sec-no">03</div><h2>並べて比べる</h2></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Reason Network</th><th>seamless</th></tr></thead>
+        <tbody>
+          <tr><td>向いている人</td><td>2人以上。チーム。複数マシン。</td><td class="win">1人。1台。自分の会話。</td></tr>
+          <tr><td>最初にやること</td><td>ワークスペースに入る。チームを作る。招待する。</td><td class="win">今開いている会話を選ぶ。ひとこと打つ。</td></tr>
+          <tr><td>送る側</td><td>Reasonの網に入っているエージェント。</td><td class="win">MCP対応のAIなら広く使える。</td></tr>
+          <tr><td>受け取る側</td><td class="lose">10以上。Cursor、Gemini、Copilotなど。</td><td>v1で「すぐ受け取れる」のはClaude Code、Codex、Grok Bot。Grok CLI、opencodeは続く。</td></tr>
+          <tr><td>宛先の発見</td><td>Reasonの名簿。</td><td>製品ごとのアダプタ。MCPだけでは分からない。</td></tr>
+          <tr><td>届いた表示</td><td>受け取った記録と、配達の記録。</td><td class="win">相手の画面と記録で確認するまで「届いた」と言わない。</td></tr>
+          <tr><td>新しい網</td><td>必要。チームの網に入る。</td><td class="win">不要。今の接続を使う。</td></tr>
+          <tr><td>アカウント</td><td>Reasonのワークスペース。</td><td class="win">不要。</td></tr>
+          <tr><td>ソース</td><td>エンジンはOSS。CLIは非公開。</td><td class="win">全部OSS（予定）。</td></tr>
+          <tr><td>チームの見回り</td><td class="lose">強い。他の人、他のマシンまで見える。</td><td>同じMacの中はできる。他の人、他のマシンはv1ではできない。</td></tr>
+          <tr><td>向かない人</td><td>1人で静かに使いたい人。</td><td>他の人や他のマシンを含めて、チームで一覧したい人。</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sub">この表のとおり、Reasonが全部負けるわけではありません。チームと対応製品数ではReasonが上です。seamlessが上なのは、1人のときの「ひとことを届ける」体験です。</p>
+
+    <div class="note">
+      <p><b>MCPは「送る側」の共通の口です。でも「受け取る側」の共通の口ではありません。</b>MCPに対応しているAIは、seamlessに「これを送って」と頼めます。だから送る側は広い。でも、相手の会話に割り込んで届けるには、相手の製品が持つ届け方（プッシュ、フック、プラグイン、受信箱）が要ります。宛先の発見も、製品ごとに違います。v1の3製品は「すぐ受け取れる側」の正式対応です。</p>
+    </div>
+
+    <h3>「チームの見回り」は、どこまでできるか</h3>
+    <p>ここは誤解しやすいので、分けて書きます。seamlessは「見回り」が全部できないのではありません。<strong>同じMacの中の見回りはできます。他の人や他のマシンが入ると、v1ではできません。</strong></p>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>できること（v1）</th><th>できないこと（v1）</th></tr></thead>
+        <tbody>
+          <tr><td>同じMacで開いているClaude Code、Codex、Grok Botの一覧。</td><td>他の人のMacで開いている会話。</td></tr>
+          <tr><td>同じrepo、同じbranchにいる会話の表示。</td><td>チームの招待、名簿、退会者の遮断。</td></tr>
+          <tr><td>busy/idle、最後に動いた時刻。</td><td>LAN、P2P、中継、オフラインの郵便箱。</td></tr>
+          <tr><td>Grok Botなど、登録した外部の相手。</td><td>チーム全体の監査、人ごとの権限。</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <p><b>できないというより、v1では作らない。</b>他の人や他のマシンまで見回るには、身元、チームの名簿、権限、通信の4つが要ります。これはReasonの土台そのものです。同じMacの中の見回りは安く作れますが、チームの見回りは別の層になります。v1は同じMacまで。他の人や他のマシンは、必要になったらv2で考えます。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><div class="sec-no">04</div><h2>最初の10分でやること</h2></div>
+    <p class="sub">Reasonは「チームに入る」ところから始まります。seamlessは「今の会話を選ぶ」ところから始めます。</p>
+
+    <div class="timeline">
+      <div class="tl-row">
+        <div class="tl-label">Reason</div>
+        <div class="tl-steps">
+          <div class="step"><b>1</b>インストール</div>
+          <div class="step"><b>2</b>ログイン</div>
+          <div class="step"><b>3</b>ワークスペース</div>
+          <div class="step"><b>4</b>チームを作る</div>
+          <div class="step"><b>5</b>エージェントを再起動</div>
+          <div class="step"><b>6</b>一覧が出る</div>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-label">seamless</div>
+        <div class="tl-steps">
+          <div class="step hot"><b>1</b>インストール</div>
+          <div class="step hot"><b>2</b>今の会話が出る</div>
+          <div class="step hot"><b>3</b>ひとこと打つ</div>
+          <div class="step hot"><b>4</b>返事が来る</div>
+        </div>
+      </div>
+    </div>
+    <p class="sub">これは説明用の比較です。Reasonの手順は製品の画面によって変わります。seamlessの4手順は、v1の目標です。まだ公開していません。</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><div class="sec-no">05</div><h2>「届いた」の見え方</h2></div>
+    <p class="sub">仕事で一番困るのは、届いていないのに「届いた」と言われることです。seamlessは、次の3つを分けて出します。</p>
+
+    <div class="status-demo">
+      <div class="bubble you"><span class="meta">あなた → Grok Bot</span>このテスト、落ちてる</div>
+      <div class="bubble them"><span class="meta">Grok Bot</span>どのテスト？ ログを見せて。</div>
+      <div class="status-line">状態：<b>返事が来ました</b>。預かった文は1通だけ。二重には送っていません。</div>
+    </div>
+
+    <div class="reasons">
+      <div class="reason-item"><div class="num">1</div><div><b>預かりました。まだ相手には渡していません。</b><p>あなたの手元のseamlessが受け取った段階です。相手はまだ読んでいません。</p></div></div>
+      <div class="reason-item"><div class="num">2</div><div><b>相手に渡りました。まだ読んでいません。</b><p>相手の画面に文が出た段階です。返事はまだです。</p></div></div>
+      <div class="reason-item"><div class="num">3</div><div><b>返事が来ました。</b><p>相手の返事が、送った依頼と結び付いた段階です。ここで初めて「往復できた」と言えます。</p></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><div class="sec-no">06</div><h2>どっちを選ぶ？</h2></div>
+
+    <div class="choose">
+      <div class="choice reason">
+        <h3>Reasonが良い人</h3>
+        <ul>
+          <li>2人以上で、チームで使う。</li>
+          <li>複数のマシンをつなぎたい。</li>
+          <li>10以上のエージェントを一覧したい。</li>
+          <li>他の人や他のマシンを含めて、誰がどのrepoで忙しいかを見たい。</li>
+          <li>設定をできるだけ考えたくない。</li>
+        </ul>
+        <div class="pick">Reasonは、チームの見回りと対応製品数で強い。すでにチームで使っているなら、そのままでよい。</div>
+      </div>
+      <div class="choice seamless">
+        <h3>seamlessが良い人</h3>
+        <ul>
+          <li>1人で、自分のMacで使う。</li>
+          <li>Claude Code、Codex、Grok Botに、ひとことを渡したい。</li>
+          <li>アカウントやチームを作りたくない。</li>
+          <li>届いていないのに「届いた」と言われたくない。</li>
+          <li>日本語で、静かに使いたい。</li>
+        </ul>
+        <div class="pick">seamlessは、1人のときの「ひとことを届ける」体験で強い。同じMacの見回りはseamless、他の人や他のマシンはReasonに残してよい。</div>
+      </div>
+    </div>
+
+    <div class="note">
+      <p><b>併用するときの注意。</b>同じ会話にReasonとseamlessの両方を入れると、同じ文が二重に届く恐れがあります。1つの会話には、1つの配線だけにしてください。他の人や他のマシンの見回りはReason、同じMacの見回りと個人のひとことはseamless、と分けるのが安全です。</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><div class="sec-no">07</div><h2>正直な注意</h2></div>
+    <p class="sub">seamlessは、まだ公開していません。このページは、これから作るv1の説明です。</p>
+
+    <div class="reasons">
+      <div class="reason-item"><div class="num">1</div><div><b>v1で「すぐ受け取れる」のは3つ。</b><p>Claude Code、Codex、Grok Botです。Dot、Cursor、Gemini、Copilotは、v1の後です。送る側はMCP対応のAIなら広く使えます。最初の説明文で、まだつながらない製品を名乗りません。</p></div></div>
+      <div class="reason-item"><div class="num">2</div><div><b>他の人や他のマシンのチーム機能はない。</b><p>招待、チームの名簿、複数マシンの網は、v1に入れません。同じMacの中の見回りはできます。他の人や他のマシンはReasonの仕事です。</p></div></div>
+      <div class="reason-item"><div class="num">3</div><div><b>速さは製品によって違う。</b><p>Claude Codeはすぐ届きます。Codexは次の区切りで届きます。Grok Botはスリープ中なら起こしてから届きます。同じ一覧でも、同じ速さではありません。画面にその違いを出します。</p></div></div>
+      <div class="reason-item"><div class="num">4</div><div><b>まだ法務の確認が要る。</b><p>Grok Botの接続は、製品の外部連携の仕様に依存します。玄関口は内部APIです。公開前に、利用規約と法務の確認をします。確認が終わるまで、公開物には入れません。</p></div></div>
+    </div>
+  </section>
+
+  <div class="summary">
+    <span class="label">まとめ</span>
+    <p>Reasonは、<b>チームの網</b>。seamlessは、<b>1人の配線</b>。あなたが1人で、今開いているAIにひとことを届けたいなら、seamlessの方が良い。チームで、10以上のエージェントを一覧したいなら、Reasonの方が良い。</p>
+  </div>
+
+  <footer>
+    <h3>この説明の出典</h3>
+    <ul>
+      <li>Reason Network 公式サイト、docs、GitHub README、DESIGN.md（2026-10-19取得）</li>
+      <li>Claude Code Channels、Remote Control の公式docs（2026-10-19取得）</li>
+      <li>seamless の調査記録、Nestra の計画、Haiku 5.5、Codex Astra、Grok 4.7 の指摘</li>
+    </ul>
+    <p class="fine">このページは説明用で、製品仕様の正本ではありません。Reasonの手順と画面は製品の版で変わります。seamlessのv1はまだ公開しておらず、3製品、1往復、届いた表示の正確さを最初の約束にしています。</p>
+  </footer>
+
+</div>
+</body>
+</html>

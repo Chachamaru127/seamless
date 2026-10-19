@@ -160,6 +160,16 @@ export async function observeCodexSession(nativeId:string,options:CodexOptions={
  const r=await withState(nativeId,options,false,(_state,meta)=>meta);
  return failed(r)?null:r;
 }
+// Desktop records a running turn (the `/goal` and steer wait) in the conversation state. Any explicit running marker is
+// the observed target; a snapshot that cannot be read proves nothing and returns null.
+export function codexGoalRunning(state:Frame):boolean{
+ if(typeof state.activeTurnId==='string'&&state.activeTurnId)return true;
+ return [...turns(state)].some(turn=>typeof turn.status==='string'&&['inProgress','running','active'].includes(turn.status));
+}
+export async function observeCodexGoal(nativeId:string,options:CodexOptions={}):Promise<boolean|null>{
+ const result=await withState(nativeId,options,false,state=>({state}));
+ return 'state' in result?codexGoalRunning(result.state):null;
+}
 export async function observeCodex(registration:Registration,options:CodexOptions={}):Promise<Observation|null>{
  if(registration.provider!=='codex')return null;
  const meta=await observeCodexSession(registration.nativeId,options);if(!meta||!meta.cwd)return null;

@@ -64,6 +64,27 @@ export async function findClaudeSessionByPid(pid:number,options:{home?:string}={
  if(!r||typeof r!=='object'||r.pid!==pid||typeof r.sessionId!=='string'||typeof r.cwd!=='string'||!Number.isFinite(r.startedAt))return 'unreadable';
  return {version:typeof r.version==='string'?r.version:'unknown',pid,sessionId:r.sessionId,cwd:r.cwd,startedAt:r.startedAt,messagingSocketPath:textOrNull(r.messagingSocketPath),kind:textOrNull(r.kind),status:textOrNull(r.status),name:textOrNull(r.name),generation:`${pid}@${r.startedAt}`};
 }
+// true only when the receiving side's own settings say a peer message waits for approval: `crossSessionInbound` is hold,
+// or the session bypasses permission prompts (the documented default holds a sender that does not attest its mode).
+// null means the settings were not readable, so nothing about hold was observed.
+export async function claudeInboundHolds(options:{home?:string}={}):Promise<boolean|null>{
+ const raw=await readOwned(join(options.home??homedir(),'.claude','settings.json'),MAX_RECORD_BYTES);
+ if(!('text' in raw))return null;
+ let parsed:unknown;try{parsed=JSON.parse(raw.text);}catch{return null;}
+ if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return null;
+ const settings=parsed as Record<string,unknown>;
+ const inbound=settings.crossSessionInbound;
+ const kind=typeof inbound==='string'?inbound:inbound&&typeof inbound==='object'&&!Array.isArray(inbound)
+  ?((inbound as Record<string,unknown>).allow===true?'accept':(inbound as Record<string,unknown>).allow===false?'hold':null)
+  :null;
+ if(kind==='hold')return true;
+ if(kind==='accept'||kind==='refuse')return false;
+ const permissions=settings.permissions;
+ const mode=permissions&&typeof permissions==='object'&&!Array.isArray(permissions)?(permissions as Record<string,unknown>).defaultMode:undefined;
+ if(mode==='bypassPermissions')return true;
+ if(typeof mode==='string')return false;
+ return null;
+}
 export function claudeInbox(session:ClaudeSession|null|'unreadable'):ClaudeInboxState{
  if(session==='unreadable')return {status:'unreachable',reason:'session_record_unreadable'};
  if(!session?.messagingSocketPath)return {status:'unreachable',reason:'no_inbox_socket'};

@@ -3,6 +3,8 @@ import {requests,DAY,isLocalParty,type RequestRecord,type RequestParty,type Loca
 import {REACHED_STAGE,STAGE_ORDER,type StageName} from './adapters/read.ts';
 import {DEFAULT_HELD_AFTER_SEC} from './limits.ts';
 import type {NativeAdapter} from './delivery.ts';
+import {claudeInboundHolds} from './adapters/claude.ts';
+import {observeCodexGoal} from './adapters/codex.ts';
 export type StructureItem={id:string;type:string;at:string|null;payloadSha256?:string;turnId?:string;position?:number;parentUuid?:string|null;generation?:string;hookName?:string|null;hooks?:string[];peer?:{id:string;replyTo?:string;sender?:{provider:string;nativeId:string}}};
 export type Stage={stage:StageName;status:'observed'|'unobserved';evidence:string[];at:string|null};
 // A state is not a stage (spec.md 用語): `held` waits for a peer record that stays silent, `read_failed` cannot open that
@@ -64,22 +66,31 @@ export function statusResult(record:RequestRecord,destination:StructureItem[],so
  return {status:'ok' as const,id:record.id,delivery:record.status,target:{provider:record.recipient.provider,nativeId:record.recipient.nativeId,generation:record.recipient.generation},at:new Date(record.at).toISOString(),stages:stages(record,destination,source,now),...(inbox!==undefined?{inbox}:{}),...(peerActive!==undefined?{peerActiveAt:peerActive}:{})};
 }
 export type ReadOutcome={items:StructureItem[];readable:boolean;attempted:boolean};
-// The product's own reason for waiting: Claude's inbound setting, Codex Desktop running a goal, or one this build cannot tell.
-const heldReason=(provider:string)=>provider==='claude'?'claude_hold':provider==='codex'?'codex_goal':'unknown_reason';
-// A state is separate from the five stages: refused comes from the reservation, read_failed from opening the peer's record,
-// and held only after that record was readable and stayed silent past the configured wait.
-function deliveryState(record:RequestRecord,read:ReadOutcome,result:ReturnType<typeof statusResult>,now:number,holdMs:number):Partial<DeliveryState>{
+// The product's own reason for waiting is attached only when the receiving side was observed to hold: Claude's inbound
+// setting (or a bypass permission mode), Codex Desktop's running turn. No observation, including a failed read, is
+// unknown_reason. A state is separate from the five stages: refused comes from the reservation, read_failed from opening
+// the peer's record, and held only after that record was readable and stayed silent past the configured wait.
+export type HoldObservation=(target:Registration)=>Promise<boolean|null>;
+async function deliveryState(record:RequestRecord,read:ReadOutcome,result:ReturnType<typeof statusResult>,now:number,holdMs:number,reason:(p:LocalParty)=>Promise<string>):Promise<Partial<DeliveryState>>{
  if(record.status==='rejected')return {state:'refused',reason:record.reason??'refused_by_peer'};
  if(record.status!=='submitted'||!isLocalParty(record.recipient))return {};
  if(read.attempted&&!read.readable)return {state:'read_failed',reason:'record_unreadable'};
  if(!read.readable)return {};
  if(result.stages.some(s=>s.status==='observed'&&(s.stage===REACHED_STAGE||s.stage==='processing'||s.stage==='replied')))return {};
  if(now-record.at<holdMs)return {};
- return {state:'held',reason:heldReason(record.recipient.provider)};
+ return {state:'held',reason:await reason(record.recipient)};
 }
-export function createStatus(options:{parallelReads?:boolean;dir:string;adapter:NativeAdapter;caller:RequestParty;canRead:(p:RequestParty)=>Promise<boolean>;clock?:StatusClock;heldAfterSec?:number}){
+export function createStatus(options:{parallelReads?:boolean;dir:string;adapter:NativeAdapter;caller:RequestParty;canRead:(p:RequestParty)=>Promise<boolean>;clock?:StatusClock;heldAfterSec?:number;home?:string;claudeHold?:HoldObservation;codexGoal?:HoldObservation}){
  const time=options.clock??clock,holdMs=(options.heldAfterSec??DEFAULT_HELD_AFTER_SEC)*1000;
  const owned=(r:RequestRecord)=>r.sender.provider===options.caller.provider&&r.sender.nativeId===options.caller.nativeId&&r.sender.generation===options.caller.generation;
+ // Only an observed hold names the product reason; a failed or absent observation is unknown_reason, never a guess from the name.
+ const observedHold=async(target:Registration,observe:HoldObservation):Promise<boolean>=>{try{return await observe(target)===true;}catch{return false;}};
+ const holdReason=async(p:LocalParty):Promise<string>=>{
+  const target=registration(p);
+  if(p.provider==='claude')return await observedHold(target,options.claudeHold??(()=>claudeInboundHolds({home:options.home})))?'claude_hold':'unknown_reason';
+  if(p.provider==='codex')return await observedHold(target,options.codexGoal??(t=>observeCodexGoal(t.nativeId)))?'codex_goal':'unknown_reason';
+  return 'unknown_reason';
+ };
  // attempted=false means this call never opened the record (no permission, no reader): silence there proves nothing.
  const read=async(p:RequestParty):Promise<ReadOutcome>=>{
   if(!isLocalParty(p)||!await options.canRead(p))return {items:[],readable:false,attempted:false};
@@ -100,7 +111,7 @@ export function createStatus(options:{parallelReads?:boolean;dir:string;adapter:
   const [destination,source]:[ReadOutcome,StructureItem[]]=options.parallelReads?await Promise.all([destinationRead(),own()]):[await destinationRead(),await own()];
   const inbox=isLocalParty(record.recipient)&&record.recipient.provider==='grok'&&options.adapter.inboxState&&await options.canRead(record.recipient)?await options.adapter.inboxState(registration(record.recipient),record.id,{id:record.sender.id,nativeId:record.sender.nativeId}).catch(()=>null):undefined;
   const now=time.now(),result=statusResult(record,destination.items,source,now,inbox);
-  return {...result,...deliveryState(record,destination,result,now,holdMs)};
+  return {...result,...await deliveryState(record,destination,result,now,holdMs,holdReason)};
  };
  return {
   async track(id:unknown,waitSeconds:unknown=0){

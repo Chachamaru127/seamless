@@ -33,16 +33,17 @@ test('a fake roundtrip reports the request id and the matching reply id as JSON'
  assert.equal(json.match,true);
 });
 
-test('a fake hold reports held and the product reason, with the same wait in the reader',async t=>{
- const claude=await measure(['hold','--fake','--held-after-sec','1']);
- assert.equal(claude.json.status,'ok');assert.equal(claude.json.command,'hold');
- assert.equal(claude.json.state,'held');assert.equal(claude.json.reason,'claude_hold');
- const codex=await measure(['hold','--target','fake:codex','--held-after-sec','1']);
- assert.equal(codex.json.state,'held');assert.equal(codex.json.reason,'codex_goal');
- // A real home whose limits say 20s must not decide the fake stage: the injected value reaches the reader as well as the clock.
+test('a fake hold reports held, but a fake peer has no observed product reason',async t=>{
+ // A fake peer has no receiving settings and no IPC, so the reason must stay unknown_reason, not the product name.
  const home=await mkdtemp(join(tmpdir(),'seamless-measure-home-'));t.after(()=>rm(home,{recursive:true,force:true}));
  await mkdir(join(home,'.seamless'),{recursive:true});
  await writeFile(join(home,'.seamless','limits.json'),JSON.stringify({version:1,exclude:[],scope:null,operations:null,heldAfterSec:20})+'\n',{mode:0o600});
+ const claude=await measure(['hold','--fake','--held-after-sec','1'],{...process.env,HOME:home});
+ assert.equal(claude.json.status,'ok');assert.equal(claude.json.command,'hold');
+ assert.equal(claude.json.state,'held');assert.equal(claude.json.reason,'unknown_reason');
+ const codex=await measure(['hold','--target','fake:codex','--held-after-sec','1'],{...process.env,HOME:home});
+ assert.equal(codex.json.state,'held');assert.equal(codex.json.reason,'unknown_reason');
+ // A real home whose limits say 20s must not decide the fake stage: the injected value reaches the reader as well as the clock.
  const injected=await measure(['hold','--fake','--held-after-sec','1'],{...process.env,HOME:home});
  assert.equal(injected.json.state,'held');
 });

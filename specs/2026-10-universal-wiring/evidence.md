@@ -62,3 +62,4 @@
 | 2026-10-19 22:33 | #13 T08 Cursor CLI | 30e8ac4 | opencode deepseek-v4.1-flash:1017（420 秒、806 行） | 0（813 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件: `src/manifests/cursor.json` が無い → #27 を起こした。実 Cursor での取り込みは AC2 / AC3 の実相手の計測で |
 | 2026-10-19 22:45 | #14 T10 Grok CLI manifest | 0acdeae | opencode deepseek-v4.1-flash:1017（330 秒） | 0（816 pass） | 食い違いなし | PASS（4 項目 Yes） | 閉じて merge。残件: 配達記録の保存と封筒削除が別操作で、間の異常終了で本文が残る → #28 を起こした |
 | 2026-10-19 22:56 | #15 T09 Antigravity | cb3084b | opencode deepseek-v4.1-flash:1017（380 秒） | 0（820 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件: listAntigravity が who の一覧に接続されていない（#25 の登録簿の配線で一緒に扱う） |
+| 2026-10-19 23:05 | #16 T17 T3 相性 | 5efa151 | opencode deepseek-v4.1-flash:1017（270 秒） | 0（827 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件: T3 実画面での html_render と実 Claude の検出は AC14 / AC15 の人の作業 |

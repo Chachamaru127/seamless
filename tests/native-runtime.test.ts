@@ -52,6 +52,26 @@ test('Codex send queues the envelope JSON through writeCodexMessage and submits'
  assert.deepEqual(payload.sender,envelope.sender);assert.deepEqual(payload.recipient,envelope.recipient);
 });
 
+test('Codex send measures the ceiling on the body text, not the envelope JSON',async()=>{
+ const home=await mkdtemp(join(tmpdir(),'cldx-codex-queue-limit-'));const calls:{command:string;args:string[];timeoutMs:number}[]=[];
+ const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',codexIdentity:async()=>({nativeId:r.nativeId,generation:r.generation,cwd:tmpdir(),socket:'/unused'}),codexQueue:async(command,args,timeoutMs)=>{calls.push({command,args,timeoutMs});},limits:{codexMessageMaxChars:3}});
+ const envelope={id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'abc'};
+ assert.deepEqual(await adapter.send(r,envelope),{status:'submitted',nativeMessageId:'m'});
+ assert.equal(calls.length,1);assert.ok(calls[0].args[4].length>3);
+ assert.deepEqual(await adapter.send(r,{...envelope,id:'n',text:'abcd'}),{status:'rejected',reason:'too_long'});
+ assert.equal(calls.length,1);
+});
+
+test('Codex send takes the ceiling from limits in home when no option is given',async()=>{
+ const home=await mkdtemp(join(tmpdir(),'cldx-codex-queue-limit-file-'));const path=join(home,'.seamless','limits.json');
+ assert.equal((await writeLimits({...unrestricted,codexMessageMaxChars:3},null,path)).status,'ok');
+ let calls=0;
+ const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',codexIdentity:async()=>({nativeId:r.nativeId,generation:r.generation,cwd:tmpdir(),socket:'/unused'}),codexQueue:async()=>{calls++;}});
+ const envelope={id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'abcd'};
+ assert.deepEqual(await adapter.send(r,envelope),{status:'rejected',reason:'too_long'});
+ assert.equal(calls,0);
+});
+
 test('a timed-out Codex queue is unknown and never falls back to IPC',async()=>{
  const home=await mkdtemp(join(tmpdir(),'cldx-codex-queue-timeout-'));const dir=join(home,'.codex','ipc');await mkdir(dir,{recursive:true,mode:0o700});await chmod(dir,0o700);const path=join(dir,'ipc.sock');
  let connections=0,writes=0;const sockets:Socket[]=[];const server=createServer(socket=>{connections++;sockets.push(socket);socket.on('data',part=>{const request=JSON.parse(part.subarray(4).toString());if(request.method==='thread-follower-start-turn')writes++;});});
@@ -75,7 +95,7 @@ for(const humanApproval of [undefined,false,true,'false',null])test(`native inbo
 import net from 'node:net';
 import fs from 'node:fs/promises';
 import {syncBuiltinESMExports} from 'node:module';
-import {readLimits,unrestricted} from '../src/limits.ts';
+import {readLimits,unrestricted,writeLimits} from '../src/limits.ts';
 // TC-3b (specs/202610-more-peers): an envelope a registered Grok Bot signed (src/external-inbound.ts) is written by this same
 // adapter, so it gets the same marker, and never humanApproval:true.
 const markerSenders={local:{id:'a',nativeId:'a',generation:'g'},'grok-bot':{id:'grok-bot:chachamaru',nativeId:'chachamaru',generation:'1'}} as const;

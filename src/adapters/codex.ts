@@ -195,14 +195,16 @@ export async function readCodexStructure(target:Registration,options:CodexOption
 // signalled run is `unknown`, because the queue may already hold the message and invariant 6 forbids a second write.
 export const CODEX_QUEUE_TIMEOUT_MS=30_000;
 export type CodexQueueRun=(command:string,args:string[],timeoutMs:number)=>Promise<unknown>;
-export type CodexWriteOptions={limits?:Pick<Limits,'codexMessageMaxChars'>;command?:string;timeoutMs?:number;run?:CodexQueueRun;ipc:()=>Promise<Receipt>};
+// `body` is the text the ceiling measures when `text` carries a larger wire form (the envelope JSON). Without it the ceiling
+// would count the envelope, refusing a short message for its metadata.
+export type CodexWriteOptions={limits?:Pick<Limits,'codexMessageMaxChars'>;body?:string;command?:string;timeoutMs?:number;run?:CodexQueueRun;ipc:()=>Promise<Receipt>};
 function failedBeforeSubmit(error:unknown):boolean{
  const e=error as (NodeJS.ErrnoException&{killed?:boolean;signal?:string})|null|undefined;
  if(!e||e.killed||e.signal)return false;
  return typeof e.code==='number'||e.code==='ENOENT'||e.code==='EACCES'||e.code==='ENOTDIR';
 }
 export async function writeCodexMessage(nativeId:string,text:string,messageId:string,options:CodexWriteOptions):Promise<Receipt>{
- if([...text].length>codexMessageMaxChars(options.limits??{}))return {status:'rejected',reason:'too_long'};
+ if([...(options.body??text)].length>codexMessageMaxChars(options.limits??{}))return {status:'rejected',reason:'too_long'};
  const queueRun=options.run??((command,args,timeoutMs)=>run(command,args,{encoding:'utf8',timeout:timeoutMs,maxBuffer:1024*1024}));
  try{await queueRun(options.command??'codex',['queue','--thread',nativeId,'--message',text],options.timeoutMs??CODEX_QUEUE_TIMEOUT_MS);}
  catch(error){if(!failedBeforeSubmit(error))return {status:'unknown'};try{return await options.ipc();}catch{return {status:'unknown'};}}

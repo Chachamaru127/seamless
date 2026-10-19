@@ -86,7 +86,7 @@ export async function runCli(argv:string[],automatic:Automatic=createAutomatic({
    const listing=await automatic('sessions',{operation:'send',scope:'any',includeOffline:true});
    if(listing?.status!=='ok'){console.log(JSON.stringify(listing));return;}
    const peers=await classifyPeers([
-    ...(listing.candidates??[]).map((p:any)=>({id:p.id,provider:p.provider,nativeId:p.nativeId,...(p.displayName?{displayName:p.displayName}:{}),status:p.status??null,reason:p.reason??null,versionStatus:p.versionStatus??null})),
+    ...(listing.candidates??[]).map((p:any)=>({id:p.id,provider:p.provider,nativeId:p.nativeId,...(p.product?{product:p.product}:{}),...(p.displayName?{displayName:p.displayName}:{}),status:p.status??null,reason:p.reason??null,versionStatus:p.versionStatus??null})),
     ...(listing.external??[]).map((p:any)=>({id:p.id,provider:'grok-bot' as const,nativeId:String(p.id).split(':').slice(1).join(':'),displayName:p.displayName,status:p.status??null,reason:null,versionStatus:null})),
    ],whoOptions);
    console.log(JSON.stringify({status:'ok',peers}));return;

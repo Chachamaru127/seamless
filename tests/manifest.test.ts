@@ -16,7 +16,10 @@ import { ContractError } from '../src/protocol.ts';
 import { mcpRegistration, runSetup } from '../src/setup.ts';
 import { runCli } from '../src/cli.ts';
 import { createNativeRuntime } from '../src/native-runtime.ts';
-import type { Automatic } from '../src/automatic.ts';
+import { createAutomatic, issueTicket, type Automatic } from '../src/automatic.ts';
+import { createMcp } from '../src/mcp.ts';
+import type { Caller } from '../src/caller.ts';
+import type { SessionIdentity } from '../src/sessions-scan.ts';
 import type { WhoOptions } from '../src/discovery.ts';
 import type { Registration } from '../src/protocol.ts';
 
@@ -411,4 +414,114 @@ test('setup treats a registration with another or no type as a change', async (t
   const same = await runSetup({ home: dir, dryRun: true });
   assert.equal(same.changes[0]?.action, 'unchanged');
   assert.equal(JSON.parse(await readFile(file, 'utf8')).mcpServers.seamless.type, 'stdio');
+});
+
+// The public MCP surface, initialized the way a client does, reduced to the tool's own answer.
+async function mcpCall(automatic: Automatic, name: string, args: unknown): Promise<any> {
+  const handle = createMcp({ automatic });
+  await handle({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+  await handle({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  const response: any = await handle({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: args } });
+  return response.error ?? JSON.parse(response.result.content[0].text);
+}
+// The public CLI surface; the command line prints one JSON value.
+async function cliCall(automatic: Automatic, args: string[], limitsPath?: string): Promise<any> {
+  let output = '';
+  const log = console.log;
+  console.log = (value: unknown) => { output += String(value); };
+  try {
+    await runCli(args, automatic, limitsPath);
+  } finally {
+    console.log = log;
+  }
+  return JSON.parse(output);
+}
+
+test('a product removed from the registration leaves the MCP sessions listing', async (t) => {
+  const runtimeHome = await home(t);
+  const caller: Caller = { provider: 'claude', nativeId: 'caller', generation: 'g1', cwd: runtimeHome, socket: 'unused', source: 'claude-ancestor' };
+  const thread: SessionIdentity = { provider: 'codex', nativeId: 'thread', generation: 'owner', cwd: runtimeHome, socket: 'unused' };
+  const automatic = (manifests: ManifestRegistry): Automatic => createAutomatic({
+    home: runtimeHome,
+    limitsPath: join(runtimeHome, 'limits.json'),
+    manifests,
+    caller: async () => ({ status: 'ok', caller }),
+    scan: async () => ({ sessions: [caller, { ...thread }], codexWorkspace: 'observed' }),
+    inspect: async (session) => ({ ...session }),
+    scanOptions: { git: async (cwd) => ({ state: 'no_git', workspace: cwd }) },
+  });
+  const all = await loadManifestRegistry();
+  const withoutCodex = new ManifestRegistry(all.list().filter((manifest) => manifest.product !== 'codex'), MANIFEST_DIR);
+
+  // The listing is the registration: each candidate names the product its send would reach.
+  const before = await mcpCall(automatic(all), 'sessions', {});
+  assert.deepEqual(before.candidates.map((candidate: any) => [candidate.id, candidate.product]), [['codex:thread', 'codex']]);
+
+  // The scan still reports the Codex thread; only the registration changed, and the MCP listing follows it.
+  const after = await mcpCall(automatic(withoutCodex), 'sessions', {});
+  assert.deepEqual(after.candidates, []);
+});
+
+test('the public send reaches the manifest adapter, and two products on one provider are told apart', async (t) => {
+  const runtimeHome = await home(t), dir = await home(t);
+  // Two products sharing provider grok: only the product decides which adapter writes.
+  const fake = (product: string) => ({
+    ...valid(),
+    product,
+    provider: 'grok',
+    displayName: product,
+    adapter: `./${product}.js`,
+    discovery: { kind: 'plugin', source: '~/.seamless/peers', fields: ['sessionId'] },
+    write: { channel: 'plugin_api', target: 'session.prompt' },
+    exports: { list: 'listPeers', send: 'send' },
+  });
+  await writeFile(join(dir, 'one.json'), JSON.stringify(fake('fake-one')));
+  await writeFile(join(dir, 'two.json'), JSON.stringify(fake('fake-two')));
+  for (const product of ['fake-one', 'fake-two']) {
+    await writeFile(join(dir, `${product}.js`), [
+      "import { writeFile } from 'node:fs/promises';",
+      'export async function send(envelope) {',
+      `  await writeFile(new URL('./${product}.sent.json', import.meta.url), JSON.stringify(envelope));`,
+      "  return { status: 'submitted', nativeMessageId: envelope.id };",
+      '}',
+      '',
+    ].join('\n'));
+  }
+  const manifests = await loadManifestRegistry(dir);
+  const caller: Caller = { provider: 'grok', nativeId: 'caller', generation: 'g1', cwd: runtimeHome, socket: '', source: 'grok-ancestor' };
+  const one: SessionIdentity & { product: string } = { provider: 'grok', nativeId: 'one', generation: 'g1', cwd: runtimeHome, socket: '', product: 'fake-one' };
+  const two: SessionIdentity & { product: string } = { provider: 'grok', nativeId: 'two', generation: 'g1', cwd: runtimeHome, socket: '', product: 'fake-two' };
+  const limitsPath = join(runtimeHome, 'limits.json');
+  // No adapter option: the send must arrive through the manifest's own module, not through an injected double.
+  const automatic = createAutomatic({
+    home: runtimeHome,
+    limitsPath,
+    manifests,
+    caller: async () => ({ status: 'ok', caller }),
+    scan: async () => ({ sessions: [caller, { ...one }, { ...two }], codexWorkspace: 'observed' }),
+    inspect: async (session) => ({ ...session }),
+    scanOptions: { git: async (cwd) => ({ state: 'no_git', workspace: cwd }) },
+  });
+
+  const listing = await mcpCall(automatic, 'sessions', {});
+  const tickets = new Map<string, string>(listing.candidates.map((candidate: any) => [candidate.product, candidate.ticket]));
+  assert.deepEqual(listing.candidates.map((candidate: any) => [candidate.id, candidate.product]), [['grok:one', 'fake-one'], ['grok:two', 'fake-two']]);
+
+  // CLI send: the ticket's product, not its provider, picks the adapter.
+  assert.equal((await cliCall(automatic, ['send', JSON.stringify({ ticket: tickets.get('fake-one'), id: 'cli-1', text: 'from cli' })], limitsPath)).status, 'submitted');
+  // MCP send: the same route, through the other product's adapter.
+  assert.equal((await mcpCall(automatic, 'send', { ticket: tickets.get('fake-two'), id: 'mcp-1', text: 'from mcp' })).status, 'submitted');
+
+  const sentOne = JSON.parse(await readFile(join(dir, 'fake-one.sent.json'), 'utf8'));
+  const sentTwo = JSON.parse(await readFile(join(dir, 'fake-two.sent.json'), 'utf8'));
+  assert.deepEqual([sentOne.id, sentOne.text], ['cli-1', 'from cli']);
+  assert.deepEqual([sentTwo.id, sentTwo.text], ['mcp-1', 'from mcp']);
+  // The listing carries the product, and the ticket repeats it: a send never falls back to the provider.
+  for (const ticket of tickets.values()) {
+    const parsed = JSON.parse(Buffer.from(ticket, 'base64url').toString('utf8'));
+    assert.equal(typeof parsed.product, 'string');
+  }
+  // A ticket without a product cannot choose between the two: it is refused, never routed to the first of them.
+  const bare = issueTicket({ provider: 'grok', nativeId: 'one', generation: 'g1', cwd: runtimeHome, branch: null });
+  assert.equal((await mcpCall(automatic, 'send', { ticket: bare, id: 'bare-1', text: 'no product' })).status, 'rejected');
 });

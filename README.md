@@ -10,6 +10,34 @@ it opens no network connection except a webhook to an outside executor you regis
 
 Node.js 22.22 or later.
 
+## Unofficial notice (非公式の但し書き)
+
+This is an unofficial project. It is not affiliated with, endorsed by, or supported by Anthropic, OpenAI, xAI,
+Anysphere (Cursor), Google, Orca, or Reason Network. Product names are used only to describe interoperability and
+belong to their owners.
+
+Several adapters use interfaces that are not a public stable SDK: Claude session sockets, Codex `queue` and
+Desktop IPC, Grok session files. A product update can break them without notice. The compatibility table records
+what was observed and when, and an unseen version is shown as `versionStatus: unverified` rather than assumed to
+work. Use this at your own risk, and keep the products' own approvals and sandboxes in place: a message that
+arrives through seamless never counts as a human approval.
+
+## Supported counterparts (対応している相手)
+
+seamless carries a request through the path each maker publishes, not through a protocol it invented. These are
+the four paths that carry a message, with the public document each one rests on:
+
+| Product | Official path seamless uses | Public document | The line read there |
+|---|---|---|---|
+| Claude Code | cross-session messaging over the session socket; the socket path arrives as `CLAUDE_CODE_MESSAGING_SOCKET` | https://code.claude.com/docs/en/cross-session-messaging | "The session's inbox socket" (section heading, read 2026-10-19) |
+| Codex | `codex queue --thread <ID> --message <TEXT>` | https://github.com/openai/codex | "Queue a message for an existing session" (`codex queue --help`, codex-cli 0.163.0, run 2026-10-20) |
+| opencode | the plugin API; the plugin calls `session.prompt` | https://opencode.ai/docs/plugins/ | `session.prompt` on the plugin context (official types, `@opencode-ai/plugin` 1.19.0); the page's own wording is not quoted here |
+| Cursor | hooks `sessionStart`, `afterAgentResponse`, `stop` in `~/.cursor/hooks.json` | https://cursor.com/docs/hooks | "Hooks are scripts or prompt-based checks that exchange JSON over stdin/stdout and can observe, block, modify, or follow up on behavior." (Cursor's shipped hook guide, read 2026-10-20) |
+
+Each row names where its line was read. Where that is the product's own shipped help or type file rather than the
+page itself, the page is still the document to open before relying on the path. `docs/release.md` 4.3 records the
+terms check for the Grok Bot webhook, Cursor hooks and Antigravity hooks as open.
+
 ## Install
 
 ```sh
@@ -120,18 +148,6 @@ CLI, Antigravity CLI, Grok CLI) also use hooks and inbox files. Two layers can c
 
 Orca manages worktrees and terminals; seamless wires conversations, and Orca does not send or receive these
 messages for you.
-
-## Unofficial notice (非公式の但し書き)
-
-This is an unofficial project. It is not affiliated with, endorsed by, or supported by Anthropic, OpenAI,
-xAI, Anysphere, Google, Orca, or Reason Network. Product names are used only to describe interoperability and
-belong to their owners.
-
-Several adapters use interfaces that are not a public stable SDK: Claude session sockets, Codex `queue` and
-Desktop IPC, Grok session files. They can change without notice. The compatibility table records what was
-observed and when, and an unseen version is shown as `versionStatus: unverified` rather than assumed to work.
-Use this at your own risk, and keep the products' own approvals and sandboxes in place: a message that arrives
-through seamless never counts as a human approval.
 
 ## What it stores
 

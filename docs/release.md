@@ -184,7 +184,7 @@ npm pack --dry-run --json --ignore-scripts | node -e 'let s="";process.stdin.on(
 | Codex | `~/.codex/sessions/`、`~/.codex/archived_sessions/` の rollout | `src/adapters/codex.ts` | 会話の存在、依頼 ID、turn、`replyTo` | 発見の補助と証拠 |
 | Grok CLI | `~/.grok/active_sessions.json` | `src/adapters/grok.ts` | `session_id`、`pid`、`cwd`、`opened_at` | 動いている会話の発見 |
 | Grok CLI | `~/.grok/sessions/<cwd を符号化した名前>/<id>/summary.json`、`updates.jsonl` | `src/adapters/grok.ts` | `info`、`last_active_at`、`session_kind`、user / agent の message chunk | 発見、本文の読取り、証拠。`thoughts`、`chat_history.jsonl`、`tool_inputs`、`tool_results`、`hook_executions` は読まない |
-| Antigravity CLI | 実行ファイルの場所と `~/.gemini/antigravity-cli/settings.json`、同 `hooks/` | `src/adapters/antigravity.ts`、`src/setup.ts`、`src/doctor.ts` | 実行ファイルの有無、hooks の有無 | 検出だけ。会話は読まない（phase 2、S5） |
+| Antigravity CLI | 実行ファイルの場所と `~/.gemini/antigravity-cli/settings.json`、同 `hooks/` | `src/adapters/antigravity.ts`、`src/setup.ts`、`src/doctor.ts` | 実行ファイルの有無、hooks の有無 | 検出だけ。会話は読まない（phase 2、S5）。利用規約の確認: 未（本人の目視待ち）、確認日: 未、該当条項: 未（4.3） |
 | 全製品（doctor） | `.claude/settings.json`、`.claude/settings.local.json`、`.codex/config.toml`、`.grok/config.toml`、`.cursor/hooks.json`、`.config/opencode/opencode.json`、`.gemini/settings.json`、`.gemini/antigravity-cli/settings.json` | `src/doctor.ts` | hooks 表の中の文字列 | Reason Network の配線の検出だけ。値は返さない |
 
 Cursor CLI と opencode は、製品の内部形式を読まない。Cursor は公式 hooks の標準入力、opencode は公式 plugin API で会話の識別子を受け取り、seamless 側の `~/.seamless/peers/` と受信箱だけを使う。
@@ -193,21 +193,23 @@ Cursor CLI と opencode は、製品の内部形式を読まない。Cursor は�
 
 | 対象 | 形式 / 手順 | 実装 | v1 での使用 | 決定 |
 |---|---|---|---|---|
-| Codex Desktop IPC | `~/.codex/ipc/ipc.sock`、4 バイト little-endian の長さ + JSON。`initialize`、`thread-owner-discovery`、`thread-stream-following-changed`、`thread-follower-load` | `src/adapters/codex.ts`、`src/native-runtime.ts` | 会話の所有者と状態の読取り | H2（2026-10-19、読取りに使い続ける） |
+| Codex Desktop IPC | `~/.codex/ipc/ipc.sock`、4 バイト little-endian の長さ + JSON。`initialize`、`thread-owner-discovery`、`thread-stream-following-changed`、`thread-follower-load` | `src/adapters/codex.ts`、`src/native-runtime.ts` | 会話の所有者と状態の読取り | H2 で決定済み（2026-10-19、読取りに使い続ける）。利用規約の確認欄は H2 の判断で閉じた（確認日 2026-10-19、該当条項 —） |
 
 **既知の差（#22）**: 現在の送信経路（`src/native-runtime.ts` の Codex 分岐）は `thread-follower-start-turn` も呼ぶ。T03 で作った `codex queue --thread` への切替が送信経路にまだ接続されていないため。H2 が認めたのは読取りで、書込みはこの差が解消するまでの暫定。公開前に、queue へ切り替えるか H2 の範囲を広げるかを決める。決めるまで公開しない。
 
 **この表に無いもの**: Grok Bot の玄関口（gateway）。v1 では実装しない（webhook だけ）。実装するときは、この表に載せて H6 の確認を通すまで公開物に入れない。Claude の会話 socket は公式文書の peer protocol に対応する経路で、内部 API の再現ではない（sessions JSON の読取りは 4.1）。
 
+**外部への送信**: Grok Bot の webhook は 4.1 の受動的な読取りにも 4.2 の再現にも当たらない。公開物に含む唯一の外部送信として、4.3 の 1 行目で扱う。利用規約の確認: 未（本人の目視待ち）、確認日: 未、該当条項: 未。
+
 ### 4.3 H6 の確認欄（公開前）
 
-H6 は、外部へ出る経路と製品側の hooks を、各社の規約で確認すること。3 つとも未確認の間は公開しない（spec.md S7）。確認したら日付、出典 URL、版を書く。担当は立花さん（ループの外、H6）。
+H6 は、外部へ出る経路と製品側の hooks を、各社の規約で確認すること。3 つとも未（本人の目視待ち）の間は公開しない（spec.md S7）。確認したら日付、出典 URL、該当条項、版を書く。担当は立花さん（ループの外、H6）。各経路が拠る公開文書の URL と 1 行の引用は、README の「Supported counterparts（対応している相手）」に置いた。ここは規約の確認だけを扱う。
 
-| 対象 | 確認する文書 | 確認する内容 | 状態 | 確認日 | 記録 |
-|---|---|---|---|---|---|
-| Grok Bot の webhook | xAI Grok Bot の利用規約と webhook の仕様 | 自動投稿が許されるか。外部（Mac の外）へ本文が出る範囲。レート制限。再配布 | 未確認 | | |
-| Cursor の hooks | Cursor の利用規約と hooks の文書 | hook からの注入と自動実行が許されるか。会話への書き込みの扱い | 未確認 | | |
-| Antigravity の hooks | Google Antigravity の利用規約と hooks / 設定の文書 | hook の自動実行と、T3 Code 管理の実行ファイルの利用が許されるか | 未確認 | | |
+| 対象 | 確認する文書 | 確認する内容 | 利用規約の確認 | 確認日 | 該当条項 | 記録 |
+|---|---|---|---|---|---|---|
+| Grok Bot の webhook | xAI Grok Bot の利用規約と webhook の仕様 | 自動投稿が許されるか。外部（Mac の外）へ本文が出る範囲。レート制限。再配布 | 未（本人の目視待ち） | 未 | 未 | 公開物に含む唯一の外部送信。内部依存の一覧ではこの行だけが送信で、ほかは受動的な読取り |
+| Cursor の hooks | Cursor の利用規約と hooks の文書 | hook からの注入と自動実行が許されるか。会話への書き込みの扱い | 未（本人の目視待ち） | 未 | 未 | hooks の文書の URL は README に置いた |
+| Antigravity の hooks | Google Antigravity の利用規約と hooks / 設定の文書 | hook の自動実行と、T3 Code 管理の実行ファイルの利用が許されるか | 未（本人の目視待ち） | 未 | 未 | 4.1 の Antigravity CLI の行にも同じ欄を置いた |
 
 ## 5. 公開までの順番（T18 で確定）
 

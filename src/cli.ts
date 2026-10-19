@@ -5,7 +5,7 @@ import {pathToFileURL} from 'node:url';
 import {createAutomatic,migrateRegistry,type Automatic} from './automatic.ts';
 import { createNativeRuntime } from './native-runtime.ts';
 import { Registry, loadRegistry } from './registry.ts';
-import { Discovery } from './discovery.ts';
+import { Discovery, classifyPeers, type WhoOptions } from './discovery.ts';
 import { observeGit } from './git-context.ts';
 import { createServe } from './serve.ts';
 import { createMcp } from './mcp.ts';
@@ -22,7 +22,7 @@ async function readStdin():Promise<string>{
  return new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks));
 }
 // The command line is the one entry that reads the real Keychain (src/secrets.ts); every other way of building an automatic is given a reader or none.
-export async function runCli(argv:string[],automatic:Automatic=createAutomatic({keychain:securityKeychain()}),limitsPath?:string,stdin:()=>Promise<string>=readStdin):Promise<void>{
+export async function runCli(argv:string[],automatic:Automatic=createAutomatic({keychain:securityKeychain()}),limitsPath?:string,stdin:()=>Promise<string>=readStdin,whoOptions:WhoOptions={}):Promise<void>{
  const [mode,...rawArgs]=argv;
  // `seamless "<一言>"`: the one-word entry. Any other command keeps its name, so only a lone argument that is not a command,
  // a `bot-` word or a flag is read as text. The destination is the peer in the caller's workspace when that leaves exactly
@@ -60,6 +60,31 @@ export async function runCli(argv:string[],automatic:Automatic=createAutomatic({
   let input:unknown=null;
   try{if(mode!=='read')input=JSON.parse(await stdin());}catch{console.log(JSON.stringify({status:'envelope_invalid',reason:'json'}));return;}
   console.log(JSON.stringify(await automatic(mode,input,{kind:'cli',external:{name:rawArgs[1]}})));return;
+ }
+ // `who --json`: how each peer can take a request now (Plans.md 3 章). It never writes and never issues a ticket.
+ // `--registry <path> --caller <id>` keeps the old registry path for tests and internal use; without it the peers come from
+ // the same scan as `sessions`.
+ if(mode==='who'){
+  if(rawArgs.filter(a=>a==='--json').length>1)throw new ContractError('invalid_arguments');
+  const args=rawArgs.filter(a=>a!=='--json');
+  if(!args.includes('--registry')){
+   if(args.length)throw new ContractError('invalid_arguments');
+   // includeOffline is true so a peer without an inbox socket is shown with its reason instead of disappearing.
+   const listing=await automatic('sessions',{operation:'send',scope:'any',includeOffline:true});
+   if(listing?.status!=='ok'){console.log(JSON.stringify(listing));return;}
+   const peers=await classifyPeers([
+    ...(listing.candidates??[]).map((p:any)=>({id:p.id,provider:p.provider,nativeId:p.nativeId,...(p.displayName?{displayName:p.displayName}:{}),status:p.status??null,reason:p.reason??null,versionStatus:p.versionStatus??null})),
+    ...(listing.external??[]).map((p:any)=>({id:p.id,provider:'grok-bot' as const,nativeId:String(p.id).split(':').slice(1).join(':'),displayName:p.displayName,status:p.status??null,reason:null,versionStatus:null})),
+   ],whoOptions);
+   console.log(JSON.stringify({status:'ok',peers}));return;
+  }
+  if(args.length!==4)throw new ContractError('invalid_arguments');
+  const flags=new Map<string,string>();for(let i=0;i<args.length;i+=2){if(!['--registry','--caller'].includes(args[i])||flags.has(args[i]))throw new ContractError('invalid_arguments');flags.set(args[i],args[i+1]);}
+  const path=flags.get('--registry'),caller=flags.get('--caller');if(!path||!caller)throw new ContractError('invalid_arguments');
+  const registry=new Registry(await loadRegistry(path));
+  if(!registry.get(caller))throw new ContractError('caller_unavailable');
+  const refresh=async()=>{registry.replace(await loadRegistry(path));};
+  console.log(JSON.stringify(await new Discovery(registry,caller,{refresh,home:whoOptions.home,inbox:whoOptions.inbox}).who({operation:'send',scope:'any_registered'})));return;
  }
  const native=rawArgs.includes('--native');const args=rawArgs.filter(a=>a!=='--native');
  if(rawArgs.filter(a=>a==='--native').length>1)throw new ContractError('invalid_arguments');

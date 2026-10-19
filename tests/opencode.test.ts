@@ -9,6 +9,7 @@ import {
   drainSession,
   inboxDir,
   keyOf,
+  putEnvelope,
   readPeer,
   type Envelope,
   type OpenCodePluginApi,
@@ -131,4 +132,47 @@ test('a prompt that fails leaves the envelope unknown and never injects it twice
   assert.deepEqual(await drainSession(api, SESSION, options(dir)), { status: 'idle', sessionId: SESSION, injected: 0 });
   assert.deepEqual(await readdir(join(inboxDir(SESSION, dir), 'unknown')), [keyOf(envelope('r2').sender, 'r2') + '.json']);
   assert.deepEqual(await readOpencodeStructure((await readPeer(SESSION, dir))!, { home: dir }), []);
+});
+
+test('an error answer with no prompt id is not a delivery: no receipt, the envelope is unknown', async (t) => {
+  const dir = await home(t);
+  const { api } = fakeApi();
+  let calls = 0;
+  // The two shapes a refused prompt can arrive in: an error object alone, and an error next to a message id.
+  const answers: unknown[] = [
+    { error: { message: 'model unavailable' } },
+    { data: { info: { id: 'msg-refused' }, error: { message: 'refused' } } },
+  ];
+  api.session!.prompt = async () => { calls += 1; return answers.shift(); };
+  await setup(t, api, dir);
+
+  for (const id of ['r3', 'r4']) {
+    await sendOpencodeEnvelope(envelope(id), { home: dir });
+    assert.deepEqual(await drainSession(api, SESSION, options(dir)), { status: 'idle', sessionId: SESSION, injected: 0 });
+  }
+
+  // Failure is not delivery: no receipt exists, and both requests are final in unknown/ in the order they were handed.
+  assert.deepEqual(await readdir(join(inboxDir(SESSION, dir), 'delivered')), []);
+  assert.deepEqual((await readdir(join(inboxDir(SESSION, dir), 'unknown'))).sort(), ['r3', 'r4'].map((id) => keyOf(envelope(id).sender, id) + '.json').sort());
+  assert.deepEqual(await readOpencodeStructure((await readPeer(SESSION, dir))!, { home: dir }), []);
+
+  // unknown is final: the next idle event does not hand the refused requests over again.
+  await drainSession(api, SESSION, options(dir));
+  assert.equal(calls, 2);
+});
+
+test('two concurrent puts of one request write one envelope and inject it once', async (t) => {
+  const dir = await home(t);
+  const { api, prompts } = fakeApi();
+  await setup(t, api, dir);
+  const request = envelope('r5');
+
+  // One atomic create decides the duplicate: exactly one put writes, the other reports the state the winner left behind.
+  const results = await Promise.all([putEnvelope(request, dir), putEnvelope(request, dir)]);
+  assert.deepEqual(results.map((result) => result.status).sort(), ['exists', 'written']);
+  assert.deepEqual(await readdir(join(inboxDir(SESSION, dir), 'pending')), [keyOf(request.sender, request.id) + '.json']);
+
+  assert.deepEqual(await drainSession(api, SESSION, options(dir)), { status: 'idle', sessionId: SESSION, injected: 1 });
+  assert.equal(prompts.length, 1);
+  assert.deepEqual(await readdir(join(inboxDir(SESSION, dir), 'pending')), []);
 });

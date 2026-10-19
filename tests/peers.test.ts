@@ -498,8 +498,8 @@ test('peer-secrets: from a linked worktree the main checkout is searched too',as
 test('verify-live.sh runs verify.sh and peer-secrets, its failure fails the run, and its pass keeps an earlier failure',async t=>{
  const f=await leak(t);await f.writeRoster();const repo=f.repo,fakes=join(f.base,'fakebin');
  await mkdir(join(repo,'scripts'));await mkdir(join(repo,'tests'));await mkdir(join(repo,'mods','seamless-band'),{recursive:true});await mkdir(fakes);
- for(const name of ['verify.sh','verify-live.sh','peer-secrets.sh','peer-env-names.ts'])await copyFile(join(repoRoot,'scripts',name),join(repo,'scripts',name));
- await cp(join(repoRoot,'src'),join(repo,'src'),{recursive:true});await copyFile(join(repoRoot,'package.json'),join(repo,'package.json'));
+ for(const name of ['verify.sh','verify-live.sh','peer-secrets.sh','peer-env-names.ts','pack-check.ts'])await copyFile(join(repoRoot,'scripts',name),join(repo,'scripts',name));
+ await cp(join(repoRoot,'src'),join(repo,'src'),{recursive:true});await cp(join(repoRoot,'packages'),join(repo,'packages'),{recursive:true});await copyFile(join(repoRoot,'package.json'),join(repo,'package.json'));
  const passing="import test from 'node:test';\ntest('stand-in',()=>{});\n";
  await writeFile(join(repo,'tests','stand-in.test.ts'),passing);
  for(const [name,variable] of [['tsc','FAKE_TSC'],['claude','FAKE_CLAUDE']] as const){await writeFile(join(fakes,name),`#!/bin/sh\nexit "\${${variable}:-0}"\n`,{mode:0o755});await chmod(join(fakes,name),0o755);}

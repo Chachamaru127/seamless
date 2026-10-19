@@ -22,6 +22,11 @@ echo "typecheck: start"
 tsc --noEmit --strict --allowImportingTsExtensions --target es2022 --module nodenext --moduleResolution nodenext --types node src/*.ts src/adapters/*.ts tests/*.ts tests/support/*.ts scripts/*.ts || typecheck_exit=$?
 echo "typecheck: exit=$typecheck_exit"
 if [ "$typecheck_exit" -ne 0 ]; then verify_exit=$typecheck_exit; fi
+# The published set must run without the files npm leaves out; a shipped import of an excluded file fails here (T13).
+pack_check_exit=0
+NODE_OPTIONS="$node_options" node scripts/pack-check.ts || pack_check_exit=$?
+echo "pack-check: exit=$pack_check_exit"
+if [ "$pack_check_exit" -ne 0 ]; then verify_exit=$pack_check_exit; fi
 NODE_OPTIONS="$node_options" node --test tests/*.test.ts || verify_exit=$?
 echo "verify: exit=$verify_exit"
 exit "$verify_exit"

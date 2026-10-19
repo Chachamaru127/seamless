@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 import {createMcp} from '../src/mcp.ts';
 import {createAutomatic,type Automatic} from '../src/automatic.ts';
-import {statusHtml,summarizeStatus,statusPanelTool,statusResource} from '../src/status-panel.ts';
+import {statusHtml,statusPanel,summarizeStatus,statusPanelTool,statusResource} from '../src/status-panel.ts';
 import {peersOf,companiesOf} from '../src/status-exchanges.ts';
 
 async function connection(automatic:Automatic){
- const handle=createMcp({automatic});let id=0;
+ const handle=createMcp({automatic,panel:statusPanel});let id=0;
  const call=async(method:string,params?:unknown)=>await handle({jsonrpc:'2.0',id:++id,method,...(params===undefined?{}:{params})}) as any;
  const init=await call('initialize',{protocolVersion:'2025-06-18'});
  await handle({jsonrpc:'2.0',method:'notifications/initialized'});
@@ -68,7 +68,7 @@ test('actual automatic observer receives metadata and panel leaves seen unchange
 test('band aggregation implementation is identical except explicit Node imports',async()=>{
  const band=await readFile(new URL('../mods/seamless-band/hooks/exchanges.ts',import.meta.url),'utf8');
  const node=await readFile(new URL('../src/status-exchanges.ts',import.meta.url),'utf8');
- assert.equal(node.replace(': { color: string; label: string }', '').replaceAll('../mods/seamless-band/hooks/appearance.ts','./appearance').replaceAll('../mods/seamless-band/hooks/text.ts','./text'),band);
+ assert.equal(node.replace(': { color: string; label: string }', '').replaceAll('./appearance.ts','./appearance').replaceAll('./text.ts','./text'),band);
  for(const [stages,delivery,color] of [[[],'pending','#8d8b85'],[[],'rejected','#fe3a52'],[[{stage:'reached',status:'observed'}],'submitted','#f9a437'],[[{stage:'processing',status:'observed'}],'submitted','#38c68e'],[[{stage:'replied',status:'observed'}],'submitted','#38c68e']] as const){
   const sample=structuredClone(data);Object.assign(sample.candidates[0].requests[0],{stages,delivery});
   assert.equal(summarizeStatus(sample).companies[0].color,color);
@@ -120,7 +120,7 @@ test('HTML handshake, host result and manual refresh use JSON-RPC without automa
 });
 test('panel-only MCP lists just status_panel, refuses the four tools, and keeps the resource',async()=>{
  const seen:string[]=[];
- const handle=createMcp({automatic:async(method:string)=>{seen.push(method);return data;},panelOnly:true});let id=0;
+ const handle=createMcp({automatic:async(method:string)=>{seen.push(method);return data;},panel:statusPanel,panelOnly:true});let id=0;
  const call=async(method:string,params?:unknown)=>await handle({jsonrpc:'2.0',id:++id,method,...(params===undefined?{}:{params})}) as any;
  assert.deepEqual((await call('initialize',{protocolVersion:'2025-06-18'})).result.capabilities,{tools:{},resources:{}});
  await handle({jsonrpc:'2.0',method:'notifications/initialized'});

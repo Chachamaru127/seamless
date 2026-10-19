@@ -1,5 +1,5 @@
-import { palette } from '../mods/seamless-band/hooks/appearance.ts'
-import { durationOf, printable } from '../mods/seamless-band/hooks/text.ts'
+import { palette } from './appearance.ts'
+import { durationOf, printable } from './text.ts'
 // The evidence reader's stage name; kept inline because the band copy cannot import from src.
 const REACHED_STAGE = "reached"
 

@@ -277,7 +277,7 @@ test('externalPeers hides everything but names and numbers',async()=>{
  assert.equal(r.external[0].ticket,null,'no ticket without someone who knows the limits to issue it');
 });
 
-// T2-6: scripts/peer-secrets.sh, called from scripts/verify.sh.
+// T2-6: scripts/peer-secrets.sh, called from scripts/verify-live.sh.
 const script=fileURLToPath(new URL('../scripts/peer-secrets.sh',import.meta.url));
 const repoRoot=fileURLToPath(new URL('..',import.meta.url));
 // A fixture HOME hides the mise shim's configuration, so the real node's directory goes first, as the other spawned tests need.
@@ -492,18 +492,19 @@ test('peer-secrets: from a linked worktree the main checkout is searched too',as
  }
 });
 
-// verify.sh itself, run in a minimal copy of the repository: peer-secrets must be called, its failure must reach the exit
-// code, and its pass must not erase an earlier failure. tsc and claude are stand-ins that exit with FAKE_TSC or FAKE_CLAUDE.
-test('verify.sh runs peer-secrets, its failure fails verify, and its pass keeps an earlier failure',async t=>{
+// verify-live.sh itself, run in a minimal copy of the repository: verify.sh runs first, then peer-secrets must be called, its
+// failure must reach the exit code, and its pass must not erase an earlier failure. tsc and claude are stand-ins that exit
+// with FAKE_TSC or FAKE_CLAUDE.
+test('verify-live.sh runs verify.sh and peer-secrets, its failure fails the run, and its pass keeps an earlier failure',async t=>{
  const f=await leak(t);await f.writeRoster();const repo=f.repo,fakes=join(f.base,'fakebin');
  await mkdir(join(repo,'scripts'));await mkdir(join(repo,'tests'));await mkdir(join(repo,'mods','seamless-band'),{recursive:true});await mkdir(fakes);
- for(const name of ['verify.sh','peer-secrets.sh','peer-env-names.ts'])await copyFile(join(repoRoot,'scripts',name),join(repo,'scripts',name));
+ for(const name of ['verify.sh','verify-live.sh','peer-secrets.sh','peer-env-names.ts'])await copyFile(join(repoRoot,'scripts',name),join(repo,'scripts',name));
  await cp(join(repoRoot,'src'),join(repo,'src'),{recursive:true});await copyFile(join(repoRoot,'package.json'),join(repo,'package.json'));
  const passing="import test from 'node:test';\ntest('stand-in',()=>{});\n";
  await writeFile(join(repo,'tests','stand-in.test.ts'),passing);
  for(const [name,variable] of [['tsc','FAKE_TSC'],['claude','FAKE_CLAUDE']] as const){await writeFile(join(fakes,name),`#!/bin/sh\nexit "\${${variable}:-0}"\n`,{mode:0o755});await chmod(join(fakes,name),0o755);}
  const verify=(env:Record<string,string>={})=>{
-  const r=spawnSync('bash',[join(repo,'scripts','verify.sh')],{cwd:f.base,encoding:'utf8',env:{PATH:`${fakes}:${f.fake.bin}:${nodeDir}:${process.env.PATH}`,HOME:f.home,...f.fake.env,...f.values,...env}});
+  const r=spawnSync('bash',[join(repo,'scripts','verify-live.sh')],{cwd:f.base,encoding:'utf8',env:{PATH:`${fakes}:${f.fake.bin}:${nodeDir}:${process.env.PATH}`,HOME:f.home,...f.fake.env,...f.values,...env}});
   const out=r.stdout+r.stderr;for(const v of Object.values(f.values))assert.equal(out.includes(v),false,'a value reached the output');
   return {status:r.status,out};
  };
@@ -514,12 +515,12 @@ test('verify.sh runs peer-secrets, its failure fails verify, and its pass keeps 
  r=verify();assert.notEqual(r.status,0,r.out);assert.match(r.out,/peer-secrets: ok/);assert.doesNotMatch(r.out,/verify: exit=0/);
  await writeFile(join(repo,'tests','stand-in.test.ts'),passing);
  await writeFile(join(repo,'leak.txt'),`saved ${f.values.LEAKTEST_SEND}\n`);
- r=verify();assert.equal(r.status,1,r.out);assert.match(r.out,/peer-secrets: 失敗/);assert.match(r.out,/verify: exit=1/);
+ r=verify();assert.equal(r.status,1,r.out);assert.match(r.out,/peer-secrets: 失敗/);assert.match(r.out,/verify-live: exit=1/);
  r=verify({FAKE_TSC:'3'});assert.equal(r.status,1,'the later failure is the one reported, as in the other steps');
 });
 test('peer-secrets: the scripts avoid tracing and echoing',()=>{
- const verify=readFileSync(new URL('../scripts/verify.sh',import.meta.url),'utf8'),body=readFileSync(script,'utf8');
- assert.match(verify,/scripts\/peer-secrets\.sh/);assert.match(verify,/scripts\/\*\.ts/);
+ const verify=readFileSync(new URL('../scripts/verify.sh',import.meta.url),'utf8'),live=readFileSync(new URL('../scripts/verify-live.sh',import.meta.url),'utf8'),body=readFileSync(script,'utf8');
+ assert.match(live,/scripts\/peer-secrets\.sh/);assert.match(verify,/scripts\/\*\.ts/);
  const lines=body.split('\n').filter(l=>l.trim()!==''&&!l.trimStart().startsWith('#'));
  assert.equal(lines[0],'{ set +x; } 2>/dev/null','tracing is turned off before anything else');
  assert.ok(lines.includes('export LC_ALL=C'),'bytes, not characters');

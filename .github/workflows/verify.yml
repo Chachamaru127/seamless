@@ -1,0 +1,32 @@
+name: verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: hermetic checks (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+      - name: TypeScript
+        # verify.sh typechecks with `--types node`, and a runner has no @types/node above the checkout.
+        # A global typescript does not bring the node types, so they are installed where tsc looks: ./node_modules/@types.
+        run: |
+          npm install --global typescript@5.9.3
+          npm install --no-save --package-lock=false "@types/node@24"
+      - name: verify
+        env:
+          # An empty home, as on a fresh machine: no Keychain item and no installed AI product can decide the result.
+          HOME: ${{ runner.temp }}/home
+        run: |
+          mkdir -p "$HOME"
+          bash scripts/verify.sh

@@ -21,7 +21,8 @@
 - T3 Code が起動した `claude --output-format stream-json`（pid 10142、88557）には sessions JSON も socket も無い。
 - `codex queue --help`（codex-cli 0.163.0）: `--thread <UUID|名前> --message <TEXT>`、`--remote`。
 - `cursor-agent` 2026.10.17-1b98cdc。`~/.cursor/hooks.json` に sessionStart、stop、afterAgentResponse などの hooks。`~/.cursor/chats/<ws>/<session>/meta.json`。
-- Antigravity CLI: `~/.gemini/antigravity-cli/`（conversations、log、2026-10-12 の記録）はあるが、実行ファイルが PATH と `~/.local/bin` に無い。
+- Antigravity CLI: 実行ファイルは `~/.t3-ja/userdata/providers/antigravity/<hash>/antigravity-cli` と `antigravity-acp`（T3 Code が管理、版 1.1.1、2026-10-19 本人確認「T3 Code 経由で入っている」）。PATH には無い。データは `~/.gemini/antigravity-cli/`。
+- 承認: 2026-10-19 立花さん「承認」（spec.md と Plans.md の 2 回分）。
 - opencode v2.0.32。`~/.config/opencode/opencode.json`。
 
 ## 敵対の指摘（Codex Astra xhigh、2026-10-19、改訂 1 に対して 16 件）の扱い

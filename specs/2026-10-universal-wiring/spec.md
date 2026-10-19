@@ -1,6 +1,6 @@
 # universal-wiring: 今開いている AI へ、一言を届ける（何を、なぜ）
 
-状態: 2026-10-19 起草、同日 図面検査（Haiku 5.5、FAIL 37 件）と敵対（Codex Astra、16 件）を反映して改訂 3。承認 1 回目（spec.md）待ち。
+状態: 2026-10-19 起草、同日 図面検査（Haiku 5.5、FAIL 37 件）と敵対（Codex Astra、16 件）を反映して改訂 3。承認 1 回目（spec.md）: 2026-10-19 立花さん「承認」。
 根拠: `drafts/research-v3-beyond-reason.md`（事実 A〜C、出典つき）、`drafts/consolidated-plan-v3-beyond-reason.md`。
 ルートの `spec.md` の不変条件 1〜8 は変えない。本仕様はその下にある機能仕様で、手段（コマンド、パス、ライブラリ）は書かない。手段は Plans.md。
 
@@ -79,7 +79,7 @@
 - S2: AC4、AC5、AC6、AC7 のいずれかが通らない。→ 「渡った」の定義を「相手の記録で確認」だけに戻し、見分けられない製品は「不明」固定。
 - S3: AC8 が通らない。→ その機能を任意機能に分け、既定から外す。
 - S4: AC11 の Codex Desktop が現行版で通らない。→ Codex は CLI だけを正式対応にし、Desktop は「未確認（Desktop）」表示。
-- S5: Antigravity CLI の実行ファイルと hooks を本人に確認しても（未決 3）見つからない。→ Antigravity を phase 2 へ送る。2026-10-19 の観測では実行ファイルが見つかっていない。
+- S5: Antigravity CLI（T3 が管理する `~/.t3-ja/userdata/providers/antigravity/` の版）に、外から会話を見つけて注入する hooks または公式の口が無い。→ Antigravity を phase 2 へ送る。
 - S6: AC12 が通らない。→ 該当アダプタを外す。
 - S7: H6 の規約確認が H5 で決めた公開日までに終わらない。→ 公開を延期。
 - S8: 30 分ループ（H7）で、連続 3 回が blocked になる、作業ツリーが汚れて着手できない、または着手中が 90 分を超える。→ ループは休止の印を置いて自分では取らなくなり、人が印を外すまで再開しない。
@@ -99,4 +99,4 @@
 
 1. H5 名前と配布の時期。
 2. H6 規約の確認。
-3. Antigravity CLI の実行ファイルの場所（本人に確認）。
+3. 解決（2026-10-19 本人「T3 Code 経由で入っている」）: 実行ファイルは `~/.t3-ja/userdata/providers/antigravity/<hash>/antigravity-cli/` と `antigravity-acp/` の中（T3 が管理する ACP 版 1.1.1）。PATH には無い。発見と hooks の有無は T09 で確かめる。

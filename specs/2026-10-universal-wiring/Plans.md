@@ -1,6 +1,6 @@
 # universal-wiring: どうやって作るか（Plans）
 
-状態: 2026-10-19 起草、同日 図面検査（Haiku 5.5）と敵対（Codex Astra）を反映して改訂 3。承認 2 回目（Plans.md）待ち。spec.md の AC1〜AC16、S1〜S8、H1〜H7 に対応する。
+状態: 2026-10-19 起草、同日 図面検査（Haiku 5.5）と敵対（Codex Astra）を反映して改訂 3。承認 2 回目（Plans.md）: 2026-10-19 立花さん「承認」。spec.md の AC1〜AC16、S1〜S8、H1〜H7 に対応する。
 製品の不変条件（ルート spec.md 1〜8）は定義し直さない。段階の名前は spec.md の用語に従う。
 
 ## 1. 作りの方針

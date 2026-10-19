@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import {compatibilityCheck} from './compat-check.ts';
 import {compatibilityMarkdown} from './compat.ts';
 import {readFile,writeFile} from 'node:fs/promises';

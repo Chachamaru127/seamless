@@ -1,6 +1,6 @@
 # 公開の手順と公開面（release）
 
-状態: 2026-10-19 起草（Issue #17 / T13）。2026-10-20 に T18（Issue #19）で同梱物を最終確認し、公開手順と停止条件を確定した。H5 と H6 は未決で、その 2 つが閉じるまで公開しない。正本は `specs/2026-10-universal-wiring/spec.md` の AC12 と Plans.md 1 章 5、8 章。
+状態: 2026-10-19 起草（Issue #17 / T13）。2026-10-20 に T18（Issue #19）で同梱物を最終確認し、公開手順と停止条件を確定した。同じ 2026-10-20 に H5 の名前と配布名が決まり（`@chachamaru127/seamless`、D7）、`package.json` の `private` を外して `bin` を設定した（Issue #30）。ただし install 後の入口はまだ動かず、6 章の停止条件 1 に残る。H6 と公開日は未決で、それが閉じるまで公開しない。正本は `specs/2026-10-universal-wiring/spec.md` の AC12 と Plans.md 1 章 5、8 章。
 
 この文書は 3 つを決める。何を `npm pack` に入れるか、どの内部依存を公開物に載せるか、公開前に誰が何を確認するか。
 
@@ -21,7 +21,7 @@
 
 ### 1.1 確定一覧（2026-10-20、T18）
 
-57 ファイル、展開後 471,913 バイト。`npm pack --dry-run --json --ignore-scripts` の `files[].path` を `LC_ALL=C sort` したもの。リポジトリの根元で次の 1 行を走らせて、実物と突き合わせる。出力が空で終了 0 なら一致。T18（Issue #19）の Done when は、この 1 行が終了 0 になること。
+57 ファイル、展開後 471,913 バイト（T18 の実測）。2026-10-20 の Issue #30 時点は 58 ファイル、483,010 バイト（#27 で `src/manifests/cursor.json` が加わり、`package.json` と README を更新した分を含む）。`npm pack --dry-run --json --ignore-scripts` の `files[].path` を `LC_ALL=C sort` したもの。リポジトリの根元で次の 1 行を走らせて、実物と突き合わせる。出力が空で終了 0 なら一致。T18（Issue #19）の Done when は、この 1 行が終了 0 になること。
 
 ```sh
 npm pack --dry-run --json --ignore-scripts \
@@ -70,6 +70,7 @@ src/io.ts
 src/limits.ts
 src/manifests/claude.json
 src/manifests/codex.json
+src/manifests/cursor.json
 src/manifests/grok-bot.json
 src/manifests/grok-cli.json
 src/manifests/opencode.json
@@ -94,7 +95,15 @@ src/webhook-send.ts
 <!-- pack-list:end -->
 ```
 
-一覧は 2026-10-20 に確定した（T18）。根拠は 3 つ。(1) 2 章の 4 つ（`mods/`、`experiments/`、`status-panel`、旧 `--registry` の登録例）が入っていない。(2) `node scripts/pack-check.ts` が、同梱する各 `.ts` の相対 import を一覧の中で解決する。(3) 3 章の公開面スキャンが 0 件。`package.json` の `files` か `src/` を変えたら `diff` が落ちるので、そのときにこの一覧を更新する。T18 の実測は、`diff` が出力なしで終了 0、`entryCount` 57、`unpackedSize` 471,913。
+一覧は 2026-10-20 に確定した（T18）。根拠は 3 つ。(1) 2 章の 4 つ（`mods/`、`experiments/`、`status-panel`、旧 `--registry` の登録例）が入っていない。(2) `node scripts/pack-check.ts` が、同梱する各 `.ts` の相対 import を一覧の中で解決する。(3) 3 章の公開面スキャンが 0 件。`package.json` の `files` か `src/` を変えたら `diff` が落ちるので、そのときにこの一覧を更新する。T18 の実測は、`diff` が出力なしで終了 0、`entryCount` 57、`unpackedSize` 471,913。#30 の実測は、`diff` が出力なしで終了 0、`entryCount` 58、`unpackedSize` 483,010。
+
+### 1.2 公開物の入口（2026-10-20、Issue #30 / H5）
+
+`package.json` は名前 `@chachamaru127/seamless`、`private` 無し、`bin` の `seamless` → `src/cli.ts`、`publishConfig.access: public`（scoped package の既定は restricted なので明示する）になった。`src/cli.ts` の 1 行目には `#!/usr/bin/env node` を置いた。
+
+実測（2026-10-20、Node 24.19.0）: `npm pack` の tarball を `npm install --prefix <tmp> --offline` で入れ、`node_modules/.bin/seamless doctor --json` を実行すると終了 1。`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` で、Node は `node_modules` の下にある `.ts` の型注釈を取り除かない（`--experimental-strip-types` を付けても同じ。`node_modules` の外の同じファイルは動く）。`npx` の cache は `_npx/<hash>/node_modules/` なので同じ制約に入る（`npx` 自体は未実行。パッケージがまだ公開されていないため）。
+
+したがって `bin` の設定は入ったが、install 後の `seamless` はまだ動かない。6 章の停止条件 1 に残す。入口は `files` の `src/` に含まれるので、`bin` 自体は同梱物を増やさない（1.1 の 57 → 58 は #27 の `src/manifests/cursor.json` 分）。
 
 ## 2. 同梱物から外すもの
 
@@ -116,12 +125,11 @@ Plans.md 1 章 5 の 4 つ。どれもリポジトリと試験には残す。
 
 `node scripts/pack-check.ts` が `npm pack --dry-run --json` の一覧を読み、各 `.ts` の相対 import を解決して、一覧の外なら終了 1。`bash scripts/verify.sh` も typecheck の次にこれを走らせる。
 
-残る既知の差は 2 つ。どちらも `package.json` を触るので T18 では閉じず、6 章の停止条件に送った。
+T18 の時点で既知の差は 2 つあった。1 つ目（`private: true` と `bin` の不在）は 2026-10-20 に `package.json` へ反映したが、install 後の入口が動かないことが実測で分かり、6 章 1 に残した（1.2）。2 つ目も 6 章 2 に残す。
 
-1. `private: true` で `bin` とビルド済み JS が無い。同梱する実行コードは変換していない `.ts` だけで、`npm i -g` しても `seamless` というコマンドはできない。
-2. `NOTICE` と `SECURITY.md` が `files` に無く、同梱 README から張られたリンクが tarball の中で切れる。
+1. `NOTICE` と `SECURITY.md` が `files` に無く、同梱 README から張られたリンクが tarball の中で切れる。
 
-同梱物の一覧を先に固定するのは、この 2 つを閉じたときに差分がここへ 1 行で出るようにするためで、公開を先に進めるためではない。
+同梱物の一覧を先に固定するのは、この差を閉じたときに差分がここへ 1 行で出るようにするためで、公開を先に進めるためではない。
 
 ## 3. 秘密とアカウント情報の検査
 
@@ -144,7 +152,7 @@ npm pack --dry-run --json --ignore-scripts
 
 2026-10-20 の実測:
 
-- 同梱物（1.1 の 57 ファイル）: 0 件。`peer-secrets.sh` の公開面スキャンと同じ手順（一覧の各ファイルを `grep -aqF` で 3 目印に当てる）を、Keychain を読まない形で単独に走らせた結果。
+- 同梱物（1.1 の 58 ファイル）: 0 件。`peer-secrets.sh` の公開面スキャンと同じ手順（一覧の各ファイルを `grep -aqF` で 3 目印に当てる）を、Keychain を読まない形で単独に走らせた結果。2026-10-20 の T18 は 57 ファイルで同じ 0 件、#30 で `src/manifests/cursor.json` を足した 58 ファイルでも再確認して 0 件。
 - リポジトリ全体で目印が現れるのは 4 か所だけ。`specs/`（要件文そのもの、5 行）、`docs/reports/`（Reason 比較の社内資料、3 行）、`scripts/peer-secrets.sh`（この検査の目印、2 行）、この文書（同じ目印、3 行）。合計 13 行。
 - したがってリポジトリ全体の grep は、検査器と要件文が目印を書く以上 0 にならない。Done when の意図は「公開物にアカウント固有情報が無い」なので、0 にできる範囲を公開物とする。`specs/` は本 Issue の禁止事項で編集しない。`docs/` と `scripts/` は同梱しない。
 
@@ -203,19 +211,19 @@ H6 は、外部へ出る経路と製品側の hooks を、各社の規約で確�
 
 ## 5. 公開までの順番（T18 で確定）
 
-1. H5（名前、配布名、ライセンス、公開日）を決める。`LICENSE` は `MIT License` の案で置いてある（T14）。MIT 以外にするなら `LICENSE` と README 2 枚の計 3 か所を差し替える。
+1. H5 の名前と配布名は決まった（2026-10-20、`@chachamaru127/seamless`、D7）。ライセンスは `MIT License`（T14 で設置済み）。残るのは公開日で、決めたら 1 行目に書く。MIT 以外にするなら `LICENSE` と README 2 枚の計 3 か所を差し替える。
 2. H6 の 3 行（4.3）を埋める。埋まらないまま公開日が来たら延期する（spec.md S7）。
 3. 6 章の停止条件を空にする。1 つでも残っている間は `npm publish` を実行しない。
 4. 次の 4 つを上から順に走らせ、すべて期待どおりにする。
 
 | # | コマンド | 期待する結果 | 2026-10-20 の実測 |
 |---|---|---|---|
-| 1 | `bash scripts/verify.sh` | 終了 0 | 0（試験 842 件、失敗 0） |
+| 1 | `bash scripts/verify.sh` | 終了 0 | 0（#30 時点で試験 847 件、失敗 0。T18 は 842 件） |
 | 2 | 1.1 の `diff` 1 行 | 出力なし、終了 0 | 一致（終了 0） |
 | 3 | `bash scripts/peer-secrets.sh` | `peer-secrets: ok`、終了 0 | 未実行。名簿があれば Keychain を読むのでループでは走らせない。人が実行する |
 | 4 | 3.3 の `grep` | 0 件（`grep` の終了 1） | 0 件 |
 
-5. `npm publish` はループから実行しない。H5 と H6 の後、上の 4 つが揃った時点で人が実行する。実行の直前にもう一度 `npm pack --dry-run` を見て、1.1 の一覧と一致することを確かめる。
+5. `npm publish` はループから実行しない。H6 と公開日が決まり、上の 4 つが揃った時点で人が実行する。実行の直前にもう一度 `npm pack --dry-run` を見て、1.1 の一覧と一致することを確かめる。`npm publish` は scoped package を `publishConfig.access: public` で出すので、`--access` の指定は要らない。
 
 ## 6. 公開の停止条件（2026-10-20 時点）
 
@@ -223,8 +231,8 @@ H6 は、外部へ出る経路と製品側の hooks を、各社の規約で確�
 
 | # | 止めている理由 | 今の状態 | 閉じる条件 | 閉じる人 |
 |---|---|---|---|---|
-| 1 | `package.json` が `private: true` で、`bin` もビルド済み JS も無い。同梱する実行コードは変換していない `.ts` だけで、`npm i -g` の後に `seamless` というコマンドはできない | 未対応（`package.json`） | `private` を外し、`bin` と、入れた Node でそのまま動く入口を入れる。入口を入れたら 1.1 の一覧を更新する | `package.json` を触る次の Issue |
+| 1 | 同梱する実行コードが変換前の `.ts` だけで、ビルド済み JS も JS の起動役も無い。`bin` は `src/cli.ts` を指すが、Node は `node_modules` 内の `.ts` を実行しないため、`npm i -g` の後に `seamless` というコマンドは動かない | 一部対応（2026-10-20、Issue #30）。`private` を外し、`bin` の `seamless` に `src/cli.ts` を設定した。install 後の実行は `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` で終了 1（1.2、Node 24.19.0 で実測） | ビルド済み JS、または JS の起動役を同梱し、`bin` をそこへ向ける。変えたら 1.1 と 1.2 を更新する | 次の Issue（入口） |
 | 2 | `NOTICE` と `SECURITY.md` が tarball に入らず、同梱 README 2 枚から張られたリンクが切れる。AC12 の内部依存の一覧（4 章の 2 種の分類）はこの文書にだけあり、同梱物には無い（README は短い段落 1 つ、`NOTICE` は「Interfaces」の段落 1 つ） | 未対応（`package.json` の `files`） | `files` に `NOTICE` と `SECURITY.md` を足すか、4 章の表を README へ移す。足したら 1.1 を更新する | `package.json` を触る次の Issue |
 | 3 | Codex の送信経路が `thread-follower-start-turn` をまだ呼ぶ（#22、4.2） | 未対応 | `codex queue --thread` へ切り替えるか、H2 の範囲を書込みまで広げる | 立花さん（H2 の範囲） |
-| 4 | H5（名前、配布名、ライセンス、公開日） | 未決 | 決める。決めたら 1 行目と `LICENSE` に反映する | 立花さん |
+| 4 | H5（名前、配布名、ライセンス、公開日） | 名前と配布名は決まった（`@chachamaru127/seamless`、2026-10-20、D7）。ライセンスは MIT。公開日は未決 | 公開日を決める。決めたら 1 行目に書く | 立花さん |
 | 5 | H6 の 3 行（4.3） | 未確認 | 各社の規約を読み、日付、出典 URL、版を書く | 立花さん |

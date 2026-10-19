@@ -24,6 +24,20 @@ async function readStdin():Promise<string>{
 // The command line is the one entry that reads the real Keychain (src/secrets.ts); every other way of building an automatic is given a reader or none.
 export async function runCli(argv:string[],automatic:Automatic=createAutomatic({keychain:securityKeychain()}),limitsPath?:string,stdin:()=>Promise<string>=readStdin):Promise<void>{
  const [mode,...rawArgs]=argv;
+ // `seamless "<一言>"`: the one-word entry. Any other command keeps its name, so only a lone argument that is not a command,
+ // a `bot-` word or a flag is read as text. The destination is the peer in the caller's workspace when that leaves exactly
+ // one; two or more stop before any write and print the candidates, so the text is never sent to a guess (T05).
+ const commands=['status','compat-check','compat-md','migrate','bot-send','bot-sessions','sessions','read','send','select','revalidate','band','context','limits','serve','mcp','setup','who','doctor'];
+ if(mode!==undefined&&!commands.includes(mode)&&rawArgs.length===0){
+  if(mode.startsWith('-')||mode.startsWith('bot-')||!mode.trim())throw new ContractError('invalid_arguments');
+  const listing=await automatic('sessions',{operation:'send',scope:'current_work'});
+  if(listing?.status!=='ok'){console.log(JSON.stringify(listing));return;}
+  const sendable=(listing.candidates??[]).filter((candidate:any)=>typeof candidate?.ticket==='string'&&candidate.operations?.send!==false);
+  if(sendable.length===0){console.log(JSON.stringify({status:'target_unavailable'}));return;}
+  if(sendable.length>1){console.log(JSON.stringify({status:'ambiguous',candidates:sendable}));return;}
+  console.log(JSON.stringify({...await automatic('send',{ticket:sendable[0].ticket,text:mode}),target:sendable[0].id}));
+  return;
+ }
  if(mode==='status'){if(!(rawArgs.length===1||rawArgs.length===3&&rawArgs[1]==='--wait'))throw new ContractError('invalid_arguments');const waitSeconds=rawArgs.length===3?Number(rawArgs[2]):0;if(!Number.isFinite(waitSeconds)||waitSeconds<0||waitSeconds>600)throw new ContractError('invalid_arguments');console.log(JSON.stringify(await automatic('send',{track:rawArgs[0],waitSeconds})));return;}
  if(mode==='compat-check'){const ok=rawArgs[0]==='--limits'&&(rawArgs.length===2||rawArgs.length===4&&rawArgs[2]==='--target'&&/^(claude|codex):[A-Za-z0-9-]{1,128}$/.test(rawArgs[3]));if(!ok)throw new ContractError('invalid_arguments');console.log(JSON.stringify(await compatibilityCheck(rawArgs[1],{},{kind:'cli'},rawArgs[3])));return;}
  if(mode==='compat-md'){if(rawArgs.length)throw new ContractError('invalid_arguments');await writeFile(new URL('../specs/202610-everyday-use/compat.md',import.meta.url),compatibilityMarkdown());return;}

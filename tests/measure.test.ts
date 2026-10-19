@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
-import {mkdir,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,readFile,readdir,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {basename,dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -61,6 +61,24 @@ test('batch --plan fake:2 writes a record file without the message body',async t
  assert.deepEqual(records[0]!.mode,'fake');
  assert.equal(records.filter(r=>r.kind==='roundtrip').length,2);
  for(const record of records)assert.equal(JSON.stringify(record).includes('MEASURE-BODY'),false);
+});
+
+test('batch --dry checks the plan and the product names without sending or writing a record',async t=>{
+ // The AC7 line must pass the parser and report its three product names as known, before anything is sent to a real peer.
+ const dir=await mkdtemp(join(tmpdir(),'seamless-measure-dry-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const file=join(dir,'dry.jsonl');
+ const {json}=await measure(['batch','--plan','claude:5,codex-desktop:5,grok-bot:5','--out',file,'--dry']);
+ assert.equal(json.status,'ok');assert.equal(json.command,'batch');assert.equal(json.dry,true);
+ assert.equal(json.entries,15);assert.equal(json.recordFile,null);
+ const parts=json.planParts as Array<{name:string;count:number;known:boolean}>;
+ assert.deepEqual(parts.map(e=>[e.name,e.count,e.known]),[['claude',5,true],['codex-desktop',5,true],['grok-bot',5,true]]);
+ assert.equal(await readdir(dir).then(names=>names.length),0);
+ // A name no provider claims is reported, not thrown: the real run would write no_candidates records instead.
+ const unknown=await measure(['batch','--plan','claude-desktop:1','--dry']);
+ assert.equal((unknown.json.planParts as Array<{known:boolean}>)[0]!.known,false);
+ // Argument errors are still errors.
+ await assert.rejects(measure(['batch','--plan','claude:0','--dry']));
+ await assert.rejects(measure(['batch','--dry']));
 });
 
 test('footprint targets node processes running this repository src/*.ts, wherever the option sits, and their children',()=>{

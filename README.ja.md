@@ -9,6 +9,33 @@ Cursor CLI、Antigravity CLI、Grok CLI、そして本人が登録した Grok Bo
 
 Node.js 22.22 以降を使います。以下のコマンドはすべて、チェックアウトの根から実行します。
 
+## 非公式の但し書き
+
+これは非公式のプロジェクトです。Anthropic、OpenAI、xAI、Anysphere（Cursor）、Google、Orca、Reason Network の
+承認や支援を受けたものではありません。製品名は相互運用を説明するためだけに使い、権利はそれぞれの
+所有者にあります。
+
+一部のアダプタは公開された安定 SDK ではない接続を使います。Claude の session socket、Codex の `queue` と
+Desktop IPC、Grok の session ファイルです。製品の更新で、予告なく壊れ得ます。対応表は観測した版と日付を
+記録し、表にない版は動くと決めつけず `versionStatus: unverified` と表示します。自己責任で使い、製品側の
+承認と sandbox はそのまま残してください。seamless で届いた文は、人の承認の代わりにはなりません。
+
+## 対応している相手
+
+seamless は、各社が公開している経路で依頼を運びます。自前の通信手順は作りません。依頼を運ぶ 4 つの経路と、
+それぞれが拠って立つ公開文書です。
+
+| 製品 | seamless が使う公式経路 | 公開文書 | 読んだ 1 行 |
+|---|---|---|---|
+| Claude Code | セッション間メッセージの socket。socket の場所は `CLAUDE_CODE_MESSAGING_SOCKET` として渡る | https://code.claude.com/docs/en/cross-session-messaging | 「The session's inbox socket」（節の見出し。2026-10-19 に取得した記録） |
+| Codex | `codex queue --thread <ID> --message <TEXT>` | https://github.com/openai/codex | 「Queue a message for an existing session」（`codex queue --help`、codex-cli 0.163.0、2026-10-20 に実行） |
+| opencode | plugin API。plugin が `session.prompt` を呼ぶ | https://opencode.ai/docs/plugins/ | 公式の型 `@opencode-ai/plugin` 1.19.0 の `session.prompt`。文書の文面そのものはここに引用していない |
+| Cursor | `~/.cursor/hooks.json` の `sessionStart`、`afterAgentResponse`、`stop` | https://cursor.com/docs/hooks | 「Hooks are scripts or prompt-based checks that exchange JSON over stdin/stdout and can observe, block, modify, or follow up on behavior.」（Cursor 同梱の hook 手引き、2026-10-20） |
+
+各行は、その 1 行をどこで読んだかを添えています。製品が同梱する help や型から取った行は、URL の文書そのものを
+開いた確認ではありません。経路に頼る前に、その URL を開いて確かめてください。Grok Bot webhook、Cursor hooks、
+Antigravity hooks の利用規約の確認は、`docs/release.md` の 4.3 で未（本人の目視待ち）です。
+
 ## 試す
 
 アカウントも起動中の AI 製品も要りません。`verify.sh` はファイルを変えず、`setup --dry-run` は何も書きません。
@@ -104,17 +131,6 @@ hooks と受信箱を使います。2 つは共存できますが、偶然に任
 
 Orca は worktree と端末を管理し、seamless は会話を配線します。Orca がこのメッセージを代わりに送ることは
 ありません。
-
-## 非公式の但し書き
-
-これは非公式のプロジェクトです。Anthropic、OpenAI、xAI、Anysphere、Google、Orca、Reason Network の
-承認や支援を受けたものではありません。製品名は相互運用を説明するためだけに使い、権利はそれぞれの
-所有者にあります。
-
-一部のアダプタは公開された安定 SDK ではない接続を使います。Claude の session socket、Codex の `queue` と
-Desktop IPC、Grok の session ファイルです。予告なく変わり得ます。対応表は観測した版と日付を記録し、
-表にない版は動くと決めつけず `versionStatus: unverified` と表示します。自己責任で使い、製品側の承認と
-sandbox はそのまま残してください。seamless で届いた文は、人の承認の代わりにはなりません。
 
 ## 保存するもの
 

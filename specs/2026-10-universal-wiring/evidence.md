@@ -76,3 +76,5 @@
 | 2026-10-20 00:20 | #25 T11b 登録簿の配線（1 回目） | dee523b | 並列 wave 2a（worktree、440 秒） | 0（841 pass） | — | FAIL（項目 1: 試験が外すのは既存の codex manifest で、偽の manifest ではない） | Done when を「既存または偽の manifest」に直して再判定 |
 | 2026-10-20 00:40 | #25 T11b 登録簿の配線（2 回目） | dee523b | 並列 wave 2a | 0（841 pass） | — | PASS（4 項目 Yes。1 は「既存または偽の manifest」に文言を直した） | 閉じて merge（0d46ea5）。残件 3 件 → #29 |
 | 2026-10-20 00:40 | #17 T13 公開面（4 回目） | dba25a3 | 再施工（worktree） | 0 | — | FAIL（項目 2: peer-secrets.sh の 0 件は判定役の環境では確かめられない） | リーダーが worktree で peer-secrets.sh を実行して証拠に添え、再判定 |
+| 2026-10-20 01:00 | #17 T13 公開面（5 回目） | dba25a3 | 再施工（worktree） | 0（820 pass） | — | PASS（6 項目 Yes。2 はリーダーが worktree で peer-secrets.sh を実行した ok を採用） | 閉じて merge（c5d1e76）。残件: pack-check の .js→.ts の許容、docs/release.md:136 の検索例 |
+| 2026-10-20 01:00 | #24 T04b 保留理由の観測（1 回目） | a850cce | 並列 wave 2b（worktree） | 0 | — | FAIL（項目 1: 受信側 bypassPermissions だけで claude_hold にする。ただし公式文書どおりの hold 条件で、Done when の文言が狭すぎた） | 文言を直して再判定 |

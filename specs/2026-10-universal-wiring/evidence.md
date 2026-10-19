@@ -72,3 +72,5 @@
 | 2026-10-19 23:55 | #17 T13 公開面（3 回目） | d5061a6 | 並列 wave 1 | 0 | — | FAIL（項目 3: grep が docs/ specs/ の説明文に当たる。残件に実害: 同梱物の src/mcp.ts が除外した status-panel.ts を参照） | Done when を公開物に限定し、依存の検査（pack-check）を足して再施工 |
 | 2026-10-20 00:05 | #22 T03b queue を送信経路へ | fdadc22 | 再施工（worktree、190 秒） | 0（824 pass） | — | PASS（5 項目 Yes） | 閉じて merge（2f683b3） |
 | 2026-10-20 00:05 | #28 T10b 受信箱の原子性 | 47937cb | 再施工（worktree、340 秒） | 0（823 pass） | — | PASS（3 項目 Yes） | 閉じて merge（f8bb818） |
+| 2026-10-20 00:20 | #23 T03c 終了コードの扱い | ea23efe | 並列 wave 2a（worktree） | 0（838 pass） | — | PASS（3 項目 Yes） | 閉じて merge（b784edc）。残件: stderr の「usage」判定は実 CLI で未検証 |
+| 2026-10-20 00:20 | #25 T11b 登録簿の配線（1 回目） | dee523b | 並列 wave 2a（worktree、440 秒） | 0（841 pass） | — | FAIL（項目 1: 試験が外すのは既存の codex manifest で、偽の manifest ではない） | Done when を「既存または偽の manifest」に直して再判定 |

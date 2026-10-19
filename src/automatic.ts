@@ -10,7 +10,7 @@ import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {identifyCaller,type CallerOptions,type CallerResult,type Caller} from './caller.ts';
 import {scanSessions,codexIdentity,wakeCodexThread,inScope,type SessionIdentity, type ScanOptions} from './sessions-scan.ts';
-import {createNativeRuntime,createCodexOwnerLookup,findClaudeIdentity,type NativeIdentity} from './native-runtime.ts';
+import {createNativeRuntime,createCodexOwnerLookup,findClaudeIdentity,codexReachable,type NativeIdentity} from './native-runtime.ts';
 import {readLimits,writeLimits,clearLimits,unrestricted,validLimits,heldAfterSec,type Limits,type AutoScope} from './limits.ts';
 import {ContractError,object,isLocalRegistration,type Registration,type Operation} from './protocol.ts';
 import {Registry,loadRegistry} from './registry.ts';
@@ -64,6 +64,8 @@ export function createAutomatic(options:AutomaticOptions={}){
   const git=async(cwd:string)=>{const key=await realpath(cwd).catch(()=>cwd);let v=gitOnce.get(key);if(!v){v=baseGit(cwd);gitOnce.set(key,v);}return v;};
   let versionOnce:Promise<string|null>|undefined;const baseVersion=options.scanOptions?.version??desktopVersion;
   const version=()=>versionOnce??=baseVersion();
+  // Set only after an actual Desktop connection attempt failed; versionStatus then reports unverified_desktop for Codex.
+  let desktopConnection:'ok'|'failed'|undefined;
   const scanOptions={includeUnavailable:!options.compatTest,...options.scanOptions,git,version,home,strictVersions,claude:{...options.scanOptions?.claude,strictVersions}};
   const ownerLookup=method==='band'&&!options.scanOptions?.owner?createCodexOwnerLookup(home,scanOptions.version,scanOptions):undefined;
   const ownerCache=new Map<string,Promise<string|null>>();
@@ -95,7 +97,7 @@ export function createAutomatic(options:AutomaticOptions={}){
    if(!await inScope(n.cwd,c.cwd,s,scanOptions.git)||l.scope!==null&&!await inScope(n.cwd,c.cwd,l.scope,scanOptions.git))return 'scope_conflict';
    return null;
   };
-  const compatibilityFor=(n:Pick<SessionIdentity,'provider'>,limits:Limits)=>({...scanOptions,...(n.provider==='claude'?scanOptions.claude:{}),strictVersions:options.compatTest===true||limits.strictVersions===true});
+  const compatibilityFor=(n:Pick<SessionIdentity,'provider'>,limits:Limits)=>({...scanOptions,...(n.provider==='claude'?scanOptions.claude:{}),...(n.provider==='codex'&&desktopConnection?{desktopConnection}:{}),strictVersions:options.compatTest===true||limits.strictVersions===true});
   const rejectedVersion=(n:Pick<SessionIdentity,'provider'|'version'>,limits:Limits)=>isVersionAllowed(productOf(n.provider),n.version,compatibilityFor(n,limits))?null:{status:'unsupported_version',reason:n.version??'unknown',version:n.version??'unknown'};
   // A registered outside sender (`--as`): no process on this Mac to identify, so the signed envelope stands in for the caller
   // (src/external-inbound.ts). It never reaches the caller identification below, and MCP cannot produce this context.
@@ -227,6 +229,12 @@ export function createAutomatic(options:AutomaticOptions={}){
    }
    return inbound;})();
    if(method!=='band')await inboundPromise;
+   // A Codex thread the scan could not reach is where a Desktop connection was actually attempted and failed. One probe
+   // decides this for the whole listing: a reachable Desktop only means the thread is not loaded yet.
+   if(method==='sessions'&&visible.some(n=>n.provider==='codex'&&n.reason==='unreachable')){
+    const probe=options.scanOptions?.reachable??(()=>codexReachable(home,version,scanOptions));
+    desktopConnection=(await probe())?'ok':'failed';
+   }
    const candidates=await Promise.all(visible.map(async n=>({id:idOf(n),provider:n.provider,host:'local',nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,version:n.version||null,versionStatus:versionStatus(productOf(n.provider),n.version,compatibilityFor(n,l)),...(p.peek===true||method==='band'?{change:'unknown'}:seen.changes.get(idOf(n))),status:n.status??(seen.changes.get(idOf(n))?.change==='generation_changed'?'unknown':'online'),reason:n.reason??(seen.changes.get(idOf(n))?.change==='generation_changed'?'generation_changed':null),requests:options.compatTest?[]:await status.recent({...n,id:idOf(n)}),operations:{read:l.operations?.read??true,send:l.operations?.send??true},ticket:method==='band'?null:n.status&&n.status!=='online'?null:await ticketFor(n)})));
    const inbound=await inboundPromise;
    // Registered outside executors (the roster is read afresh each call) sit apart from candidates; the band never carries them.

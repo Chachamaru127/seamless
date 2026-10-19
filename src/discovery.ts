@@ -8,7 +8,7 @@ import { findClaudeInbox } from './adapters/claude.ts';
 import type { ClaudeInboxState } from './adapters/claude.ts';
 import { homedir } from 'node:os';
 import { loadAdapterPort, loadManifestRegistry } from './core/manifest.ts';
-import type { ManifestAdapterPeer, ManifestRegistry, ManifestState, ManifestProvider } from './core/manifest.ts';
+import type { ManifestAdapterPeer, ManifestRegistry, ManifestState, ManifestProvider, ProductManifest } from './core/manifest.ts';
 
 type Result={status:string;target?:string;binding?:string;candidates?:Candidate[]};
 type Candidate={id:string;provider:string;nativeId:string;generation:string;host:string;displayName:string;role?:string;declaredWorkspace:string;operations:{read:boolean;send:boolean};observation:{status:string;reason:string;at:number|null;context:GitContext|null};rank:number|null;inScope:boolean;reason:string};
@@ -20,11 +20,19 @@ export type WhoVerdict={state:WhoState;reason?:string};
 // A phase 2 product (Antigravity, S5) is listed as unverified; it is not a v1 manifest provider yet.
 export type WhoProvider=ManifestProvider|'antigravity';
 // What who has to go on: the scan's own words where they exist, the Claude sessions JSON, and the compatibility table.
-export type WhoPeer={id?:string;provider:WhoProvider;nativeId:string;displayName?:string;status?:string|null;reason?:string|null;versionStatus?:string|null;inbox?:ClaudeInboxState|null};
+export type WhoPeer={id?:string;product?:string;provider:WhoProvider;nativeId:string;displayName?:string;status?:string|null;reason?:string|null;versionStatus?:string|null;inbox?:ClaudeInboxState|null};
 export type WhoRow={id:string;provider:WhoProvider;nativeId:string;displayName?:string;state:WhoState;reason?:string;versionStatus:string|null};
 // `manifests` is the registration the listing is built from. Without it the v1 manifests are read from src/manifests:
 // a product whose manifest is gone is not listed, whether or not the scan still reports it.
 export type WhoOptions={home?:string;inbox?:(nativeId:string)=>Promise<ClaudeInboxState>;manifests?:ManifestRegistry};
+// The registration is per product, not per provider: one provider may carry two products (a CLI and a Desktop sharing a
+// thread store). A scan may name the product itself; otherwise the provider must be claimed by exactly one manifest, or the
+// conversation cannot be attributed to an adapter and is not listed (never silently merged into the first product).
+export function manifestProduct(manifests:readonly Pick<ProductManifest,'product'|'provider'>[],provider:string,declared?:string|null):string|undefined{
+ if(declared)return manifests.some(manifest=>manifest.provider===provider&&manifest.product===declared)?declared:undefined;
+ const matches=manifests.filter(manifest=>manifest.provider===provider);
+ return matches.length===1?matches[0].product:undefined;
+}
 // ready         = the write port is open and the peer said it is idle (Claude sessions JSON `status`).
 // next_turn     = the peer is working, or its product takes the request at its next turn (hooks, Codex queue).
 // wake_needed   = the peer is stopped or unloaded and is woken before it can take anything (Grok Bot, an unloaded Codex thread).
@@ -84,7 +92,7 @@ async function listedPeers(manifests:ManifestRegistry,home:string):Promise<WhoPe
     const nativeId=typeof row.nativeId==='string'?row.nativeId:typeof identity==='string'?identity:null;
     if(!nativeId)continue;
     const label=typeof row.displayName==='string'?row.displayName:typeof row.title==='string'?row.title:undefined;
-    out.push({id:typeof row.id==='string'?row.id:`${provider}:${nativeId}`,provider:provider as WhoProvider,nativeId,...(label?{displayName:label}:{}),status:row.state??row.status??null,reason:row.reason??null,versionStatus:row.versionStatus??null});
+    out.push({id:typeof row.id==='string'?row.id:`${provider}:${nativeId}`,product:manifest.product,provider:provider as WhoProvider,nativeId,...(label?{displayName:label}:{}),status:row.state??row.status??null,reason:row.reason??null,versionStatus:row.versionStatus??null});
    }
   }catch{}
  }
@@ -96,27 +104,29 @@ async function phase2Peers(home:string):Promise<{peers:WhoPeer[];states:Record<s
  try{
   const [{readAntigravityManifest,listAntigravity},{findAntigravity}]=await Promise.all([import('./adapters/antigravity.ts'),import('./setup.ts')]);
   const manifest=await readAntigravityManifest(),found=await findAntigravity(home);
-  const peers:WhoPeer[]=listAntigravity({binary:found.binary,hooks:false},manifest).map(row=>({id:row.id,provider:'antigravity',nativeId:row.id,displayName:row.displayName,status:row.status,versionStatus:row.versionStatus}));
+  const peers:WhoPeer[]=listAntigravity({binary:found.binary,hooks:false},manifest).map(row=>({id:row.id,product:'antigravity',provider:'antigravity',nativeId:row.id,displayName:row.displayName,status:row.status,versionStatus:row.versionStatus}));
   return {peers,states:{antigravity:{unverified:'unreachable',absent:'unreachable'}}};
  }catch{return {peers:[],states:{}};}
 }
 export async function classifyPeers(peers:WhoPeer[],options:WhoOptions={}):Promise<WhoRow[]>{
  // The registry is the list, not the scan: a product whose manifest is gone is not shown, and a product whose manifest
  // names a discovery port is shown even when the scan does not know it. Its own state table gives the listing state.
- const manifests=options.manifests??await loadManifestRegistry(),home=options.home??homedir();
+ const manifests=options.manifests??await loadManifestRegistry(),home=options.home??homedir(),entries=manifests.list();
  const states=new Map<string,Record<string,ManifestState>>();
- for(const manifest of manifests.list())states.set(manifest.provider,manifest.states);
+ for(const manifest of entries)states.set(manifest.product,manifest.states);
  const phase=await phase2Peers(home);
- for(const [provider,table] of Object.entries(phase.states))states.set(provider,table);
+ for(const [product,table] of Object.entries(phase.states))states.set(product,table);
+ // A row is kept by its product, not by its provider: one provider can hold two products.
+ const known=(p:WhoPeer)=>{const product=p.product??manifestProduct(entries,p.provider);return product!==undefined&&states.has(product)?product:undefined;};
  const rows=new Map<string,WhoPeer>();
- for(const p of peers)if(states.has(p.provider))rows.set(p.id??`${p.provider}:${p.nativeId}`,p);
+ for(const p of peers){const product=known(p);if(product!==undefined)rows.set(p.id??`${p.provider}:${p.nativeId}`,{...p,product});}
  for(const p of [...await listedPeers(manifests,home),...phase.peers]){
-  const id=p.id??`${p.provider}:${p.nativeId}`;
-  if(states.has(p.provider)&&!rows.has(id))rows.set(id,{...p,id});
+  const id=p.id??`${p.provider}:${p.nativeId}`,product=known(p);
+  if(product!==undefined&&!rows.has(id))rows.set(id,{...p,product});
  }
  const read=options.inbox??((nativeId:string)=>findClaudeInbox(nativeId,{home:options.home}));
  return Promise.all([...rows.values()].map(async p=>{
-  const inbox=p.provider==='claude'?await read(p.nativeId).catch(()=>null):null,verdict=whoVerdict({...p,inbox},states.get(p.provider));
+  const inbox=p.provider==='claude'?await read(p.nativeId).catch(()=>null):null,verdict=whoVerdict({...p,inbox},states.get(p.product!));
   return {id:p.id??`${p.provider}:${p.nativeId}`,provider:p.provider,nativeId:p.nativeId,...(p.displayName?{displayName:p.displayName}:{}),versionStatus:p.versionStatus??null,...verdict};
  }));
 }

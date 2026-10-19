@@ -38,6 +38,9 @@ export type ManifestEvidence = { source: string; stages: ManifestEvidenceStage[]
 export type ManifestPermissions = { operations: ManifestOperation[]; approvalMark: typeof MANIFEST_APPROVAL_MARK };
 export type ManifestInstall = { hook: string | null; steps: string[] };
 export type ManifestLimits = { maxText: number };
+// The adapter may expose the three ports the core drives: discovery (`list`), writing (`send`) and evidence (`evidence`).
+// A manifest that names none is listed and written through the core's channel handlers, as the v1 products are.
+export type ManifestExports = { list?: string; send?: string; evidence?: string };
 
 export type ProductManifest = {
   schemaVersion: typeof MANIFEST_SCHEMA_VERSION;
@@ -53,6 +56,7 @@ export type ProductManifest = {
   permissions: ManifestPermissions;
   install: ManifestInstall;
   limits?: ManifestLimits;
+  exports?: ManifestExports;
 };
 
 export type ManifestPeer = {
@@ -152,12 +156,23 @@ function limits(value: unknown): ManifestLimits {
   if (!Number.isSafeInteger(v.maxText) || (v.maxText as number) < 1) invalid();
   return { maxText: v.maxText as number };
 }
+const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/;
+function exportsField(value: unknown): ManifestExports {
+  const v = exact(value, [], ['list', 'send', 'evidence']);
+  const out: ManifestExports = {};
+  for (const key of ['list', 'send', 'evidence'] as const) {
+    if (v[key] === undefined) continue;
+    out[key] = text(v[key], 64, IDENTIFIER);
+  }
+  if (!Object.keys(out).length) invalid();
+  return out;
+}
 
 export function parseManifest(value: unknown): ProductManifest {
   const top = exact(
     value,
     ['schemaVersion', 'product', 'provider', 'displayName', 'adapter', 'identity', 'discovery', 'write', 'evidence', 'states', 'permissions', 'install'],
-    ['limits'],
+    ['limits', 'exports'],
   );
   if (top.schemaVersion !== MANIFEST_SCHEMA_VERSION) invalid();
   const manifest: ProductManifest = {
@@ -174,6 +189,7 @@ export function parseManifest(value: unknown): ProductManifest {
     permissions: permissions(top.permissions),
     install: install(top.install),
     ...(top.limits === undefined ? {} : { limits: limits(top.limits) }),
+    ...(top.exports === undefined ? {} : { exports: exportsField(top.exports) }),
   };
   return structuredClone(manifest);
 }
@@ -222,10 +238,32 @@ export async function loadManifests(directory = MANIFEST_DIR): Promise<ProductMa
   return manifests;
 }
 
+// The ports a manifest may name in its adapter module. They are deliberately shaped like the existing product adapters:
+// a list port answers peer rows, a send port takes one envelope, and an evidence port answers the records the product wrote.
+// `unknown` here is the same meaning as elsewhere: the write happened but its outcome cannot be proven.
+export type ManifestAdapterPeer = {
+  id?: string;
+  provider?: string;
+  nativeId: string;
+  generation?: string;
+  displayName?: string;
+  title?: string;
+  status?: string | null;
+  state?: string | null;
+  reason?: string | null;
+  versionStatus?: string | null;
+};
+export type ManifestAdapterReceipt = { status: 'submitted' | 'unknown' | 'rejected'; nativeMessageId?: string; reason?: string; version?: string };
+export type ManifestAdapterPort = {
+  list?: (options: { home: string }) => Promise<unknown>;
+  send?: (envelope: Record<string, unknown>, options: { home: string }) => Promise<ManifestAdapterReceipt>;
+  evidence?: (target: Record<string, unknown>, options: { home: string }) => Promise<unknown>;
+};
+
 // Registration is per product and per manifest: adding a product is dropping one file in src/manifests and nothing else.
 export class ManifestRegistry {
   private byProduct = new Map<string, ProductManifest>();
-  private directory: string;
+  readonly directory: string;
   constructor(manifests: readonly unknown[] = [], directory = MANIFEST_DIR) {
     this.directory = directory;
     for (const manifest of manifests) this.register(manifest);
@@ -263,4 +301,29 @@ export class ManifestRegistry {
 
 export async function loadManifestRegistry(directory = MANIFEST_DIR): Promise<ManifestRegistry> {
   return new ManifestRegistry(await loadManifests(directory), directory);
+}
+
+// The core never imports a product by name: it imports the module the manifest names and calls the ports the manifest
+// declares. A port the manifest does not declare, or that its module does not export, is absent rather than guessed.
+const ports = new Map<string, Promise<ManifestAdapterPort>>();
+export function loadAdapterPort(manifest: ProductManifest, directory = MANIFEST_DIR): Promise<ManifestAdapterPort> {
+  const module = adapterModule(manifest, directory);
+  const cached = ports.get(module);
+  if (cached) return cached;
+  const loading = (async () => {
+    const loaded = (await import(pathToFileURL(module).href)) as Record<string, unknown>;
+    const pick = <T>(name: string | undefined): T | undefined =>
+      name !== undefined && typeof loaded[name] === 'function' ? (loaded[name] as T) : undefined;
+    return {
+      list: pick<NonNullable<ManifestAdapterPort['list']>>(manifest.exports?.list),
+      send: pick<NonNullable<ManifestAdapterPort['send']>>(manifest.exports?.send),
+      evidence: pick<NonNullable<ManifestAdapterPort['evidence']>>(manifest.exports?.evidence),
+    };
+  })().catch((error) => {
+    // A module that could not be loaded or evaluated is not cached: a later call may see a fixed file.
+    ports.delete(module);
+    throw error;
+  });
+  ports.set(module, loading);
+  return loading;
 }

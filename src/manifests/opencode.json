@@ -37,5 +37,10 @@
   },
   "limits": {
     "maxText": 8000
+  },
+  "exports": {
+    "list": "listOpencodePeers",
+    "send": "sendOpencodeEnvelope",
+    "evidence": "readOpencodeStructure"
   }
 }

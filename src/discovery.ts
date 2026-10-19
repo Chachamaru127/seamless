@@ -6,6 +6,9 @@ import type { Observation, Registration, Query } from './protocol.ts';
 import type { GitContext } from './git-context.ts';
 import { findClaudeInbox } from './adapters/claude.ts';
 import type { ClaudeInboxState } from './adapters/claude.ts';
+import { homedir } from 'node:os';
+import { loadAdapterPort, loadManifestRegistry } from './core/manifest.ts';
+import type { ManifestAdapterPeer, ManifestRegistry, ManifestState, ManifestProvider } from './core/manifest.ts';
 
 type Result={status:string;target?:string;binding?:string;candidates?:Candidate[]};
 type Candidate={id:string;provider:string;nativeId:string;generation:string;host:string;displayName:string;role?:string;declaredWorkspace:string;operations:{read:boolean;send:boolean};observation:{status:string;reason:string;at:number|null;context:GitContext|null};rank:number|null;inScope:boolean;reason:string};
@@ -14,18 +17,26 @@ type Binding={id:string;state:'issued'|'checking'|'consumed'|'expired'|'supersed
 // The three states of Plans.md 3 章. unreachable carries the one reason that says why nothing can be handed over.
 export type WhoState='ready'|'next_turn'|'wake_needed'|'unreachable';
 export type WhoVerdict={state:WhoState;reason?:string};
+// A phase 2 product (Antigravity, S5) is listed as unverified; it is not a v1 manifest provider yet.
+export type WhoProvider=ManifestProvider|'antigravity';
 // What who has to go on: the scan's own words where they exist, the Claude sessions JSON, and the compatibility table.
-export type WhoPeer={id?:string;provider:Registration['provider'];nativeId:string;displayName?:string;status?:string|null;reason?:string|null;versionStatus?:string|null;inbox?:ClaudeInboxState|null};
-export type WhoRow={id:string;provider:Registration['provider'];nativeId:string;displayName?:string;state:WhoState;reason?:string;versionStatus:string|null};
-export type WhoOptions={home?:string;inbox?:(nativeId:string)=>Promise<ClaudeInboxState>};
+export type WhoPeer={id?:string;provider:WhoProvider;nativeId:string;displayName?:string;status?:string|null;reason?:string|null;versionStatus?:string|null;inbox?:ClaudeInboxState|null};
+export type WhoRow={id:string;provider:WhoProvider;nativeId:string;displayName?:string;state:WhoState;reason?:string;versionStatus:string|null};
+// `manifests` is the registration the listing is built from. Without it the v1 manifests are read from src/manifests:
+// a product whose manifest is gone is not listed, whether or not the scan still reports it.
+export type WhoOptions={home?:string;inbox?:(nativeId:string)=>Promise<ClaudeInboxState>;manifests?:ManifestRegistry};
 // ready         = the write port is open and the peer said it is idle (Claude sessions JSON `status`).
 // next_turn     = the peer is working, or its product takes the request at its next turn (hooks, Codex queue).
 // wake_needed   = the peer is stopped or unloaded and is woken before it can take anything (Grok Bot, an unloaded Codex thread).
 // unreachable   = no write port, or the compatibility table says it waits for a fix. The reason is never guessed from a product name.
-export function whoVerdict(p:WhoPeer):WhoVerdict{
+// `states` is the product's own state table from its manifest: a native word (idle, busy, revoked, unverified) maps to one
+// listing state without the core knowing the product. A word the table does not name falls through to the rules below.
+export function whoVerdict(p:WhoPeer,states?:Record<string,ManifestState>):WhoVerdict{
  const unreachable=(reason:string):WhoVerdict=>({state:'unreachable',reason});
  if(p.versionStatus==='fix_required')return unreachable('fix_required');
  if(p.versionStatus==='unverified_desktop')return unreachable('desktop_unavailable');
+ const mapped=states&&typeof p.status==='string'?states[p.status]:undefined;
+ if(mapped)return {state:mapped,...(mapped==='unreachable'?{reason:p.reason??p.status??'unreachable'}:{})};
  if(p.provider==='claude'){
   // A stopped conversation keeps its last sessions JSON (socket and status), so the process state decides before the record does.
   if(p.status==='offline'||p.reason==='process_exited')return {state:'wake_needed'};
@@ -55,10 +66,57 @@ export function whoVerdict(p:WhoPeer):WhoVerdict{
  // A registered Grok Bot has no process or awake marker on this Mac; it is reached by a webhook that wakes it.
  return {state:'wake_needed'};
 }
+// Rows a manifest's own discovery port answers. The manifest names the export, so the core never knows a product.
+async function listedPeers(manifests:ManifestRegistry,home:string):Promise<WhoPeer[]>{
+ const out:WhoPeer[]=[];
+ for(const manifest of manifests.list()){
+  if(!manifest.exports?.list)continue;
+  try{
+   const port=await loadAdapterPort(manifest,manifests.directory);
+   const value=await port.list?.({home});
+   const rows=Array.isArray(value)?value:(value&&typeof value==='object'&&Array.isArray((value as {peers?:unknown}).peers)?(value as {peers:unknown[]}).peers:[]);
+   for(const item of rows){
+    if(!item||typeof item!=='object')continue;
+    const row=item as ManifestAdapterPeer&Record<string,unknown>;
+    const provider=typeof row.provider==='string'?row.provider:manifest.provider;
+    // The manifest's identity field names the product's own spelling of the conversation id (`sessionId`, `id`, ...).
+    const identity=row[manifest.identity.id];
+    const nativeId=typeof row.nativeId==='string'?row.nativeId:typeof identity==='string'?identity:null;
+    if(!nativeId)continue;
+    const label=typeof row.displayName==='string'?row.displayName:typeof row.title==='string'?row.title:undefined;
+    out.push({id:typeof row.id==='string'?row.id:`${provider}:${nativeId}`,provider:provider as WhoProvider,nativeId,...(label?{displayName:label}:{}),status:row.state??row.status??null,reason:row.reason??null,versionStatus:row.versionStatus??null});
+   }
+  }catch{}
+ }
+ return out;
+}
+// The phase 2 declaration stays outside the core manifest set: its provider is not a v1 provider. Who lists it as
+// `unverified` only when the product's executable is actually present (S5); doctor answers the same question for setup.
+async function phase2Peers(home:string):Promise<{peers:WhoPeer[];states:Record<string,Record<string,ManifestState>>}>{
+ try{
+  const [{readAntigravityManifest,listAntigravity},{findAntigravity}]=await Promise.all([import('./adapters/antigravity.ts'),import('./setup.ts')]);
+  const manifest=await readAntigravityManifest(),found=await findAntigravity(home);
+  const peers:WhoPeer[]=listAntigravity({binary:found.binary,hooks:false},manifest).map(row=>({id:row.id,provider:'antigravity',nativeId:row.id,displayName:row.displayName,status:row.status,versionStatus:row.versionStatus}));
+  return {peers,states:{antigravity:{unverified:'unreachable',absent:'unreachable'}}};
+ }catch{return {peers:[],states:{}};}
+}
 export async function classifyPeers(peers:WhoPeer[],options:WhoOptions={}):Promise<WhoRow[]>{
+ // The registry is the list, not the scan: a product whose manifest is gone is not shown, and a product whose manifest
+ // names a discovery port is shown even when the scan does not know it. Its own state table gives the listing state.
+ const manifests=options.manifests??await loadManifestRegistry(),home=options.home??homedir();
+ const states=new Map<string,Record<string,ManifestState>>();
+ for(const manifest of manifests.list())states.set(manifest.provider,manifest.states);
+ const phase=await phase2Peers(home);
+ for(const [provider,table] of Object.entries(phase.states))states.set(provider,table);
+ const rows=new Map<string,WhoPeer>();
+ for(const p of peers)if(states.has(p.provider))rows.set(p.id??`${p.provider}:${p.nativeId}`,p);
+ for(const p of [...await listedPeers(manifests,home),...phase.peers]){
+  const id=p.id??`${p.provider}:${p.nativeId}`;
+  if(states.has(p.provider)&&!rows.has(id))rows.set(id,{...p,id});
+ }
  const read=options.inbox??((nativeId:string)=>findClaudeInbox(nativeId,{home:options.home}));
- return Promise.all(peers.map(async p=>{
-  const inbox=p.provider==='claude'?await read(p.nativeId).catch(()=>null):null,verdict=whoVerdict({...p,inbox});
+ return Promise.all([...rows.values()].map(async p=>{
+  const inbox=p.provider==='claude'?await read(p.nativeId).catch(()=>null):null,verdict=whoVerdict({...p,inbox},states.get(p.provider));
   return {id:p.id??`${p.provider}:${p.nativeId}`,provider:p.provider,nativeId:p.nativeId,...(p.displayName?{displayName:p.displayName}:{}),versionStatus:p.versionStatus??null,...verdict};
  }));
 }

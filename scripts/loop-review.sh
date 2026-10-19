@@ -7,6 +7,7 @@
 #   4. PASS なら Issue を閉じて loop/integration へ --no-ff で merge。FAIL なら loop:blocked
 set -uo pipefail
 cd "$(dirname "$0")/.."
+ROOT_DIR=$(pwd)
 num="${1:?issue number}"
 BASE="loop/integration"; LOG_DIR=".local/loop"; mkdir -p "$LOG_DIR"
 STAMP=$(date +%Y%m%dT%H%M%S); branch="loop/$num"
@@ -15,11 +16,11 @@ sha=$(git rev-parse --short "$branch")
 title=$(gh issue view "$num" --json title --jq .title)
 body=$(gh issue view "$num" --json body --jq .body)
 done_when=$(printf '%s' "$body" | awk '/^## Done when/{f=1;next}/^## /{f=0}f')
-diff_file="$LOG_DIR/$STAMP-issue-$num-diff.patch"
+diff_file="$ROOT_DIR/$LOG_DIR/$STAMP-issue-$num-diff.patch"
 git diff "$BASE...$branch" > "$diff_file"
 stat=$(git diff --stat "$BASE...$branch" | tail -1)
 
-req="$LOG_DIR/$STAMP-issue-$num-review-request.md"
+req="$ROOT_DIR/$LOG_DIR/$STAMP-issue-$num-review-request.md"
 cat > "$req" <<EOF
 # 判定依頼（Issue #$num: ${title}）
 対象の版: ブランチ ${branch}（${sha}）。基点: ${BASE}。差分は $PWD/${diff_file}（${stat}）。
@@ -38,13 +39,17 @@ $done_when
 先頭に PASS / FAIL / 判定不能。次に番号ごとの Yes / No と根拠 1 行。最後に「残件」（Done when の外で気づいた穴。判定には使わない）。日本語、1,500 字以内。
 EOF
 
-# 作業ツリーを判定対象の版にする（判定役が実行検査できるように）
+# 作業ツリーを判定対象の版にする（判定役が実行検査できるように）。WT が指定されていれば worktree で判定する
 cur=$(git branch --show-current)
-if ! git diff --quiet || ! git diff --cached --quiet; then echo "作業ツリーが汚れている。判定を中止"; exit 2; fi
-git switch -q "$branch"
+if [ -n "${WT:-}" ]; then
+  cd "$WT" || exit 2
+else
+  if ! git diff --quiet || ! git diff --cached --quiet; then echo "作業ツリーが汚れている。判定を中止"; exit 2; fi
+  git switch -q "$branch"
+fi
 
 # 判定役の環境は読み取り専用で実行検査ができないことがある。リーダーが同じ版で機械検査を走らせ、出力を証拠として渡す。
-ev="$LOG_DIR/$STAMP-issue-$num-evidence.log"
+ev="$ROOT_DIR/$LOG_DIR/$STAMP-issue-$num-evidence.log"
 {
   echo "== git rev-parse HEAD"; git rev-parse HEAD
   echo "== HOME=\$(mktemp -d) bash scripts/verify.sh (tail)"; HOME=$(mktemp -d) bash scripts/verify.sh 2>&1 | tail -12; echo "exit=${PIPESTATUS[0]}"
@@ -59,16 +64,16 @@ $(cat "$ev" | tail -40)
 判定役が自分で実行できない項目は、この出力と差分を根拠に判定してよい。出力に無い項目は「判定不能」ではなく、差分とファイルの中身から判定する。
 EOF2
 
-haiku="$LOG_DIR/$STAMP-issue-$num-haiku.md"
+haiku="$ROOT_DIR/$LOG_DIR/$STAMP-issue-$num-haiku.md"
 { echo "あなたは図面検査役です。Issue の Done when と差分の食い違いだけを、行間を読まずに挙げてください。合格を出さず、食い違いの一覧（無ければ「食い違いなし」）を返してください。"; echo; cat "$req"; } \
   | claude-headless -p --model claude-haiku-5-5 --effort medium --permission-mode plan --tools Read,Glob,Grep,Bash --strict-mcp-config > "$haiku" 2>"$haiku.err"
 echo "haiku: exit=$? ($haiku)"
 
-judge="$LOG_DIR/$STAMP-issue-$num-judge.md"
+judge="$ROOT_DIR/$LOG_DIR/$STAMP-issue-$num-judge.md"
 codex-headless exec -s read-only -m gpt-6-astra -c 'model_reasoning_effort="high"' "あなたは判定役です。作った家系（DeepSeek、opencode）と別の家系として、同じ版で Done when を確かめてください。
 $(cat "$req")" </dev/null > "$judge" 2>"$judge.err"
 echo "judge: exit=$? ($judge)"
-git switch -q "$cur"
+if [ -z "${WT:-}" ]; then git switch -q "$cur"; else cd "$ROOT_DIR"; fi
 
 verdict=$(head -c 400 "$judge" | rg -o -m1 "PASS|FAIL|判定不能" | head -1)
 echo "verdict: ${verdict:-none}"

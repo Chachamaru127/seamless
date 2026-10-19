@@ -99,4 +99,4 @@
 
 1. H5 名前と配布の時期。
 2. H6 規約の確認。
-3. 解決（2026-10-19 本人「T3 Code 経由で入っている」）: 実行ファイルは `~/.t3-ja/userdata/providers/antigravity/<hash>/antigravity-cli/` と `antigravity-acp/` の中（T3 が管理する ACP 版 1.1.1）。PATH には無い。発見と hooks の有無は T09 で確かめる。
+3. 解決（2026-10-19 本人「T3 Code 経由で入っている」）: 実行ファイルは T3 Code が管理する `~/.t3-ja/tools/antigravity-acp/` 配下（ACP 版 1.1.1）、会話と設定は `~/.t3-ja/userdata/providers/antigravity/<hash>/`。PATH には無い。発見と hooks の有無は T09 で確かめる。

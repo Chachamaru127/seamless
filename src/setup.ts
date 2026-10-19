@@ -167,8 +167,9 @@ async function writeSettings(file:string,text:string):Promise<void>{
  try{await rename(temp,file);}catch(error){await unlink(temp).catch(()=>{});throw error;}
 }
 function sameRegistration(value:unknown,entry:McpRegistration):boolean{
- const v=value as {command?:unknown;args?:unknown};
- return !!v&&typeof v==='object'&&v.command===entry.command&&Array.isArray(v.args)&&v.args.length===entry.args.length&&v.args.every((a,i)=>a===entry.args[i]);
+ // The type decides how the command is launched: the same command and args under another type is a different server.
+ const v=value as {type?:unknown;command?:unknown;args?:unknown};
+ return !!v&&typeof v==='object'&&v.type===entry.type&&v.command===entry.command&&Array.isArray(v.args)&&v.args.length===entry.args.length&&v.args.every((a,i)=>a===entry.args[i]);
 }
 export async function runSetup(options:SetupOptions={}):Promise<SetupResult>{
  const home=options.home??homedir(),dryRun=options.dryRun===true,env=options.env??process.env,now=options.now??Date.now;

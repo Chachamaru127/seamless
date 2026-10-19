@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "product": "claude-code",
+  "provider": "claude",
+  "displayName": "Claude Code",
+  "adapter": "../adapters/claude.ts",
+  "identity": {
+    "kind": "pid_session",
+    "id": "sessionId",
+    "generation": "pid@startedAt",
+    "record": "~/.claude/sessions/<pid>.json"
+  },
+  "discovery": {
+    "kind": "sessions_json",
+    "source": "~/.claude/sessions",
+    "fields": ["sessionId", "cwd", "messagingSocketPath", "kind", "status", "name", "peerProtocol"]
+  },
+  "write": {
+    "channel": "unix_socket",
+    "target": "messagingSocketPath"
+  },
+  "evidence": {
+    "source": "~/.claude/projects/<workspace>/<sessionId>.jsonl",
+    "stages": ["reached", "processing", "replied"]
+  },
+  "states": {
+    "idle": "ready",
+    "busy": "next_turn",
+    "offline": "wake_needed",
+    "no_inbox_socket": "unreachable"
+  },
+  "permissions": {
+    "operations": ["read", "send"],
+    "approvalMark": "limits.markUnapproved"
+  },
+  "install": {
+    "hook": null,
+    "steps": ["node src/cli.ts setup"]
+  }
+}

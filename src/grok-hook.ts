@@ -1,9 +1,9 @@
-import {readdir,rename,unlink} from 'node:fs/promises';
+import {readdir,rename} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {readGrokLedger,grokGeneration,grokRowAlive,SEAMLESS_ENVELOPE_MARK,type GrokOptions} from './adapters/grok.ts';
-import {conversationDir,inboxSafe,keyOf,readJson,requestOf,validEnvelope,publishFile,type GrokEnvelope,type GrokReceipt} from './grok-inbox.ts';
+import {conversationDir,inboxSafe,keyOf,readJson,requestOf,validEnvelope,validGrokReceipt,replaceFile,type GrokEnvelope,type GrokReceipt} from './grok-inbox.ts';
 // The Stop hook of a Grok CLI conversation (specs/202610-more-peers T1-4). Grok runs it as its own child at the end of each
 // turn (measured 2026-10-08: the hook's parent is the TUI process listed in Grok's ledger). It hands at most one envelope
 // addressed to this very process (its generation) to Grok as additionalContext, which Grok reads as hook feedback and acts on
@@ -11,8 +11,9 @@ import {conversationDir,inboxSafe,keyOf,readJson,requestOf,validEnvelope,publish
 export type HookOptions=GrokOptions&{
  pid?:number;ppid?:number;now?:()=>number;emit?:(text:string)=>void;
  alive?:(pid:number)=>boolean;hookName?:string|null;
- // Test faults: the hook dies right after taking the envelope, or right after handing it over.
- dieAfter?:'taken'|'handed';
+ // Test faults: the hook dies right after taking the envelope, right after handing it over, or right after its receipt
+ // has replaced the envelope's body (the crash the recovery below is for).
+ dieAfter?:'taken'|'handed'|'receipt';
 };
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function processAlive(pid:number){try{process.kill(pid,0);return true;}catch(e){return (e as NodeJS.ErrnoException).code==='EPERM';}}
@@ -27,11 +28,15 @@ export function renderEnvelope(e:GrokEnvelope):string{
 }
 async function names(dir:string){try{return (await readdir(dir)).filter(n=>n.endsWith('.json')&&!n.endsWith('.tmp'));}catch{return [];}}
 // An envelope a dead hook took may already be in Grok's context: its outcome is unknown, and it is never put back.
+// A handed file that already holds a receipt is the last step unfinished: its body is already gone, so the receipt is
+// finished into delivered/ rather than reported as unknown.
 async function recover(dir:string,self:number,alive:(pid:number)=>boolean){
  for(const name of await names(join(dir,'handed'))){
   const m=/^([0-9a-f]{64})\.(\d+)\.json$/.exec(name);if(!m)continue;
   const pid=Number(m[2]);if(pid===self||alive(pid))continue;
-  await rename(join(dir,'handed',name),join(dir,'unknown',m[1]+'.json')).catch(()=>{});
+  const handed=join(dir,'handed',name);
+  if(await readJson(handed,validGrokReceipt)){await rename(handed,join(dir,'delivered',m[1]+'.json')).catch(()=>{});continue;}
+  await rename(handed,join(dir,'unknown',m[1]+'.json')).catch(()=>{});
  }
 }
 export async function runGrokHook(input:any,o:HookOptions={}):Promise<{output:string|null;delivered?:string;reason:string}>{
@@ -68,10 +73,12 @@ export async function runGrokHook(input:any,o:HookOptions={}):Promise<{output:st
   (o.emit??(text=>process.stdout.write(text)))(output);
   if(o.dieAfter==='handed')throw new Error('fault_after_handed');
   const receipt:GrokReceipt={envelope:requestOf(envelope),sessionId,generation,hookAt:now(),reason:input.reason,promptId:typeof input.promptId==='string'?input.promptId:null,hookName:o.hookName!==undefined?o.hookName:process.env.GROK_HOOK_NAME??null,hookPid:self};
-  // The receipt is the request without its text: after this point no file in the inbox holds the body. Removing the
-  // handed file is the delivery's last step; a crash after the receipt leaves only metadata behind.
-  await publishFile(join(dir,'delivered',key+'.json'),JSON.stringify(receipt));
-  await unlink(handed).catch(()=>{});
+  // The receipt is the request without its text. It is renamed over the handed file, so from here on no file in the inbox
+  // holds the body: a hook that dies before the last step leaves only a receipt behind, never an envelope.
+  await replaceFile(handed,JSON.stringify(receipt));
+  if(o.dieAfter==='receipt')throw new Error('fault_after_receipt');
+  // The delivery's last step: one rename into delivered/. A crash before it is finished by the next hook (recover).
+  await rename(handed,join(dir,'delivered',key+'.json'));
   return {output,delivered:envelope.id,reason:'delivered'};
  }
  return {output:null,reason:'nothing_for_this_generation'};

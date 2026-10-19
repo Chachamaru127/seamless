@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readdir,writeFile,readFile,realpath,chmod,rename,mkdir,symlink} from 'node:fs/promises';
+import {readdir,writeFile,readFile,realpath,chmod,rename,mkdir,rm,symlink} from 'node:fs/promises';
 import {join} from 'node:path';
 import {spawn} from 'node:child_process';
 import {runGrokHook,renderEnvelope,type HookOptions} from '../src/grok-hook.ts';
@@ -16,6 +16,14 @@ async function setup(t:Parameters<typeof grokHome>[0]){
  const ls=async(state:string)=>(await readdir(join(dir,state))).filter(n=>n.endsWith('.json'));
  const opts=(pid:number,more:Partial<HookOptions>={}):HookOptions=>({home:f.home,ppid:501,pid,now:()=>1791448141653,hookName:HOOK,emit:()=>{},...f.grok,...more});
  return {f,dir,ls,opts};
+}
+async function assertNoBody(dir:string,body:string){
+ for(const state of ['pending','handed','delivered','failed','unknown']){
+  for(const entry of await readdir(join(dir,state),{withFileTypes:true})){
+   if(!entry.isFile()||!entry.name.endsWith('.json'))continue;
+   assert.equal((await readFile(join(dir,state,entry.name),'utf8')).includes(body),false,`${state}/${entry.name} keeps no body`);
+  }
+ }
 }
 test('one envelope: delivered with a receipt (request, conversation, generation, hook time, Stop reason, hook name)',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r1'));
@@ -108,6 +116,34 @@ test('an envelope handed over by a hook that died before its receipt becomes unk
  assert.match(emitted,/lsof/);assert.deepEqual(await s.ls('handed'),[`${k('r7')}.7001.json`]);
  const next=await runGrokHook(stop(),s.opts(7002,{alive:pid=>pid!==7001}));
  assert.equal(next.output,null);assert.deepEqual(await s.ls('unknown'),[k('r7')+'.json']);assert.deepEqual(await s.ls('pending'),[]);assert.deepEqual(await s.ls('delivered'),[]);
+});
+test('a hook that dies after saving the receipt leaves no body in the inbox, and the next hook finishes the delivery',async t=>{
+ const s=await setup(t);const body='保存の直後に落ちても受信箱に残らない本文';
+ await putEnvelope(s.f.home,{...envelope('r17'),text:body});
+ await assert.rejects(runGrokHook(stop(),s.opts(7001,{dieAfter:'receipt'})));
+ // The envelope's file is still in handed/, but it already holds the receipt: the body went with the same write.
+ assert.deepEqual(await s.ls('handed'),[`${k('r17')}.7001.json`]);
+ const held=JSON.parse(await readFile(join(s.dir,'handed',`${k('r17')}.7001.json`),'utf8'));
+ assert.equal(held.envelope.id,'r17');assert.equal(Object.hasOwn(held.envelope,'text'),false);
+ await assertNoBody(s.dir,body);
+ // The next hook is the one that removes it: the receipt lands in delivered/ and no state keeps the body.
+ const next=await runGrokHook(stop(),s.opts(7002,{alive:pid=>pid!==7001}));
+ assert.equal(next.output,null);assert.deepEqual(await s.ls('handed'),[]);assert.deepEqual(await s.ls('unknown'),[]);assert.deepEqual(await s.ls('delivered'),[k('r17')+'.json']);
+ await assertNoBody(s.dir,body);
+ const [receipt]=await receipts(s.f.home,ids.live);assert.equal(receipt.envelope.id,'r17');
+});
+test('a delivery whose last rename fails leaves no body, and the next hook collects the receipt',async t=>{
+ const s=await setup(t);const body='削除に失敗しても受信箱に残らない本文';
+ await putEnvelope(s.f.home,{...envelope('r18'),text:body});
+ // A directory where the receipt must land makes the last rename fail after the receipt replaced the body.
+ await mkdir(join(s.dir,'delivered',k('r18')+'.json'),{mode:0o700});
+ await assert.rejects(runGrokHook(stop(),s.opts(7001)));
+ await assertNoBody(s.dir,body);
+ await rm(join(s.dir,'delivered',k('r18')+'.json'),{recursive:true});
+ const next=await runGrokHook(stop(),s.opts(7002,{alive:pid=>pid!==7001}));
+ assert.equal(next.output,null);assert.deepEqual(await s.ls('handed'),[]);assert.deepEqual(await s.ls('delivered'),[k('r18')+'.json']);
+ await assertNoBody(s.dir,body);
+ const [receipt]=await receipts(s.f.home,ids.live);assert.equal(receipt.envelope.id,'r18');
 });
 test('an inbox whose directories changed after the write (open to others, or a link) gives nothing to Grok',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r14'));

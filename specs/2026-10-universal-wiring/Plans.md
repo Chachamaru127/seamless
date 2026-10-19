@@ -1,7 +1,7 @@
 # universal-wiring: どうやって作るか（Plans）
 
-状態: 2026-10-19 起草、同日 図面検査（Haiku 5.5）と敵対（Codex Astra）を反映して改訂 3。承認 2 回目（Plans.md）: 2026-10-19 立花さん「承認」。spec.md の AC1〜AC16、S1〜S8、H1〜H7 に対応する。
-製品の不変条件（ルート spec.md 1〜8）は定義し直さない。段階の名前は spec.md の用語に従う。
+状態: 2026-10-19 起草。図面検査 2 回と敵対を反映して改訂 4。承認 2 回目（Plans.md）: 2026-10-19 立花さん「承認」（改訂 3、commit a8065c8）。spec.md の AC1〜AC16、S1〜S9、H1〜H7 に対応する。
+製品の不変条件（ルート spec.md 1〜8）は定義し直さない。段階の名前は spec.md の用語に従う。内部名との対応: 受理 = `accepted`（予約済み）→ `submitted`（書込み成功）、渡った = `reached`（旧 `observed`）、処理中 = `processing`、返事 = `replied`、不明 = `unknown`。状態: 保留中 = `held`、読取り失敗 = `read_failed`、拒否 = `refused`。3 状態: すぐ渡せる = `ready`、次の区切りで渡す = `next_turn`、起こすと届く = `wake_needed`、受信不可 = `unreachable`。
 
 ## 1. 作りの方針
 
@@ -11,7 +11,7 @@
 4. **常駐なし。** 照会のたびに読む。予約は `~/.seamless/reservations/`（現行）。
 5. **公開面を削る。** 旧 `--registry` 方式、Claude Desktop の band mod、status panel、Dot の実験は npm の同梱物から外す（内部と試験には残す）。
 6. **検証は hermetic。** `scripts/verify.sh` を、Keychain と Claude CLI を要する部分と要しない部分に分け、CI は後者だけ。Nestra V2 の AC27（一時のホーム、外への通信なし）と同じ条件。
-7. **人の確認の印。** `markUnapproved` は現行の limits の仕組みを維持し、manifest 基盤へ移すときも「名簿なしの経路だけが付ける」を変えない（不変条件 3）。
+7. **人の確認の印。** 不変条件 3 のとおり、`humanApproval:true` は書かず、`humanApproval:false` は `~/.seamless/limits.json` の `markUnapproved:true` のときだけ付ける。manifest 基盤へ移しても、この条件と「旧 `--registry` の経路は limits.json を読まないので付けない」を変えない。
 
 ## 2. 構成（新規 / 改修）
 
@@ -32,6 +32,8 @@
 
 ## 3. 経路（製品ごと）
 
+3 状態の判定表（AC2）: `ready` = 書込み口が開いていて相手の状態が待機中（Claude: sessions の `status` が idle。Codex: IPC か rollout で turn が走っていない。opencode: plugin が idle を返す。Grok Bot: 起きている）。`next_turn` = 書込み口は開いているが相手が作業中、または hooks の製品（Cursor、Antigravity、Grok CLI）。`wake_needed` = Grok Bot が休止中。`unreachable` = 受信口が無い、または互換表で修正待ち。
+
 | 製品 | 発見 | 書込み | 証拠（渡った / 処理中 / 返事） | 保留中の判定 | 段 |
 |---|---|---|---|---|---|
 | Claude Code | `~/.claude/sessions/*.json`（`messagingSocketPath`、`kind`、`status`、`cwd`、`name`） | socket に `{"type":"user",…}` | `~/.claude/projects/…/<sessionId>.jsonl` に依頼 ID / そのターン開始 / replyTo | 受理後 N 秒で jsonl に未出現。理由: `crossSessionInbound` が hold、または権限モードの組み合わせ（文書の既定: 片方が bypass）→ `claude_hold` | push |
@@ -48,10 +50,10 @@ Nestra V2（T3 Code 日本語版 + Nestra 層）は、routecli と seamless（bo
 
 1. **Nestra 専用の部分を境界の外に置く。** 玄関口（gateway）は `~/.seamless/gateway.json` の有無で道が決まる任意アダプタ（Nestra の o3-gateway.md 2 章）。公開版のコアは gateway を知らず、manifest の仕組みで後から足せる。
 2. **判断の受け皿に流せる形。** `seamless status --json` と、受信した依頼の記録（本文なし。ID、相手、段階、時刻、replyTo）を決まった形で出す。Nestra は「外の入口の判断を受け皿に並べ、答えを seamless で返す」（Nestra spec 7 章）。
-3. **T3 のスレッドから送れる。** T3 の会話は seamless の MCP（4 道具）を呼べる（AC14）。
-4. **T3 のスレッドを宛先にできるかは実機で判定する。** 2026-10-19 の実測（evidence.md）: T3 が起動する `claude --output-format stream-json` のプロセス（pid 10142、88557）には sessions JSON も socket も無い。観測した範囲で受信口を持つのは Claude Desktop の対話セッション（`kind: interactive`、`entrypoint: claude-desktop`、11 件）。v1 では T3 のスレッドは「受信不可（受信口なし）」と一覧に出す（AC16）。T3 側へ届けるのは Nestra が自分の口（T3 の `t3_thread_send`）で行う。
+3. **T3 のスレッドから送れる見込み。** T3 の会話は MCP サーバーを登録できるので、seamless の MCP（4 道具）を呼べると見込む。2026-10-19 時点で未実測（AC14、人の作業、週 5〜6）。
+4. **T3 のスレッドを宛先にできるかは実機で判定し、v1 の表示はその結果に従う。** 2026-10-19 の実測（evidence.md）: T3 が起動する `claude --output-format stream-json` のプロセス（pid 10142、88557）には sessions JSON も socket も無い。観測した範囲で受信口を持つのは Claude Desktop の対話セッション（`kind: interactive`、`entrypoint: claude-desktop`、11 件）。v1 では T3 のスレッドは「受信不可（受信口なし）」と一覧に出す（AC16）。T3 側へ届けるのは Nestra が自分の口（T3 の `t3_thread_send`）で行う。
 5. **検証が hermetic。** Nestra の AC27 と同じ条件で seamless の試験が通る。
-6. **返信内の表示。** `status --json` から 5 段階を描く template を同梱し、T3 の `html_render` で出せる（AC15）。
+6. **返信内の表示。** `status --json` から 5 段階を描く template を同梱し、T3 の `html_render` で出す（AC15。未実測）。
 
 ## 5. 順番と週（AC の対応つき）
 
@@ -59,7 +61,7 @@ Nestra V2（T3 Code 日本語版 + Nestra 層）は、routecli と seamless（bo
 |---|---|---|---|
 | 1 | T12（最初）、T01、T02、T03、T04、T15、T19。未決 3（Antigravity の実行ファイル）を本人に確認 | AC4、AC5、AC6、AC7、AC11 | 計測の記録（本文なし）。誤って「渡った」0。人の作業: AC7 の 15 往復 |
 | 2〜4 | T05、T06、T20、T11 | AC1、AC2、AC3、AC8 | 一時ホームで 10 秒以内。1 コマンドで 1 往復（人の作業）。CI 緑 |
-| 5〜6 | T07、T08、T09、T10、T17 | AC9、AC10、AC15、AC16 | 共通部分の差分 0。AC10 と AC14 は人の作業 |
+| 5〜6 | T07、T08、T09、T10、T17。人の作業: AC14（T3 から 3 製品へ）、AC10 | AC9、AC10、AC14、AC15、AC16 | 共通部分の差分 0。AC10 と AC14 は人の作業 |
 | 7〜8 | T16、T13 | AC12、AC13 | 秘密 0、同梱物一覧、5 指標の表（人の作業） |
 | 9〜10 | T14、T18 | AC12 | H5、H6 の後に公開 |
 | 11〜13 | 公開 β、issue 対応、互換表の月次追従 | AC11 | 第三者の issue に 1 週間以内に応答 |
@@ -74,8 +76,9 @@ Nestra V2（T3 Code 日本語版 + Nestra 層）は、routecli と seamless（bo
 - T12（hermetic CI）を最初の Issue にする。それまでの verify は Keychain と Claude plugin に依存するため、T12 より前の Issue は `loop:ready` にしない。
 - push、PR、公開はしない（H5 の後）。main には commit しない。
 - S8: 連続 3 回 blocked、作業ツリーが汚れて着手できない、着手中が 90 分超のときは、休止の印を置いて止まり、人が印を外すまで取らない。
+- S9: AC8 の計測で seamless のプロセスから外部接続が出たら、その経路を既定から外す（リーダーが Issue を起こす）。
 
-## 7. Open decisions（案。AI が決めない。tasks は「Open decision の値」を参照し、値を固定しない）
+## 7. Open decisions（2026-10-19 の Plans.md 承認で、下の「案」を既定値として採用。コードでは limits の設定値にし、本人が変えられる）
 
 1. 「保留中」と判定するまでの秒数 N。案: 20 秒。
 2. `codex queue --message` の本文の長さ上限。案: 4,000 文字。超える本文は要約せず拒否する。
@@ -91,15 +94,15 @@ Nestra V2（T3 Code 日本語版 + Nestra 層）は、routecli と seamless（bo
 | AC4 | `node scripts/measure.ts hold --target <claude bypass session>`。表示が `held` / `claude_hold`、jsonl に ID なし | 人 |
 | AC5 | `node scripts/measure.ts hold --target <codex goal thread>`。表示が `held` / `codex_goal` | 人 |
 | AC6 | `tests/delivery-unknown.test.ts`（書込み後に切断、同じ ID で再呼出し、書込み回数 1、状態 `unknown`） | ループ |
-| AC7 | `node scripts/measure.ts batch --n 15` の記録ファイル。`falseReached` が 0 | 人 |
-| AC8 | `node scripts/measure.ts footprint`（往復の前後で `ps`、往復完了後に `~/.seamless` と各受信箱の本文 0 バイト、往復中 1 秒ごとに `lsof -i -P` を標本し新規接続 0） | リーダー |
+| AC7 | `node scripts/measure.ts batch --plan claude:5,codex-desktop:5,grok-bot:5` の記録ファイル（各製品で待機中 2、作業中 1、hold または目標実行中 1、休止中または再起動 1）。`falseReached` が 0 | 人 |
+| AC8 | `node scripts/measure.ts footprint`（往復の前後で seamless 名のプロセスを `ps` で数える、往復完了後に `~/.seamless` と各受信箱の本文 0 バイト、往復中 1 秒ごとに seamless のプロセスとその子に限って `lsof -i -P -a -p <pids>` を標本し接続 0） | リーダー |
 | AC9 | アダプタ追加の Issue の commit で、その直前の commit（親）との `git diff --stat <親>..HEAD -- src/core src/cli.ts src/mcp.ts src/delivery.ts` が 0 行 | ループ |
 | AC10 | `node scripts/measure.ts roundtrip --target opencode-<id>` を待機中と作業中で | 人 |
 | AC11 | `node src/cli.ts compat-md` と `who --json` の `versionStatus` | ループ |
 | AC12 | `bash scripts/peer-secrets.sh`（0 件）、`npm pack --dry-run`（一覧）、`git grep -n -e "grok-bot-vm" -e "Bot ID" -e "accountRef"`（0 件）、内部 API の再現の判定表（T13 が `docs/release.md` に書く） | ループ + リーダー |
 | AC13 | `node scripts/measure.ts compare` の表（Reason 導入後、順番に）。復帰成功率 = 既に開いている会話へ 10 回送って返信 ID が一致した回数 / 10（製品ごと） | 人（H3） |
 | AC14 | T3 の会話から MCP `send` を 3 製品へ、`status` で replyTo 一致 | 人 |
-| AC15 | `node src/cli.ts status --json <id> \| node scripts/status-html.ts` を html_preview で確認し、T3 の会話で html_render に出して段階を突き合わせる | リーダー |
+| AC15 | `node src/cli.ts status --json <id> \| node scripts/status-html.ts` を html_preview で確認し、T3 の会話で html_render に出して段階を突き合わせる（未実測） | リーダー |
 | AC16 | `tests/who.test.ts` に、`messagingSocketPath` の無い sessions JSON（または sessions JSON の無い claude プロセス）が `unreachable: no_inbox_socket` で出る試験 | ループ |
 
 実測での socket の場所: `/tmp/cc-socks/<pid>.sock`（sessions JSON の `messagingSocketPath`）。公式文書の `/tmp/cc-socks-<uid>` は、通常の場所が使えないときの代替。コードは JSON の欄を正とし、パスを決め打ちしない。

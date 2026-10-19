@@ -67,9 +67,23 @@ const emit=(value:unknown)=>{console.log(JSON.stringify(value));};
 // ---------- records (never the body) ----------
 type StageRecord={stage:string;status:string;evidenceCount:number};
 type MeasureRecord={kind:string;id:string;target:string;at:string;mode:'fake'|'real';delivery?:string;stages?:StageRecord[];state?:string;reason?:string;replyId?:string|null;match?:boolean;seconds?:number;operations?:number;falseReached?:boolean;error?:string};
-function stamp():string{return new Date().toISOString().replace(/[-:.TZ]/g,'').slice(0,14);}
+// Milliseconds and the pid keep two runs in the same second apart; the caller still avoids overwriting an existing file.
+function stamp():string{return new Date().toISOString().replace(/[-:.TZ]/g,'').slice(0,17);}
 function defaultRecordFile(kind:string,fake:boolean):string{
- return fake?join(REPO,'out','measure',`${kind}-${stamp()}.jsonl`):join(homedir(),'.seamless','measurements',`${kind}-${stamp()}.jsonl`);
+ const name=`${kind}-${stamp()}-${process.pid}.jsonl`;
+ return fake?join(REPO,'out','measure',name):join(homedir(),'.seamless','measurements',name);
+}
+async function fileExists(path:string):Promise<boolean>{
+ try{await lstat(path);return true;}catch{return false;}
+}
+async function uniqueRecordFile(kind:string,fake:boolean):Promise<string>{
+ const base=defaultRecordFile(kind,fake);
+ if(!(await fileExists(base)))return base;
+ for(let i=1;i<10000;i++){
+  const candidate=base.replace(/\.jsonl$/,`-${i}.jsonl`);
+  if(!(await fileExists(candidate)))return candidate;
+ }
+ throw new MeasureError('record_file_conflict',base);
 }
 async function writeRecords(path:string,records:unknown[]):Promise<void>{
  await mkdir(dirname(path),{recursive:true,mode:0o700});
@@ -247,7 +261,7 @@ async function runBatch(plan:string,outPath:string|undefined,text:string,waitSec
   }
   for(let i=0;i<entry.count;i++)records.push(await realSendAndTrack(pool[i%pool.length]!,'roundtrip',text,waitSeconds));
  }
- const path=outPath??defaultRecordFile('batch',fakeOnly);
+ const path=outPath??await uniqueRecordFile('batch',fakeOnly);
  const summary={kind:'batch',plan,at:new Date().toISOString(),entries:records.length,falseReached:records.filter(r=>r.falseReached===true).length,mode:fakeOnly?'fake':'real'};
  await writeRecords(path,[summary,...records]);
  return {recordFile:path,entries:records,falseReached:summary.falseReached};
@@ -269,21 +283,19 @@ async function processTable():Promise<Proc[]>{
 }
 function sourceDir():string{return join(REPO,'src');}
 function realPath(path:string):string{try{return realpathSync(path);}catch{return resolve(path);}}
-// A seamless process is a node process that runs a .ts file under this repository's src/. Any argument may be that file:
-// `node --enable-source-maps /repo/src/cli.ts mcp` and `node /repo/src/grok-hook.ts` both count, while curl, editors and
-// another repository's src/cli.ts do not. Only absolute arguments are compared, because a relative one would resolve
-// against this process's directory rather than the target process's. The comparison uses the real path, so a symlinked
-// checkout still matches its source files.
+// A seamless process is a node process whose script path (the first argument after the node options, i.e. after every
+// argument starting with '-') really is a .ts file under this repository's src/. Later arguments are not inspected, so
+// `node /other/viewer.js /repo/src/cli.ts` does not count, while `node --enable-source-maps /repo/src/cli.ts mcp` and
+// `node /repo/src/grok-hook.ts` do. Only an absolute path is compared, because a relative one would resolve against this
+// process's directory rather than the target process's. The real path lets a symlinked checkout match its source files.
 export function isSeamlessCli(command:string,srcDir=sourceDir()):boolean{
  const tokens=command.trim().split(/\s+/);
  if(tokens.length<2)return false;
  if(!/^node(?:js)?$/.test(basename(tokens[0]!)))return false;
- const root=realPath(srcDir);
- return tokens.slice(1).some(token=>{
-  if(!token.startsWith('/'))return false;
-  const path=realPath(token);
-  return path.endsWith('.ts')&&path.startsWith(root+sep);
- });
+ const script=tokens.slice(1).find(token=>!token.startsWith('-'));
+ if(!script||!script.startsWith('/'))return false;
+ const root=realPath(srcDir),path=realPath(script);
+ return path.endsWith('.ts')&&path.startsWith(root+sep);
 }
 export function seamlessProcesses(table:Proc[],srcDir=sourceDir()):number[]{
  return table.filter(p=>p.pid!==process.pid&&isSeamlessCli(p.command,srcDir)).map(p=>p.pid);
@@ -334,7 +346,7 @@ async function footprint(home:string){
  const inboxes=[];let inboxBytes=0;
  for(const path of inboxCandidates){const found=await bytesUnder(path);if(found.exists){inboxes.push({path,bytes:found.bytes});inboxBytes+=found.bytes;}}
  const connections=await connectionCount(scoped);
- return {status:'ok',at:new Date().toISOString(),summary:{processes:matched.length,targets:scoped.length,bytes:{store:store.bytes,inbox:inboxBytes},connections:connections.count},processes:{count:matched.length,pids:matched},store:{path:join(home,'.seamless'),bytes:store.bytes},inbox:{bytes:inboxBytes,paths:inboxes},connections:{count:connections.count,available:connections.available,pids:scoped,scope:'node processes running this repository src/*.ts and their children'}};
+ return {status:'ok',at:new Date().toISOString(),summary:{processes:scoped.length,nodeProcesses:matched.length,targets:scoped.length,bytes:{store:store.bytes,inbox:inboxBytes},connections:connections.count},processes:{count:scoped.length,pids:scoped,nodeCount:matched.length,nodePids:matched},store:{path:join(home,'.seamless'),bytes:store.bytes},inbox:{bytes:inboxBytes,paths:inboxes},connections:{count:connections.count,available:connections.available,pids:scoped,scope:'node processes running this repository src/*.ts and their children'}};
 }
 
 // ---------- compare ----------

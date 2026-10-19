@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
 import {mkdir,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {dirname,join,resolve} from 'node:path';
+import {basename,dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {promisify} from 'node:util';
 import {descendants,isSeamlessCli,parseProcessTable,seamlessProcesses} from '../scripts/measure.ts';
@@ -71,16 +71,22 @@ test('footprint targets node processes running this repository src/*.ts, whereve
   ` 105 101 node ${CLI} status`,
   ` 106 101 /usr/bin/helper --child`,
   ` 107 1 node ${join(REPO,'scripts','measure.ts')} footprint`,
+  ` 108 1 node /other/viewer.js ${CLI}`,
+  ` 109 1 node /other/viewer.js ${join(REPO,'src','grok-hook.ts')}`,
+  ` 110 1 node ${CLI} ${join(REPO,'src','grok-hook.ts')}`,
  ].join('\n'));
  const matched=seamlessProcesses(table);
- assert.deepEqual(matched,[101,102,105]);
+ assert.deepEqual(matched,[101,102,105,110]);
  const scoped=descendants(matched,table).filter(pid=>pid!==process.pid);
  assert.ok(scoped.includes(106));
- for(const unrelated of [103,104,107])assert.equal(scoped.includes(unrelated),false);
+ for(const unrelated of [103,104,107,108,109])assert.equal(scoped.includes(unrelated),false);
  assert.equal(isSeamlessCli(`node --enable-source-maps ${CLI} mcp`),true);
  assert.equal(isSeamlessCli(`node ${join(REPO,'src','grok-hook.ts')}`),true);
  assert.equal(isSeamlessCli(`python3 ${CLI}`),false);
  assert.equal(isSeamlessCli(`node /other/src/cli.ts`),false);
+ // The script path is the first argument after the node options; later arguments are not inspected.
+ assert.equal(isSeamlessCli(`node /other/viewer.js ${CLI}`),false);
+ assert.equal(isSeamlessCli(`node --enable-source-maps /other/viewer.js ${CLI}`),false);
 });
 
 test('footprint reports the process count, the store and inbox bytes, and a scoped connection count',async()=>{
@@ -91,6 +97,20 @@ test('footprint reports the process count, the store and inbox bytes, and a scop
  assert.equal(typeof summary.bytes.store,'number');
  assert.equal(typeof summary.bytes.inbox,'number');
  assert.ok(summary.connections===null||typeof summary.connections==='number');
+});
+
+test('batch default record names include milliseconds and pid and never overwrite each other',async()=>{
+ const first=await measure(['batch','--plan','fake:1']);
+ const second=await measure(['batch','--plan','fake:1']);
+ const firstFile=String(first.json.recordFile),secondFile=String(second.json.recordFile);
+ try{
+  assert.notEqual(firstFile,secondFile);
+  assert.match(basename(firstFile),/^batch-\d{17}-\d+\.jsonl$/);
+  assert.equal((await readFile(firstFile,'utf8')).trim().split('\n').length,2);
+  assert.equal((await readFile(secondFile,'utf8')).trim().split('\n').length,2);
+ }finally{
+  await rm(firstFile,{force:true});await rm(secondFile,{force:true});
+ }
 });
 
 test('compare --dry prints the five metrics as an empty table',async()=>{

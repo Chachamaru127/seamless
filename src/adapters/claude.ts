@@ -14,7 +14,10 @@ import type { ReadItem, Transcript, TranscriptReader } from './read.ts';
 import { parseEnvelope } from './read.ts';
 const run=promisify(execFile);
 const MAX_RECORD_BYTES=65_536,MAX_TRANSCRIPT_BYTES=64*1024*1024;
-export type ClaudeSession={version:string;pid:number;sessionId:string;cwd:string;startedAt:number;messagingSocketPath:string|null;generation:string};
+export type ClaudeSession={version:string;pid:number;sessionId:string;cwd:string;startedAt:number;messagingSocketPath:string|null;kind:string|null;status:string|null;name:string|null;generation:string};
+// reachable = the sessions JSON names an inbox socket. kind, status and name are Claude Code's own words, carried as written.
+export type ClaudeInboxState={status:'reachable';socket:string;kind:string|null;claudeStatus:string|null;name:string|null}|{status:'unreachable';reason:'no_inbox_socket'|'session_record_unreadable'};
+const textOrNull=(value:unknown)=>typeof value==='string'?value:null;
 export type ClaudeOptions=CompatibilityOptions&{home?:string;processStart?:(pid:number)=>Promise<number|null>};
 const OMITTED=['thinking','tool_use','tool_result','images','non_peer_attachments','sidechains'];
 // missing = the file does not exist; unreadable = permission, symlink, foreign owner, size or I/O failure.
@@ -48,9 +51,51 @@ export async function findClaudeSession(nativeId:string,options:{home?:string}={
   if(!r||typeof r!=='object'||typeof r.sessionId!=='string'){uncertain=true;continue;}
   if(r.sessionId!==nativeId)continue;
   if(!Number.isInteger(r.pid)||`${r.pid}.json`!==name||typeof r.cwd!=='string'||!Number.isFinite(r.startedAt)){uncertain=true;continue;}
-  return {version:typeof r.version==='string'?r.version:'unknown',pid:r.pid,sessionId:nativeId,cwd:r.cwd,startedAt:r.startedAt,messagingSocketPath:typeof r.messagingSocketPath==='string'?r.messagingSocketPath:null,generation:`${r.pid}@${r.startedAt}`};
+  return {version:typeof r.version==='string'?r.version:'unknown',pid:r.pid,sessionId:nativeId,cwd:r.cwd,startedAt:r.startedAt,messagingSocketPath:textOrNull(r.messagingSocketPath),kind:textOrNull(r.kind),status:textOrNull(r.status),name:textOrNull(r.name),generation:`${r.pid}@${r.startedAt}`};
  }
  return uncertain?'unreadable':null;
+}
+// One process's own record (sessions/<pid>.json). null = no record for this pid; 'unreadable' = a record exists but proves nothing.
+export async function findClaudeSessionByPid(pid:number,options:{home?:string}={}):Promise<ClaudeSession|null|'unreadable'>{
+ if(!Number.isInteger(pid)||pid<=0)return null;
+ const raw=await readOwned(join(options.home??homedir(),'.claude','sessions',`${pid}.json`),MAX_RECORD_BYTES);
+ if(!('text' in raw))return raw.error==='missing'?null:'unreadable';
+ let r;try{r=JSON.parse(raw.text);}catch{return 'unreadable';}
+ if(!r||typeof r!=='object'||r.pid!==pid||typeof r.sessionId!=='string'||typeof r.cwd!=='string'||!Number.isFinite(r.startedAt))return 'unreadable';
+ return {version:typeof r.version==='string'?r.version:'unknown',pid,sessionId:r.sessionId,cwd:r.cwd,startedAt:r.startedAt,messagingSocketPath:textOrNull(r.messagingSocketPath),kind:textOrNull(r.kind),status:textOrNull(r.status),name:textOrNull(r.name),generation:`${pid}@${r.startedAt}`};
+}
+// true only when the receiving side's own settings say a peer message waits for approval: `crossSessionInbound` is hold,
+// or the session bypasses permission prompts (the documented default holds a sender that does not attest its mode).
+// null means the settings were not readable, so nothing about hold was observed.
+export async function claudeInboundHolds(options:{home?:string}={}):Promise<boolean|null>{
+ const raw=await readOwned(join(options.home??homedir(),'.claude','settings.json'),MAX_RECORD_BYTES);
+ if(!('text' in raw))return null;
+ let parsed:unknown;try{parsed=JSON.parse(raw.text);}catch{return null;}
+ if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))return null;
+ const settings=parsed as Record<string,unknown>;
+ const inbound=settings.crossSessionInbound;
+ const kind=typeof inbound==='string'?inbound:inbound&&typeof inbound==='object'&&!Array.isArray(inbound)
+  ?((inbound as Record<string,unknown>).allow===true?'accept':(inbound as Record<string,unknown>).allow===false?'hold':null)
+  :null;
+ if(kind==='hold')return true;
+ if(kind==='accept'||kind==='refuse')return false;
+ const permissions=settings.permissions;
+ const mode=permissions&&typeof permissions==='object'&&!Array.isArray(permissions)?(permissions as Record<string,unknown>).defaultMode:undefined;
+ if(mode==='bypassPermissions')return true;
+ if(typeof mode==='string')return false;
+ return null;
+}
+export function claudeInbox(session:ClaudeSession|null|'unreadable'):ClaudeInboxState{
+ if(session==='unreadable')return {status:'unreachable',reason:'session_record_unreadable'};
+ if(!session?.messagingSocketPath)return {status:'unreachable',reason:'no_inbox_socket'};
+ return {status:'reachable',socket:session.messagingSocketPath,kind:session.kind,claudeStatus:session.status,name:session.name};
+}
+export async function findClaudeInbox(nativeId:string,options:{home?:string}={}):Promise<ClaudeInboxState>{
+ return claudeInbox(await findClaudeSession(nativeId,options));
+}
+// A Claude process with no sessions JSON has no inbox: nothing in it can name a socket.
+export async function findClaudeProcessInbox(pid:number,options:{home?:string}={}):Promise<ClaudeInboxState>{
+ return claudeInbox(await findClaudeSessionByPid(pid,options));
 }
 // online only when the recorded PID is alive and started within 2s of the record (PID reuse guard).
 export async function observeClaudeSession(registration:Registration,options:ClaudeOptions={}):Promise<Observation|null>{

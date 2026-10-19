@@ -1,0 +1,20 @@
+# The published set is the allowlist in package.json ("files"). npm reads this file only when that field is absent,
+# so the exclusions are written here too: with "files" removed, the same internal surfaces stay out of the tarball.
+# The four removals are the ones in specs/2026-10-universal-wiring Plans 1 章 5 (old --registry samples, the band mod,
+# the status panel, the Dot experiments). The opencode plugin (packages/opencode-plugin) stays: src/adapters/opencode.ts
+# imports it, so it is runtime, not an experiment.
+mods/
+experiments/
+specs/
+tests/
+docs/
+scripts/
+codex-plugin/
+.github/
+.claude/
+.claude-plugin/
+GOD_Plans.md
+Plans.md
+spec.md
+src/status-panel.ts
+src/status-panel.html

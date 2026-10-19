@@ -14,11 +14,40 @@ set -euo pipefail
 # Compare bytes, not characters: under a UTF-8 locale grep skips a line that has an invalid byte, and a value on that line is missed.
 export LC_ALL=C
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+failed=0
+if root="$(git rev-parse --show-toplevel 2>/dev/null)" && root="$(cd "$root" && pwd -P)"; then have_root=1; else have_root=0; fi
+# AC12: the files `npm pack` would ship must not carry the account identifiers. These are labels, not roster values, so the
+# pass needs no registration and prints nothing when clean. It runs even on a machine without one, so the tarball is still
+# checked. Without a git root there is no package to list; that only matters below when a roster exists.
+# `npm pack --dry-run` lists exactly what a publish would ship; --ignore-scripts keeps the pass inert.
+release_surface() {
+  [ -f "$root/package.json" ] || return 0
+  if ! command -v npm >/dev/null 2>&1; then echo "peer-secrets: 失敗（npm が無く、同梱物の一覧を作れない）"; return 1; fi
+  local listing p bad=0
+  if ! listing="$(cd "$root" && npm pack --dry-run --json --ignore-scripts 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{let j;try{j=JSON.parse(s)}catch{process.exit(2)}const f=j[0]?.files;if(!Array.isArray(f))process.exit(2);for(const x of f)if(typeof x?.path==="string")console.log(x.path)});')"; then
+    echo "peer-secrets: 失敗（同梱物の一覧を作れない）"; return 1
+  fi
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    case "$p" in
+      *grok-bot-vm*|*"Bot ID"*|*accountRef*) echo "peer-secrets: 失敗（同梱物の名前にアカウント情報の目印: $p）"; bad=1; continue ;;
+    esac
+    [ -f "$root/$p" ] || continue
+    if command grep -aqF -e 'grok-bot-vm' -e 'Bot ID' -e 'accountRef' -- "$root/$p" 2>/dev/null; then
+      echo "peer-secrets: 失敗（同梱物にアカウント情報の目印: $p）"; bad=1
+    fi
+  done <<<"$listing"
+  return "$bad"
+}
+if [ "$have_root" -eq 1 ]; then release_surface || failed=1; fi
 if ! slots="$(node "$here/peer-env-names.ts" 2>/dev/null)"; then
   echo "peer-secrets: 失敗（名簿が使えない）"; exit 1
 fi
-if [ -z "$slots" ]; then echo "peer-secrets: ok（登録なし）"; exit 0; fi
-if ! root="$(git rev-parse --show-toplevel 2>/dev/null)" || ! root="$(cd "$root" && pwd -P)"; then
+if [ -z "$slots" ]; then
+  if [ "$failed" -ne 0 ]; then exit 1; fi
+  echo "peer-secrets: ok（登録なし）"; exit 0
+fi
+if [ "$have_root" -ne 1 ]; then
   echo "peer-secrets: 失敗（リポジトリの根元が分からない）"; exit 1
 fi
 # A linked worktree has its own root; the main checkout is the parent of the shared .git directory.
@@ -27,7 +56,6 @@ if ! common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null
 fi
 main=""
 if [ "$(basename "$common")" = ".git" ]; then main="$(dirname "$common")"; fi
-failed=0
 dirs=() labels=()
 if [ -n "$main" ] && [ "$main" != "$root" ]; then
   dirs+=("$main"); labels+=("リポジトリ（本線）")

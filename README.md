@@ -1,109 +1,178 @@
 # seamless
 
-CodexとClaudeが、許可された元セッションを同じ条件で探す共通処理です。
-登録、一覧、候補選択、元会話のread/sendと返信相関を実装しています。
-`--native` を明示すると、対応版の既存Codex DesktopとClaude Codeの実行体へ接続します。省略時は探索用の窓口だけを起動し、native状態はunknownです。
-グローバル設定への常用導入は行っていません。検収の最新状態は [今回の製品検証](specs/202610-session-interop/product-evidence.md) に記録します。
+Unofficial local wiring between the AI conversations you already have on one Mac:
+Claude Code, Codex, opencode, Cursor CLI, Antigravity CLI, Grok CLI, and a Grok Bot you register yourself.
 
-## 試す
+One conversation asks another in the same workspace. seamless carries the request through the product's own
+path, then reports what it could observe: accepted, reached the other side, being processed, replied, or
+unknown. It adds no judgement of its own. It keeps no message bodies, no history database, and no daemon, and
+it opens no network connection except a webhook to an outside executor you registered yourself.
 
-Node.js 22.22.xを使います。追加パッケージ、会話本文の保存、SQLiteはありません。
+Node.js 22.22 or later.
+
+## Unofficial notice (非公式の但し書き)
+
+This is an unofficial project. It is not affiliated with, endorsed by, or supported by Anthropic, OpenAI, xAI,
+Anysphere (Cursor), Google, Orca, or Reason Network. Product names are used only to describe interoperability and
+belong to their owners.
+
+Several adapters use interfaces that are not a public stable SDK: Claude session sockets, Codex `queue` and
+Desktop IPC, Grok session files. A product update can break them without notice. The compatibility table records
+what was observed and when, and an unseen version is shown as `versionStatus: unverified` rather than assumed to
+work. Use this at your own risk, and keep the products' own approvals and sandboxes in place: a message that
+arrives through seamless never counts as a human approval.
+
+## Supported counterparts (対応している相手)
+
+seamless carries a request through the path each maker publishes, not through a protocol it invented. These are
+the four paths that carry a message, with the public document each one rests on:
+
+| Product | Official path seamless uses | Public document | The line read there |
+|---|---|---|---|
+| Claude Code | cross-session messaging over the session socket; the socket path arrives as `CLAUDE_CODE_MESSAGING_SOCKET` | https://code.claude.com/docs/en/cross-session-messaging | "The session's inbox socket" (section heading, read 2026-10-19) |
+| Codex | `codex queue --thread <ID> --message <TEXT>` | https://github.com/openai/codex | "Queue a message for an existing session" (`codex queue --help`, codex-cli 0.163.0, run 2026-10-20) |
+| opencode | the plugin API; the plugin calls `session.prompt` | https://opencode.ai/docs/plugins/ | `session.prompt` on the plugin context (official types, `@opencode-ai/plugin` 1.19.0); the page's own wording is not quoted here |
+| Cursor | hooks `sessionStart`, `afterAgentResponse`, `stop` in `~/.cursor/hooks.json` | https://cursor.com/docs/hooks | "Hooks are scripts or prompt-based checks that exchange JSON over stdin/stdout and can observe, block, modify, or follow up on behavior." (Cursor's shipped hook guide, read 2026-10-20) |
+
+Each row names where its line was read. Where that is the product's own shipped help or type file rather than the
+page itself, the page is still the document to open before relying on the path. `docs/release.md` 4.3 records the
+terms check for the Grok Bot webhook, Cursor hooks and Antigravity hooks as open.
+
+## Install
+
+```sh
+npx @chachamaru127/seamless setup
+```
+
+`bin` maps `seamless` to `src/cli.ts`, and the package ships its TypeScript sources with no build step. As
+measured on 2026-10-20, that entry does not run once installed: Node refuses to strip type annotations for a
+file under `node_modules` (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), and both `npx` and
+`npm i -g @chachamaru127/seamless` put the package there. Until a built entry replaces it (docs/release.md
+section 6, item 1), use the checkout form below.
+
+## Try it (from a checkout)
+
+Nothing here needs an account or a running AI product, and no install is needed. `verify.sh` changes no file,
+and `setup --dry-run` writes nothing. A version manager's Node shim can refuse a home it was not installed
+under. The `PATH` prefix below puts a Homebrew Node first on macOS; with any other plain Node, drop the prefix.
 
 ```sh
 bash scripts/verify.sh
-node src/cli.ts context /Users/tachibanashuuta/LocalWork/Code/seamless
-node src/cli.ts sessions --registry specs/202610-session-discovery/bootstrap-example.json --caller codex-example
-node src/cli.ts sessions --registry specs/202610-session-discovery/bootstrap-example.json --caller claude-example
+PATH="/usr/local/bin:/opt/homebrew/bin:$PATH" node src/cli.ts setup --dry-run
+PATH="/usr/local/bin:/opt/homebrew/bin:$PATH" node src/cli.ts setup
+PATH="/usr/local/bin:/opt/homebrew/bin:$PATH" node src/cli.ts "check the follow-up in this workspace"
+PATH="/usr/local/bin:/opt/homebrew/bin:$PATH" node src/cli.ts status REQUEST_ID
 ```
 
-登録例は実会話ではありません。ファイルはmode0600が必要です。
-登録には公開登録キー、製品、native会話ID、世代、host、表示名、任意の担当、宣言workspace、操作能力、向き付きgrantsを置きます。
-秘密の鍵、本文、status、観測時刻は入力項目にありません。未知項目は拒否します。
-workspaceの宣言だけでは、その会話がそこで動いている証拠になりません。
+`setup` makes one change, the MCP registration in `~/.claude.json`. `REQUEST_ID` is the id of a request you
+sent; on a fresh home no request is known yet, and `status` says so instead of failing.
 
-許可は、呼出し元のoutboundと受信先のinboundの両方がそろった操作だけです。
-一覧にはreadかsendを許可された相手を出します。相手のgrantsや本文は返しません。
-名簿は明示された1ファイルを要求ごとに再読込みします。
-同じOSユーザーが名簿を変更できる前提です。caller引数自体は認証ではありません。
+## setup
 
-## CLIとMCP
+`setup` detects the products on this Mac (Claude Code, Codex, opencode, Cursor CLI, Antigravity CLI, Grok CLI,
+and Grok Bot peers), lists the Claude conversations that currently name an inbox socket, and registers one MCP
+server named `seamless` in `~/.claude.json`.
+
+- It runs on Windows, Linux, or macOS only as far as the products themselves do; this v1 targets one Mac, and
+  other platforms are untested.
+- It reads no Keychain value, starts no product, and sends nothing off the machine.
+- An existing `~/.claude.json` is copied to `~/.seamless/backups/` before it is changed.
+- Running it again leaves an identical registration untouched and writes no new backup.
+- An unreadable or malformed settings file is refused as `config_unusable` rather than overwritten.
+- `--dry-run` reports the same list and the single change it would make, without writing.
+
+`doctor` explains the same machine read-only:
 
 ```sh
-node src/cli.ts serve --registry specs/202610-session-discovery/bootstrap-example.json --caller codex-example
+node src/cli.ts doctor --json
 ```
 
-持続serveへJSON行を送ります。
+It reports Node, each product and binary, Claude inbox sockets, compatibility counts, whether Reason Network
+hooks are present in any product's hooks table, and where Antigravity lives.
 
-```json
-{"id":1,"method":"sessions","params":{"operation":"send","scope":"current_work"}}
-{"id":2,"method":"select","params":{"operation":"send","role":"review"}}
-{"id":3,"method":"revalidate","params":{"binding":"selectが返したID"}}
-```
+## One command (1 コマンド)
 
-通常起動のselectはcaller_unobservedとなり、bindingを発行しません。
-成功する往復はtests/supportの専用観測器で検証しています。環境変数やJSONから試験観測器を有効にできません。
-bindingは同一プロセス内で60秒有効です。再照合は1回だけ成功し、送信済みを意味しません。
+A lone argument that is not a command is the text to deliver:
 
 ```sh
-node src/cli.ts mcp --registry specs/202610-session-discovery/bootstrap-example.json --caller claude-example
+node src/cli.ts "check the follow-up in this workspace"
 ```
 
-MCPはstdio、protocolVersion 2025-06-18です。
-initializeとnotifications/initializedの後、sessionsを呼べます。`--native` 起動ではreadとsendも提供します。
-入力operationはreadまたはsendです。一覧はreadかsendを双方で許可した相手を返し、各操作の可否を表示します。operationによる選択判定と操作実行は、このMCP一覧では行いません。
-selectとrevalidateは内部の宛先照合とCLI探索に使います。MCPの製品操作はsessions/read/sendの3つです。
-このコマンドは常用MCP設定を変更しません。
+The default destination is the peer in the caller's workspace. Exactly one sendable peer receives it. With
+none it prints `target_unavailable`; with two or more it prints `ambiguous` and the candidates and stops
+before any write. It never picks a destination by display name and never crosses into another workspace to
+find one.
 
-[stdio仕様](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)と[初期化仕様](https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle)に合わせ、stdoutはJSON行だけ、通知への応答なし、EOFで終了としています。
+The answer is one JSON line with the delivery status. A reply is a second call that carries `replyTo`; the
+one-word entry is for the first request. `status` follows the request id you set in the `send` call.
 
-## 相手の選び方
+## status
 
-| scope | 候補にする作業場所 |
-|---|---|
-| current_work（既定） | 同じ論理workspace、同じworktree、同じbranch/HEAD状態 |
-| same_repository | 同じローカルGit common directoryまで |
-| any_registered | 同じhostの認可済み登録まで |
-
-順位は同じ作業場所、同じrepo、別repoの順です。
-同順位が複数ならambiguous。状態が古い相手を飛ばして別の相手へ自動で乗り換えません。
-明示targetにも認可、scope、担当、最新観測を適用します。
-同じremote URLの別cloneは別ローカルrepoです。
-Git外、detached、unborn、取得失敗を区別します。
-dirtyは未コミット変更の有無だけで、変更内容の一致は保証しません。submodule内部はdirty対象外です。
-
-## 正本と検証
-
-- [仕様](specs/202610-session-discovery/spec.md)
-- [実装計画](specs/202610-session-discovery/Plans.md)
-- [試験ケース](specs/202610-session-discovery/acceptance-matrix.md)
-- [証拠](specs/202610-session-discovery/evidence.md)
-- [説明資料](docs/reports/2026-10-02-claudex-explained.html)
-
-実Git観測は複数コマンドのbest-effortです。コード状態の原子的な一致は保証しません。
-nativeモードは会話ID、実行世代、実際のcwd、socketの所有者、Codex ownerを照合します。接続不能時はunknown/offline等を返し、別プロセスを起こして代替しません。
-名簿とcaller引数は同じOSユーザー内の明示許可を表します。別OSユーザーに対する認証サービスではありません。
-
-## 既存会話を使う
-
-本人が通信を許可した起動済みペアだけを、`observeAuthorizedPair()` の実観測から名簿に登録します。モデルがnative IDやPIDを推測して登録してはいけません。作業場所が一致しない場合、この同じ作業場所用の登録処理は拒否します。
+Follow one request by id:
 
 ```sh
-node src/cli.ts serve --native --registry .local/interop-pair.json --caller codex-current
-node src/cli.ts mcp --native --registry .local/interop-pair.json --caller claude-current
+node src/cli.ts status REQUEST_ID
+node src/cli.ts status REQUEST_ID --wait 60
 ```
 
-```json
-{"id":1,"method":"read","params":{"target":"claude-current","limit":10}}
-{"id":2,"method":"send","params":{"target":"claude-current","id":"呼出し前に生成した一意ID","text":"確認したい依頼"}}
-{"id":3,"method":"send","params":{"target":"claude-current","id":"返信用の新しい一意ID","text":"回答","replyTo":"受信した依頼ID"}}
+`--wait` polls until a reply is observed or the given seconds (0 to 600) run out. The output separates five
+stages: `accepted`, `reached`, `processing`, `replied`, `unknown`. Each stage is `observed` or `unobserved`,
+with the evidence that showed it. `reached` is written only by a reader of the peer's own record, never by
+the sender. A state sits beside the stages: `held` (the peer record was readable and stayed silent past
+`heldAfterSec`, default 20 seconds), `read_failed` (the record could not be opened), `refused` (the official
+path rejected the write).
+
+To see who can take a request right now:
+
+```sh
+node src/cli.ts who --json
 ```
 
-本人の操作は「同じ作業場所のClaudeに確認して」「その元の会話を読んで」でよい。登録済みの相手選択とID生成は依頼を受けたモデルが行います。MCP設定をまだ接続していない会話では、モデルがローカル製品CLIを使います。純正一覧の中に他社の会話を差し込む方式ではありません。
+Each peer is `ready`, `next_turn`, `wake_needed`, or `unreachable` with a reason such as `no_inbox_socket`.
 
-readは可視user/assistant本文とpeerの由来、元IDを返します。思考、認証値、添付実体は相互変換しません。native履歴の全取得に制約があれば`olderUnavailable`等を返し、空会話と取得失敗を区別します。
+## Running alongside Reason (併用の注意)
 
-sendの`submitted`はnative書込み受付です。相手が処理した証拠は、元履歴の依頼IDと返信の`replyTo`を別に照合します。書込み後に成否が不明なら`unknown`です。自動再送しません。届いた文の扱いは、受け取ったAIが自分の権限で判断します。seamlessは受信側の権限を広げず、封筒に`humanApproval:true`を書きません。人の確認を促す印`humanApproval:false`は、`~/.seamless/limits.json`の`markUnapproved:true`のときだけ付けます（既定は付けません）。この印は limits.json を読む新方式（名簿なし）の経路だけが付け、この節の `--registry` の経路では付きません。
+Reason Network delivers into the same products through their hook tables, and some seamless adapters (Cursor
+CLI, Antigravity CLI, Grok CLI) also use hooks and inbox files. Two layers can coexist, but not by accident:
 
-対応版: 確認済みの組は [対応表](specs/202610-everyday-use/compat.md) にあります。表にない新しい版も既定で使い、一覧に `versionStatus: unverified`（未確認）と出します。止まるのは、表で修正待ちにした版と、形式の照合（peerProtocol 1、受け口の持ち主、作業場所、記録の形）が合わないときです。確認済みの版だけに限りたいときは `~/.seamless/limits.json` に `strictVersions:true` を書きます（既定は書かない）。この設定が効くのは名簿なしの自動方式だけで、この節の `--registry` の経路には効きません。strict の間も、制限の設定の道具（limits）は未確認の版から使えます（更新後に strict を外せるようにするため）。公開安定SDKではない接続部分があり、未確認の版での動作は保証しません。
+- `doctor --json` reports `reason_network_hooks: true` when any product's hooks table mentions Reason. That is
+  a detection, not a claim that Reason is running now.
+- `setup` touches only `mcpServers.seamless` in `~/.claude.json`. It does not remove, reorder, or rewrite
+  Reason's hooks. Do that removal in the product's own settings, with a copy kept first.
+- Do not point both layers at the same inbox file or the same hook slot. While measuring delivery, keep one
+  layer per product; a second writer makes "reached" and "replied" ambiguous.
+- Keep the backup that `setup` writes and your own copy of every hook file you edit. seamless has no
+  uninstaller that restores Reason.
 
-重複抑止の保存先は `~/.seamless/reservations/`（0700）です。1依頼につきhash、status、時刻だけを0600のファイルへ原子的に予約します。本文、会話履歴、秘密は保存しません。同じ元会話とIDの予約は、別の窓口プロセスや再起動後も使います。書込み前に予約した状態が残ればunknownとし、再配送しません。SQLiteや配送待ちキューではありません。
+## Orca's role (Orca との役割)
+
+Orca manages worktrees and terminals; seamless wires conversations, and Orca does not send or receive these
+messages for you.
+
+## What it stores
+
+| Path | Content | Mode |
+|---|---|---|
+| `~/.seamless/reservations/` | one file per request: hash, status, time, ids. No message body | 0600, directory 0700 |
+| `~/.seamless/limits.json` | optional limits: exclusions, scope, read/send, `markUnapproved`, `strictVersions`, `codexMessageMaxChars`, `heldAfterSec` | 0600 |
+| `~/.seamless/backups/` | copy of `~/.claude.json` taken before `setup` changes it | 0600, directory 0700 |
+| `~/.seamless/peers.json` | outside executors you registered, such as a Grok Bot | 0600 |
+| `~/.claude.json` | the one write `setup` makes: `mcpServers.seamless` | your existing mode |
+
+A reservation is written before the native write, so a crash leaves `unknown` and the same request id is never
+delivered twice automatically.
+
+## Compatibility
+
+The observed products and versions are listed in [the compatibility table](specs/202610-everyday-use/compat.md).
+A version that is not in the table is still used by default and listed as `unverified`. A version marked
+`fix_required` stops. To accept only verified versions, add `"strictVersions": true` to
+`~/.seamless/limits.json`; the limits tool stays usable from an unverified version so the setting can be
+removed again.
+
+## Documents and licence
+
+- [Product spec](spec.md), [wiring spec](specs/2026-10-universal-wiring/spec.md), [plans](specs/2026-10-universal-wiring/Plans.md)
+- [Why seamless, compared with Reason](docs/reports/2026-10-19-seamless-beyond-reason.html)
+- Licence: [MIT](LICENSE). Third-party and trademark notes: [NOTICE](NOTICE). Reporting: [SECURITY.md](SECURITY.md).
+- 日本語: [README.ja.md](README.ja.md)

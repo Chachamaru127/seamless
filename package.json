@@ -1,8 +1,17 @@
 {
-  "name": "seamless",
+  "name": "@chachamaru127/seamless",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "engines": { "node": ">=22.22.0" },
+  "bin": { "seamless": "src/cli.ts" },
+  "publishConfig": { "access": "public" },
+  "files": [
+    "src/",
+    "!src/status-panel.ts",
+    "!src/status-panel.html",
+    "hooks/",
+    "packages/opencode-plugin/",
+    "README.md"
+  ],
   "scripts": { "test": "bash scripts/verify.sh" }
 }

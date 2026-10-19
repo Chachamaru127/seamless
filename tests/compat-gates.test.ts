@@ -15,7 +15,7 @@ const target=(provider:'claude'|'codex'):Registration=>({id:'target',provider,na
 const envelope={id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:'target',nativeId:'b',generation:'g'},text:'hi'};
 test('generated compatibility markdown exactly matches the single source table',async()=>{
  assert.equal(await readFile(new URL('../specs/202610-everyday-use/compat.md',import.meta.url),'utf8'),compatibilityMarkdown());
- assert.deepEqual(COMPATIBILITY.filter(e=>e.product==='codex').map(e=>[e.version,e.status]),[['26.928.31416+12553','verified'],['26.928.40906+12694','verified'],['26.930.31730+12947','verified']]);
+ assert.deepEqual(COMPATIBILITY.filter(e=>e.product==='codex').map(e=>[e.version,e.status]),[['26.928.31416+12553','verified'],['26.928.40906+12694','verified'],['26.930.31730+12947','verified'],['0.163.0','checking'],['26.1013.40934+20770','checking']]);
 });
 for(const strictVersions of [false,true])for(const status of (strictVersions?['absent','checking','fix_required','future_state']:['fix_required','future_state']))test(`compatibility ${status} strict=${strictVersions} blocks both providers before transcript open and socket connect`,async t=>{
  const home=await mkdtemp(join(tmpdir(),'cldx-compat-gate-'));t.after(()=>rm(home,{recursive:true,force:true}));

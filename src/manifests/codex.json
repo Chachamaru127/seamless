@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "product": "codex",
+  "provider": "codex",
+  "displayName": "Codex",
+  "adapter": "../adapters/codex.ts",
+  "identity": {
+    "kind": "thread",
+    "id": "session_meta.id",
+    "generation": "thread_owner",
+    "record": "~/.codex/sessions/<session>.jsonl"
+  },
+  "discovery": {
+    "kind": "rollout",
+    "source": "~/.codex/sessions",
+    "fields": ["session_meta", "turn_context", "cwd"]
+  },
+  "write": {
+    "channel": "command",
+    "target": "codex queue --thread <id> --message"
+  },
+  "evidence": {
+    "source": "~/.codex/sessions/<session>.jsonl",
+    "stages": ["reached", "processing", "replied"]
+  },
+  "states": {
+    "thread_active": "next_turn",
+    "thread_idle": "next_turn",
+    "thread_unloaded": "wake_needed",
+    "goal_running": "next_turn",
+    "offline": "wake_needed"
+  },
+  "permissions": {
+    "operations": ["read", "send"],
+    "approvalMark": "limits.markUnapproved"
+  },
+  "install": {
+    "hook": null,
+    "steps": ["node src/cli.ts setup"]
+  }
+}

@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readdir,writeFile,readFile,realpath,chmod,rename,mkdir,symlink} from 'node:fs/promises';
-import {join} from 'node:path';
+import fs from 'node:fs/promises';
+import {syncBuiltinESMExports} from 'node:module';
+import {join,sep} from 'node:path';
 import {spawn} from 'node:child_process';
 import {runGrokHook,renderEnvelope,type HookOptions} from '../src/grok-hook.ts';
-import {putEnvelope,ensureInbox,keyOf,receipts,type GrokEnvelope} from '../src/grok-inbox.ts';
+import {putEnvelope,ensureInbox,keyOf,receipts,validEnvelope,type GrokEnvelope} from '../src/grok-inbox.ts';
+import {grokInbound} from '../src/adapters/grok.ts';
 import {grokHome,ids,OPENED} from './support/grok-fixture.ts';
 const k=(id:string)=>keyOf({id:'claude:claude-a',nativeId:'claude-a'},id);
 const GEN='501@'+OPENED,HOOK='global/seamless:stop[0].hooks[0]';
@@ -15,6 +18,18 @@ async function setup(t:Parameters<typeof grokHome>[0]){
  const ls=async(state:string)=>(await readdir(join(dir,state))).filter(n=>n.endsWith('.json'));
  const opts=(pid:number,more:Partial<HookOptions>={}):HookOptions=>({home:f.home,ppid:501,pid,now:()=>1791448141653,hookName:HOOK,emit:()=>{},...f.grok,...more});
  return {f,dir,ls,opts};
+}
+// Every file under the inbox, whatever its name: a temporary file left by a write must not keep the body either.
+async function assertNoBody(dir:string,body:string){
+ const walk=async(path:string,label:string):Promise<void>=>{
+  for(const entry of await readdir(path,{withFileTypes:true})){
+   const child=join(path,entry.name),name=`${label}/${entry.name}`;
+   if(entry.isDirectory()){await walk(child,name);continue;}
+   if(!entry.isFile())continue;
+   assert.equal((await readFile(child,'utf8')).includes(body),false,`${name} keeps no body`);
+  }
+ };
+ for(const state of ['pending','handed','delivered','failed','unknown'])await walk(join(dir,state),state);
 }
 test('one envelope: delivered with a receipt (request, conversation, generation, hook time, Stop reason, hook name)',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r1'));
@@ -30,6 +45,28 @@ test('a broken envelope ahead of a good one goes to failed and the good one is d
  const s=await setup(t);await writeFile(join(s.dir,'pending',k('broken')+'.json'),'{not json',{mode:0o600});await putEnvelope(s.f.home,envelope('r2',GEN,5));
  const r=await runGrokHook(stop(),s.opts(7001));
  assert.equal(r.delivered,'r2');assert.deepEqual(await s.ls('failed'),[k('broken')+'.json']);assert.deepEqual(await s.ls('delivered'),[k('r2')+'.json']);
+});
+test('after delivery no envelope stays in the inbox: pending and handed are empty, the receipt keeps no body',async t=>{
+ const s=await setup(t);const body='配達の後に受信箱へ残ってはいけない本文';
+ await putEnvelope(s.f.home,{...envelope('r15'),text:body});
+ const r=await runGrokHook(stop(),s.opts(7001));
+ assert.equal(r.delivered,'r15');
+ assert.deepEqual(await s.ls('pending'),[]);assert.deepEqual(await s.ls('handed'),[]);
+ // No file in any state is the envelope itself, and none still carries its text.
+ for(const state of ['pending','handed','delivered','failed','unknown']){
+  for(const name of await s.ls(state)){
+   const raw=await readFile(join(s.dir,state,name),'utf8');
+   assert.equal(raw.includes(body),false,`${state}/${name} keeps no body`);
+   const parsed=JSON.parse(raw);
+   assert.equal(validEnvelope(parsed),false,`${state}/${name} is not an envelope`);
+   assert.equal(parsed?.envelope&&Object.hasOwn(parsed.envelope,'text'),false,`${state}/${name} receipt has no text`);
+  }
+ }
+ const [receipt]=await receipts(s.f.home,ids.live);
+ assert.equal(receipt.envelope.id,'r15');assert.equal(Object.hasOwn(receipt.envelope,'text'),false);
+ // What seamless can still say it received is the request's identity, never the body.
+ const received=await grokInbound({id:'grok:'+ids.live,provider:'grok',nativeId:ids.live,generation:GEN,host:'local',displayName:'g',workspace:s.f.work,operations:['read'],grants:[]},{home:s.f.home,...s.f.grok});
+ assert.deepEqual(received.map(e=>({id:e.id,text:e.text})),[{id:'r15',text:''}]);
 });
 test('an envelope for another generation of the conversation stays pending and nothing is output',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r3','999@'+OPENED));
@@ -86,6 +123,57 @@ test('an envelope handed over by a hook that died before its receipt becomes unk
  const next=await runGrokHook(stop(),s.opts(7002,{alive:pid=>pid!==7001}));
  assert.equal(next.output,null);assert.deepEqual(await s.ls('unknown'),[k('r7')+'.json']);assert.deepEqual(await s.ls('pending'),[]);assert.deepEqual(await s.ls('delivered'),[]);
 });
+test('a hook that dies after saving the receipt leaves no body in the inbox, and the next hook finishes the delivery',async t=>{
+ const s=await setup(t);const body='保存の直後に落ちても受信箱に残らない本文';
+ await putEnvelope(s.f.home,{...envelope('r17'),text:body});
+ await assert.rejects(runGrokHook(stop(),s.opts(7001,{dieAfter:'receipt'})));
+ // The envelope's file is still in handed/, but it already holds the receipt: the body went with the same write.
+ assert.deepEqual(await s.ls('handed'),[`${k('r17')}.7001.json`]);
+ const held=JSON.parse(await readFile(join(s.dir,'handed',`${k('r17')}.7001.json`),'utf8'));
+ assert.equal(held.envelope.id,'r17');assert.equal(Object.hasOwn(held.envelope,'text'),false);
+ await assertNoBody(s.dir,body);
+ // The next hook is the one that removes it: the receipt lands in delivered/ and no state keeps the body.
+ const next=await runGrokHook(stop(),s.opts(7002,{alive:pid=>pid!==7001}));
+ assert.equal(next.output,null);assert.deepEqual(await s.ls('handed'),[]);assert.deepEqual(await s.ls('unknown'),[]);assert.deepEqual(await s.ls('delivered'),[k('r17')+'.json']);
+ await assertNoBody(s.dir,body);
+ const [receipt]=await receipts(s.f.home,ids.live);assert.equal(receipt.envelope.id,'r17');
+});
+test('a hook that fails after saving the receipt, before removing the envelope, leaves no body in any file; the next hook collects the receipt',async t=>{
+ const s=await setup(t);const body='保存の後、封筒を消す前に落ちても残らない本文';
+ await putEnvelope(s.f.home,{...envelope('r18'),text:body});
+ // A fake fs: the rename out of handed/ into delivered/ (the envelope's removal) fails once, after the receipt write.
+ const realRename=fs.rename;let failed=false;
+ const mocked=t.mock.method(fs,'rename',async(from:Parameters<typeof fs.rename>[0],to:Parameters<typeof fs.rename>[1])=>{
+  if(!failed&&String(to).startsWith(join(s.dir,'delivered')+sep)){failed=true;throw Object.assign(new Error('fault_before_removal'),{code:'EIO'});}
+  return realRename(from,to);
+ });
+ syncBuiltinESMExports();
+ t.after(()=>{mocked.mock.restore();syncBuiltinESMExports();});
+ await assert.rejects(runGrokHook(stop(),s.opts(7001)));
+ assert.equal(failed,true);
+ // The failure came after the receipt replaced the body: the handed file holds the request metadata, not the envelope.
+ assert.deepEqual(await s.ls('handed'),[`${k('r18')}.7001.json`]);
+ const held=JSON.parse(await readFile(join(s.dir,'handed',`${k('r18')}.7001.json`),'utf8'));
+ assert.equal(held.envelope.id,'r18');assert.equal(Object.hasOwn(held.envelope,'text'),false);
+ await assertNoBody(s.dir,body);
+ // The next hook is the one that finishes the removal: the receipt lands in delivered/ and no file keeps the body.
+ const next=await runGrokHook(stop(),s.opts(7002,{alive:pid=>pid!==7001}));
+ assert.equal(next.output,null);assert.deepEqual(await s.ls('handed'),[]);assert.deepEqual(await s.ls('unknown'),[]);assert.deepEqual(await s.ls('delivered'),[k('r18')+'.json']);
+ await assertNoBody(s.dir,body);
+ const [receipt]=await receipts(s.f.home,ids.live);assert.equal(receipt.envelope.id,'r18');
+});
+test('the body leaves with the receipt write, not with a delete: delivery still ends cleanly when unlink fails',async t=>{
+ const s=await setup(t);const body='unlink が失敗しても残らない本文';
+ await putEnvelope(s.f.home,{...envelope('r19'),text:body});
+ // A fake fs whose unlink fails: removing the body does not depend on deleting the envelope or a temporary file.
+ const mocked=t.mock.method(fs,'unlink',async()=>{throw Object.assign(new Error('fault_unlink'),{code:'EIO'});});
+ syncBuiltinESMExports();
+ t.after(()=>{mocked.mock.restore();syncBuiltinESMExports();});
+ const r=await runGrokHook(stop(),s.opts(7001));
+ assert.equal(r.delivered,'r19');assert.deepEqual(await s.ls('delivered'),[k('r19')+'.json']);assert.deepEqual(await s.ls('handed'),[]);
+ await assertNoBody(s.dir,body);
+ const [receipt]=await receipts(s.f.home,ids.live);assert.equal(receipt.envelope.id,'r19');
+});
 test('an inbox whose directories changed after the write (open to others, or a link) gives nothing to Grok',async t=>{
  const s=await setup(t);await putEnvelope(s.f.home,envelope('r14'));
  await chmod(join(s.dir,'pending'),0o755);
@@ -116,6 +204,22 @@ test('started as Grok starts it (node src/grok-hook.ts, Stop JSON on stdin), the
  const code=await new Promise(r=>child.on('close',r));
  assert.equal(code,0);assert.match(JSON.parse(out).hookSpecificOutput.additionalContext,/lsof の回数を数えて/);
  const [receipt]=await receipts(s.f.home,ids.live);assert.equal(receipt.envelope.id,'r9');assert.equal(receipt.hookName,HOOK);assert.equal(receipt.hookPid,child.pid);
+});
+test('the installed hook is one shell file (hooks/grok-cli/seamless-hook.sh) that hands the Stop to src/grok-hook.ts',async t=>{
+ const s=await setup(t);const {processStart}=await import('../src/adapters/claude.ts');
+ const started=await processStart(process.pid);
+ if(started===null){t.skip('ps cannot observe processes here');return;}
+ const opened=new Date(started!+500).toISOString();
+ await s.f.ledger([{session_id:ids.live,pid:process.pid,cwd:s.f.work,opened_at:opened}]);
+ await putEnvelope(s.f.home,envelope('r16',`${process.pid}@${opened}`));
+ const hook=await realpath(new URL('../hooks/grok-cli/seamless-hook.sh',import.meta.url).pathname);
+ const child=spawn('bash',[hook],{env:{...process.env,HOME:s.f.home,GROK_HOOK_NAME:HOOK,SEAMLESS_NODE:process.execPath},stdio:['pipe','pipe','pipe']});
+ let out='';child.stdout.on('data',d=>out+=d);child.stdin.end(JSON.stringify(stop()));
+ const code=await new Promise(r=>child.on('close',r));
+ assert.equal(code,0);assert.match(JSON.parse(out).hookSpecificOutput.additionalContext,/lsof の回数を数えて/);
+ const [receipt]=await receipts(s.f.home,ids.live);
+ assert.equal(receipt.envelope.id,'r16');assert.equal(receipt.hookName,HOOK);assert.equal(receipt.hookPid,child.pid);
+ assert.deepEqual(await s.ls('handed'),[]);assert.equal((await s.ls('delivered')).length,1);
 });
 test('the handed-over text keeps stopping actions out but does not stop the seamless reply itself',()=>{
  const text=renderEnvelope({schemaVersion:1,id:'q',sender:{id:'claude:a',nativeId:'a',generation:'g'},recipient:{id:'grok:'+ids.live,nativeId:ids.live,generation:GEN},text:'x',acceptedAt:1});

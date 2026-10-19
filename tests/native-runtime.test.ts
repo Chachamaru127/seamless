@@ -33,10 +33,49 @@ test('Claude successful flush half-closes, and submits once Claude closes its si
  assert.equal(s.ended,true);assert.equal(s.destroyed,false);assert.equal(settled,false);
  s.emit('close');assert.deepEqual(await p,{status:'submitted',nativeMessageId:'m'});assert.equal(s.writes,1);});
 test('Claude flush with no close from Claude times out unknown',async()=>{const s=new TestSocket();const p=sendClaudeFrame(s as unknown as Socket,async()=>true,'payload','m');s.emit('connect');await immediate();s.callback!();await immediate();s.emit('timeout');assert.deepEqual(await p,{status:'unknown'});});
-test('Codex failure response after native frame is unknown',async()=>{
+test('Codex queue failure before submit falls back to IPC, whose error response is unknown',async()=>{
  const home=await mkdtemp(join(tmpdir(),'cldx-codex-'));const dir=join(home,'.codex','ipc');await mkdir(dir,{recursive:true,mode:0o700});await chmod(dir,0o700);const path=join(dir,'ipc.sock');let writes=0;
  const sockets:Socket[]=[];const server=createServer(socket=>{sockets.push(socket);let buffer=Buffer.alloc(0);socket.on('data',part=>{buffer=Buffer.concat([buffer,part]);while(buffer.length>=4){const size=buffer.readUInt32LE(0);if(buffer.length<4+size)return;const request=JSON.parse(buffer.subarray(4,size+4).toString());buffer=buffer.subarray(size+4);const response={type:'response',requestId:request.requestId,handledByClientId:'owner',resultType:request.method==='thread-follower-start-turn'?'error':'success',result:request.method==='initialize'?{clientId:'client'}:{}};if(request.method==='thread-follower-start-turn')writes++;const body=Buffer.from(JSON.stringify(response)),head=Buffer.alloc(4);head.writeUInt32LE(body.length);socket.write(Buffer.concat([head,body]));}});});
- await new Promise<void>(resolve=>server.listen(path,resolve));try{const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',codexIdentity:async()=>({nativeId:r.nativeId,generation:r.generation,cwd:tmpdir(),socket:path})});const result=await adapter.send(r,{id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'test'});assert.equal(result.status,'unknown');assert.equal(writes,1);}finally{for(const s of sockets)s.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+ await new Promise<void>(resolve=>server.listen(path,resolve));try{const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',codexIdentity:async()=>({nativeId:r.nativeId,generation:r.generation,cwd:tmpdir(),socket:path}),codexQueue:async()=>{throw Object.assign(new Error('spawn codex'),{code:'ENOENT'});}});const result=await adapter.send(r,{id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'test'});assert.equal(result.status,'unknown');assert.equal(writes,1);}finally{for(const s of sockets)s.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});
+
+test('Codex send queues the envelope JSON through writeCodexMessage and submits',async()=>{
+ const home=await mkdtemp(join(tmpdir(),'cldx-codex-queue-send-'));const calls:{command:string;args:string[];timeoutMs:number}[]=[];
+ const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',codexIdentity:async()=>({nativeId:r.nativeId,generation:r.generation,cwd:tmpdir(),socket:'/unused'}),codexQueue:async(command,args,timeoutMs)=>{calls.push({command,args,timeoutMs});}});
+ const envelope={id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'test'};
+ const receipt=await adapter.send(r,envelope);
+ assert.deepEqual(receipt,{status:'submitted',nativeMessageId:'m'});
+ assert.equal(calls.length,1);assert.equal(calls[0].command,'codex');
+ assert.deepEqual(calls[0].args.slice(0,4),['queue','--thread','session','--message']);
+ const payload=JSON.parse(calls[0].args[4]);
+ assert.equal(payload.id,envelope.id);assert.equal(payload.schemaVersion,1);assert.equal(payload.text,'test');
+ assert.deepEqual(payload.sender,envelope.sender);assert.deepEqual(payload.recipient,envelope.recipient);
+});
+
+test('Codex send measures the ceiling on the body text, not the envelope JSON',async()=>{
+ const home=await mkdtemp(join(tmpdir(),'cldx-codex-queue-limit-'));const calls:{command:string;args:string[];timeoutMs:number}[]=[];
+ const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',codexIdentity:async()=>({nativeId:r.nativeId,generation:r.generation,cwd:tmpdir(),socket:'/unused'}),codexQueue:async(command,args,timeoutMs)=>{calls.push({command,args,timeoutMs});},limits:{codexMessageMaxChars:3}});
+ const envelope={id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'abc'};
+ assert.deepEqual(await adapter.send(r,envelope),{status:'submitted',nativeMessageId:'m'});
+ assert.equal(calls.length,1);assert.ok(calls[0].args[4].length>3);
+ assert.deepEqual(await adapter.send(r,{...envelope,id:'n',text:'abcd'}),{status:'rejected',reason:'too_long'});
+ assert.equal(calls.length,1);
+});
+
+test('Codex send takes the ceiling from limits in home when no option is given',async()=>{
+ const home=await mkdtemp(join(tmpdir(),'cldx-codex-queue-limit-file-'));const path=join(home,'.seamless','limits.json');
+ assert.equal((await writeLimits({...unrestricted,codexMessageMaxChars:3},null,path)).status,'ok');
+ let calls=0;
+ const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',codexIdentity:async()=>({nativeId:r.nativeId,generation:r.generation,cwd:tmpdir(),socket:'/unused'}),codexQueue:async()=>{calls++;}});
+ const envelope={id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'abcd'};
+ assert.deepEqual(await adapter.send(r,envelope),{status:'rejected',reason:'too_long'});
+ assert.equal(calls,0);
+});
+
+test('a timed-out Codex queue is unknown and never falls back to IPC',async()=>{
+ const home=await mkdtemp(join(tmpdir(),'cldx-codex-queue-timeout-'));const dir=join(home,'.codex','ipc');await mkdir(dir,{recursive:true,mode:0o700});await chmod(dir,0o700);const path=join(dir,'ipc.sock');
+ let connections=0,writes=0;const sockets:Socket[]=[];const server=createServer(socket=>{connections++;sockets.push(socket);socket.on('data',part=>{const request=JSON.parse(part.subarray(4).toString());if(request.method==='thread-follower-start-turn')writes++;});});
+ await new Promise<void>(resolve=>server.listen(path,resolve));try{const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',codexIdentity:async()=>({nativeId:r.nativeId,generation:r.generation,cwd:tmpdir(),socket:path}),codexQueue:async()=>{throw Object.assign(new Error('timed out'),{killed:true,signal:'SIGTERM'});}});const result=await adapter.send(r,{id:'m',sender:{id:'a',nativeId:'a',generation:'g'},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'test'});assert.equal(result.status,'unknown');assert.equal(connections,0);assert.equal(writes,0);}finally{for(const s of sockets)s.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));}
 });
 
 test('Claude revoked authorization after transport connect prevents write',async()=>{const s=new TestSocket();const p=sendClaudeFrame(s as unknown as Socket,async()=>false,'payload','m');s.emit('connect');assert.deepEqual(await p,{status:'rejected'});assert.equal(s.writes,0);});
@@ -56,14 +95,14 @@ for(const humanApproval of [undefined,false,true,'false',null])test(`native inbo
 import net from 'node:net';
 import fs from 'node:fs/promises';
 import {syncBuiltinESMExports} from 'node:module';
-import {readLimits,unrestricted} from '../src/limits.ts';
+import {readLimits,unrestricted,writeLimits} from '../src/limits.ts';
 // TC-3b (specs/202610-more-peers): an envelope a registered Grok Bot signed (src/external-inbound.ts) is written by this same
 // adapter, so it gets the same marker, and never humanApproval:true.
 const markerSenders={local:{id:'a',nativeId:'a',generation:'g'},'grok-bot':{id:'grok-bot:chachamaru',nativeId:'chachamaru',generation:'1'}} as const;
 for(const [from,sender] of Object.entries(markerSenders))for(const provider of ['claude','codex'] as const)for(const mark of [undefined,false,true,'legacy'] as const)test(`${provider} envelope marker from a ${from} sender with markUnapproved=${String(mark)}`,async t=>{
  const home=await mkdtemp(join(tmpdir(),'marker-')),path=join(home,'limits.json');
  if(mark!==undefined&&mark!=='legacy')await fs.writeFile(path,JSON.stringify({...unrestricted,markUnapproved:mark}),{mode:0o600});
- let payload:Record<string,unknown>|undefined,content:string|undefined;
+ let payload:Record<string,unknown>|undefined,content:string|undefined,queued:string|undefined;
  class Transport extends EventEmitter{
   destroyed=false;setTimeout(){return this;}destroy(){this.destroyed=true;return this;}
   // Like Claude Code, closes its side once the sender half-closes.
@@ -86,8 +125,9 @@ for(const [from,sender] of Object.entries(markerSenders))for(const provider of [
  syncBuiltinESMExports();t.after(()=>{connection.mock.restore();stat.mock.restore();syncBuiltinESMExports();});
  const target={...r,provider};
  const identity=async()=>({nativeId:r.nativeId,generation:r.generation,cwd:home,socket:join(home,'.codex','ipc','ipc.sock')});
- const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',claudeVersion:async()=>'2.1.284',codexIdentity:identity,claudeIdentity:identity,...(mark==='legacy'?{}:{markUnapproved:async()=>{const l=await readLimits(path);return l.status==='ok'&&l.value.markUnapproved===true;}})});
+ const {adapter}=createNativeRuntime({home,desktopVersion:async()=>'26.928.40906+12694',claudeVersion:async()=>'2.1.284',codexIdentity:identity,claudeIdentity:identity,...(provider==='codex'?{codexQueue:async(_command:string,args:string[])=>{queued=args[4];}}:{}),...(mark==='legacy'?{}:{markUnapproved:async()=>{const l=await readLimits(path);return l.status==='ok'&&l.value.markUnapproved===true;}})});
  const receipt=await adapter.send(target,{id:'m',sender:{...sender},recipient:{id:r.id,nativeId:r.nativeId,generation:r.generation},text:'test'});
+ if(provider==='codex')payload=JSON.parse(queued!);
  assert.equal(receipt.status,'submitted');assert.ok(payload);
  const {createHash}=await import('node:crypto');
  assert.equal(receipt.payloadSha256,provider==='claude'?createHash('sha256').update(content!).digest('hex'):undefined);

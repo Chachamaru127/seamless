@@ -10,6 +10,8 @@ import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { observeGit } from '../git-context.ts';
 import type { Observation, Registration } from '../protocol.ts';
+import { codexMessageMaxChars, type Limits } from '../limits.ts';
+import type { Receipt } from '../delivery.ts';
 import type { ReadFailure, ReadItem, TranscriptReader } from './read.ts';
 import { parseEnvelope } from './read.ts';
 import { readdir } from 'node:fs/promises';
@@ -158,6 +160,37 @@ export async function observeCodexSession(nativeId:string,options:CodexOptions={
  const r=await withState(nativeId,options,false,(_state,meta)=>meta);
  return failed(r)?null:r;
 }
+// Only Desktop's own goal record says that a goal is executing. An ordinary running turn is not that record: `activeTurnId`
+// and a turn status of inProgress are true for every turn, goal or not, so neither names a goal. A snapshot without any goal
+// field proves nothing and answers null, which the caller reports as unknown_reason rather than guessing from the product name.
+type GoalMark='running'|'idle'|null;
+const GOAL_RECORDS=['goal','activeGoal','currentGoal','objective'] as const,GOAL_STATES=['goalState','goalStatus'] as const;
+const GOAL_RUNNING=new Set(['inprogress','running','active','executing','started']);
+const GOAL_IDLE=new Set(['completed','complete','done','cancelled','canceled','failed','stopped','idle','paused','finished']);
+function goalStatusMark(value:unknown):GoalMark{
+ if(typeof value!=='string')return null;
+ const word=value.toLowerCase();
+ return GOAL_RUNNING.has(word)?'running':GOAL_IDLE.has(word)?'idle':null;
+}
+function goalMark(value:unknown):GoalMark{
+ if(typeof value==='string')return goalStatusMark(value);
+ if(!value||typeof value!=='object'||Array.isArray(value))return null;
+ const record=value as Frame;
+ if(record.active===false||record.running===false)return 'idle';
+ return goalStatusMark(record.status)??goalStatusMark(record.state)??(record.active===true||record.running===true?'running':null);
+}
+export function codexGoalRunning(state:Frame):boolean|null{
+ const marks:GoalMark[]=[];
+ for(const key of GOAL_RECORDS)if(state[key]!==undefined&&state[key]!==null)marks.push(goalMark(state[key]));
+ for(const key of GOAL_STATES)if(state[key]!==undefined&&state[key]!==null)marks.push(goalMark(state[key]));
+ if(Array.isArray(state.goals))for(const goal of state.goals)marks.push(goalMark(goal));
+ for(const turn of turns(state))for(const key of GOAL_RECORDS)if(turn[key]!==undefined&&turn[key]!==null)marks.push(goalMark(turn[key]));
+ return marks.includes('running')?true:marks.includes('idle')?false:null;
+}
+export async function observeCodexGoal(nativeId:string,options:CodexOptions={}):Promise<boolean|null>{
+ const result=await withState(nativeId,options,false,state=>({state}));
+ return 'state' in result?codexGoalRunning(result.state):null;
+}
 export async function observeCodex(registration:Registration,options:CodexOptions={}):Promise<Observation|null>{
  if(registration.provider!=='codex')return null;
  const meta=await observeCodexSession(registration.nativeId,options);if(!meta||!meta.cwd)return null;
@@ -186,6 +219,31 @@ export function projectCodexStructure(state:Frame):StructureItem[]{
 export async function readCodexStructure(target:Registration,options:CodexOptions={}):Promise<StructureItem[]>{
  const result=await withState(target.nativeId,options,false,(state,meta)=>({generation:meta.generation,items:projectCodexStructure(state)}));
  return 'items' in result&&result.generation===target.generation?result.items:[];
+}
+
+// Codex writes go through the public CLI (`codex queue --thread <id> --message <text>`). Exit 0 means the reservation
+// reached `submitted`; Desktop IPC is only a fallback for a failure the queue returned before that point. A timed-out or
+// signalled run is `unknown`, because the queue may already hold the message and invariant 6 forbids a second write.
+export const CODEX_QUEUE_TIMEOUT_MS=30_000;
+export type CodexQueueRun=(command:string,args:string[],timeoutMs:number)=>Promise<unknown>;
+// `body` is the text the ceiling measures when `text` carries a larger wire form (the envelope JSON). Without it the ceiling
+// would count the envelope, refusing a short message for its metadata.
+export type CodexWriteOptions={limits?:Pick<Limits,'codexMessageMaxChars'>;body?:string;command?:string;timeoutMs?:number;run?:CodexQueueRun;ipc:()=>Promise<Receipt>};
+// Only a run that provably never reached the queue may cross over to Desktop IPC; a second write after the queue accepted
+// the reservation would double-send (invariant 6). A numeric exit code alone does not prove that: the queue can accept and
+// then fail. The two proofs are a spawn error for a command that could not run, and exit code 2 with usage on standard error.
+function failedBeforeSubmit(error:unknown):boolean{
+ const e=error as (NodeJS.ErrnoException&{killed?:boolean;signal?:string;stderr?:unknown})|null|undefined;
+ if(!e||e.killed||e.signal)return false;
+ if(typeof e.code==='string')return e.code==='ENOENT'||e.code==='EACCES'||e.code==='ENOTDIR';
+ return e.code===2&&typeof e.stderr==='string'&&/\busage\b/i.test(e.stderr);
+}
+export async function writeCodexMessage(nativeId:string,text:string,messageId:string,options:CodexWriteOptions):Promise<Receipt>{
+ if([...(options.body??text)].length>codexMessageMaxChars(options.limits??{}))return {status:'rejected',reason:'too_long'};
+ const queueRun=options.run??((command,args,timeoutMs)=>run(command,args,{encoding:'utf8',timeout:timeoutMs,maxBuffer:1024*1024}));
+ try{await queueRun(options.command??'codex',['queue','--thread',nativeId,'--message',text],options.timeoutMs??CODEX_QUEUE_TIMEOUT_MS);}
+ catch(error){if(!failedBeforeSubmit(error))return {status:'unknown'};try{return await options.ipc();}catch{return {status:'unknown'};}}
+ return {status:'submitted',nativeMessageId:messageId};
 }
 
 export function projectCodexSentIds(state:Frame,ids:string[],recipient:SendRecipient):string[]{

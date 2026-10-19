@@ -10,8 +10,8 @@ import {join} from 'node:path';
 import {homedir} from 'node:os';
 import {identifyCaller,type CallerOptions,type CallerResult,type Caller} from './caller.ts';
 import {scanSessions,codexIdentity,wakeCodexThread,inScope,type SessionIdentity, type ScanOptions} from './sessions-scan.ts';
-import {createNativeRuntime,createCodexOwnerLookup,findClaudeIdentity,type NativeIdentity} from './native-runtime.ts';
-import {readLimits,writeLimits,clearLimits,unrestricted,validLimits,type Limits,type AutoScope} from './limits.ts';
+import {createNativeRuntime,createCodexOwnerLookup,findClaudeIdentity,codexReachable,type NativeIdentity} from './native-runtime.ts';
+import {readLimits,writeLimits,clearLimits,unrestricted,validLimits,heldAfterSec,type Limits,type AutoScope} from './limits.ts';
 import {ContractError,object,isLocalRegistration,type Registration,type Operation} from './protocol.ts';
 import {Registry,loadRegistry} from './registry.ts';
 import {Delivery,type NativeAdapter} from './delivery.ts';
@@ -22,19 +22,24 @@ import {wasSigned} from './nonce-store.ts';
 import {secretReader,noKeychain,type KeychainReader} from './secrets.ts';
 import {signForBot} from './bot-sign.ts';
 import {createExecutorCheck,type ExecutorCheck} from './bot-executor.ts';
+import {loadManifestRegistry,type ManifestRegistry} from './core/manifest.ts';
+import {manifestProduct} from './discovery.ts';
 // external: set only by `--as <registration>` on the command line (src/cli.ts): the call comes from a registered outside sender.
 // sign: set only by `bot-send|bot-sessions <registration>` (src/cli.ts): the input is an unsigned request, signed here before it takes the same path (src/bot-sign.ts).
 export type CallContext={kind:'cli'|'mcp';meta?:unknown;external?:{name:string;sign?:boolean}};
-export type AutomaticOptions={clock?:StatusClock;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;wake?:(nativeId:string)=>Promise<string|null>;adapter?:NativeAdapter;limitsPath?:string;peersPath?:string;reservationDir?:string;env?:NodeJS.ProcessEnv;keychain?:KeychainReader;diagnose?:(line:string)=>void;webhook?:WebhookOptions;botExecutor?:ExecutorCheck};
-export type Ticket={provider:'codex'|'claude'|'grok';nativeId:string;generation:string;cwd:string;branch?:string|null};
+export type AutomaticOptions={clock?:StatusClock;manifests?:ManifestRegistry;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;wake?:(nativeId:string)=>Promise<string|null>;adapter?:NativeAdapter;limitsPath?:string;peersPath?:string;reservationDir?:string;env?:NodeJS.ProcessEnv;keychain?:KeychainReader;diagnose?:(line:string)=>void;webhook?:WebhookOptions;botExecutor?:ExecutorCheck};
+// A session the registration attributes to one product. The scan speaks in providers; a provider may carry more than one
+// product (a CLI and a Desktop sharing a thread store), so the product travels with the session and the ticket.
+export type ProductSession=SessionIdentity&{product?:string};
+export type Ticket={provider:'codex'|'claude'|'grok';nativeId:string;generation:string;cwd:string;branch?:string|null;product?:string};
 // A registered Bot has no process or folder here: the registration's name and key version stand where a conversation's id and
 // generation do, and cwd and branch are empty.
-export type BotTicket={provider:'grok-bot';nativeId:string;generation:string;cwd:'';branch?:null};
+export type BotTicket={provider:'grok-bot';nativeId:string;generation:string;cwd:'';branch?:null;product?:string};
 const idOf=(n:{provider:string;nativeId:string})=>`${n.provider}:${n.nativeId}`;
-export function issueTicket(n:Ticket|BotTicket):string{return Buffer.from(JSON.stringify({provider:n.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,branch:n.branch??null})).toString('base64url');}
+export function issueTicket(n:Ticket|BotTicket):string{return Buffer.from(JSON.stringify({provider:n.provider,nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,branch:n.branch??null,...(n.product?{product:n.product}:{})})).toString('base64url');}
 export function parseTicket(value:unknown):Ticket|BotTicket{
  if(typeof value!=='string'||value.length>16384)throw new ContractError('invalid_ticket');
- try{const n=object(JSON.parse(Buffer.from(value,'base64url').toString('utf8')),['provider','nativeId','generation','cwd','branch']),bot=n.provider==='grok-bot';if(!['codex','claude','grok','grok-bot'].includes(n.provider as string)||!['nativeId','generation'].every(k=>typeof n[k]==='string'&&n[k])||(bot?n.cwd!=='':typeof n.cwd!=='string'||!n.cwd))throw Error();if(bot?n.branch!==null:n.branch!==null&&typeof n.branch!=='string')throw Error();return n as Ticket|BotTicket;}catch{throw new ContractError('invalid_ticket');}
+ try{const n=object(JSON.parse(Buffer.from(value,'base64url').toString('utf8')),['provider','nativeId','generation','cwd','branch','product']),bot=n.provider==='grok-bot';if(!['codex','claude','grok','grok-bot'].includes(n.provider as string)||!['nativeId','generation'].every(k=>typeof n[k]==='string'&&n[k])||(bot?n.cwd!=='':typeof n.cwd!=='string'||!n.cwd))throw Error();if(bot?n.branch!==null:n.branch!==null&&typeof n.branch!=='string')throw Error();if(n.product!==undefined&&(typeof n.product!=='string'||!n.product||n.product.length>64))throw Error();return n as Ticket|BotTicket;}catch{throw new ContractError('invalid_ticket');}
 }
 function scope(value:unknown):AutoScope{if(value===undefined)return 'current_work';if(!['current_work','same_repository','any'].includes(value as string))throw new ContractError();return value as AutoScope;}
 async function excluded(n:Ticket,limits:Limits){
@@ -46,12 +51,20 @@ async function excluded(n:Ticket,limits:Limits){
  }
  return false;
 }
-function registrations(sessions:SessionIdentity[]):Registration[]{
- return sessions.map(n=>({id:idOf(n),provider:n.provider,nativeId:n.nativeId,generation:n.generation,host:'local',displayName:idOf(n),workspace:n.cwd,operations:['read','send'],grants:sessions.filter(p=>idOf(p)!==idOf(n)).flatMap(p=>(['read','send'] as const).flatMap(operation=>(['inbound','outbound'] as const).map(direction=>({peer:idOf(p),operation,direction}))))}));
+function registrations(sessions:ProductSession[]):Registration[]{
+ return sessions.map(n=>{
+  const record:Registration&{product?:string}={id:idOf(n),provider:n.provider,nativeId:n.nativeId,generation:n.generation,host:'local',displayName:idOf(n),workspace:n.cwd,operations:['read','send'],grants:sessions.filter(p=>idOf(p)!==idOf(n)).flatMap(p=>(['read','send'] as const).flatMap(operation=>(['inbound','outbound'] as const).map(direction=>({peer:idOf(p),operation,direction}))))};
+  if(n.product)record.product=n.product;
+  return record;
+ });
 }
 export function createAutomatic(options:AutomaticOptions={}){
  const home=options.home??homedir();
  const limitsPath=options.limitsPath??join(home,'.seamless','limits.json'),peersPath=options.peersPath??defaultPeersPath(home);
+ // The product registration is read once per automatic: the listing hides a conversation no manifest claims, and the ticket
+ // carries the product so a send reaches that product's own adapter (not merely its provider's first manifest).
+ let manifestsOnce:Promise<ManifestRegistry>|undefined;
+ const manifests=()=>options.manifests?Promise.resolve(options.manifests):(manifestsOnce??=loadManifestRegistry());
  return async(method:string,input:unknown,context:CallContext={kind:'cli'}):Promise<any>=>{
   const loaded=await readLimits(limitsPath);
   // limits reads and writes only seamless's own file, so strict never locks an updated caller out of turning strict off.
@@ -64,6 +77,8 @@ export function createAutomatic(options:AutomaticOptions={}){
   const git=async(cwd:string)=>{const key=await realpath(cwd).catch(()=>cwd);let v=gitOnce.get(key);if(!v){v=baseGit(cwd);gitOnce.set(key,v);}return v;};
   let versionOnce:Promise<string|null>|undefined;const baseVersion=options.scanOptions?.version??desktopVersion;
   const version=()=>versionOnce??=baseVersion();
+  // Set only after an actual Desktop connection attempt failed; versionStatus then reports unverified_desktop for Codex.
+  let desktopConnection:'ok'|'failed'|undefined;
   const scanOptions={includeUnavailable:!options.compatTest,...options.scanOptions,git,version,home,strictVersions,claude:{...options.scanOptions?.claude,strictVersions}};
   const ownerLookup=method==='band'&&!options.scanOptions?.owner?createCodexOwnerLookup(home,scanOptions.version,scanOptions):undefined;
   const ownerCache=new Map<string,Promise<string|null>>();
@@ -80,7 +95,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   const secret=secretReader(options.env??process.env,options.keychain??noKeychain);
   // Unusable limits are rejected by the delivery's own re-check, which keeps the reservation retryable.
   const markUnapproved=async()=>{const current=await readLimits(limitsPath);return current.status==='ok'&&current.value.markUnapproved===true;};
-  const runtime=createNativeRuntime({...scanOptions,codexOwner:bandOwner,markUnapproved,desktopVersion:scanOptions.version,home,codexIdentity:id=>codexIdentity(id,scanOptions)});
+  const runtime=createNativeRuntime({...scanOptions,manifests:options.manifests,codexOwner:bandOwner,markUnapproved,desktopVersion:scanOptions.version,home,codexIdentity:id=>codexIdentity(id,scanOptions)});
   const baseAdapter=options.adapter??runtime.adapter;
   const structures=new Map<string,ReturnType<NonNullable<NativeAdapter['structure']>>>();
   const adapter:NativeAdapter=method==='band'&&baseAdapter.structure?{...baseAdapter,structure:target=>{
@@ -88,14 +103,14 @@ export function createAutomatic(options:AutomaticOptions={}){
    let value=structures.get(key);if(!value){value=baseAdapter.structure!(target);structures.set(key,value);}return value;
   }}:baseAdapter;
   const branch=async(cwd:string,observe=scanOptions.git)=>{const git=await observe(cwd);return git.state==='git'?git.branch:git.state==='no_git'?null:undefined;};
-  const ticketFor=async(n:SessionIdentity)=>{const observed=await branch(n.cwd);return observed===undefined?null:issueTicket({...n,branch:observed});};
+  const ticketFor=async(n:ProductSession)=>{const observed=await branch(n.cwd);return observed===undefined?null:issueTicket({...n,branch:observed});};
   const policy=async(n:Ticket,c:Caller,l:Limits,op:Operation,s:AutoScope)=>{
    if(l.operations?.[op]===false)return 'operation_not_permitted';
    if(await excluded(n,l))return 'target_excluded';
    if(!await inScope(n.cwd,c.cwd,s,scanOptions.git)||l.scope!==null&&!await inScope(n.cwd,c.cwd,l.scope,scanOptions.git))return 'scope_conflict';
    return null;
   };
-  const compatibilityFor=(n:Pick<SessionIdentity,'provider'>,limits:Limits)=>({...scanOptions,...(n.provider==='claude'?scanOptions.claude:{}),strictVersions:options.compatTest===true||limits.strictVersions===true});
+  const compatibilityFor=(n:Pick<SessionIdentity,'provider'>,limits:Limits)=>({...scanOptions,...(n.provider==='claude'?scanOptions.claude:{}),...(n.provider==='codex'&&desktopConnection?{desktopConnection}:{}),strictVersions:options.compatTest===true||limits.strictVersions===true});
   const rejectedVersion=(n:Pick<SessionIdentity,'provider'|'version'>,limits:Limits)=>isVersionAllowed(productOf(n.provider),n.version,compatibilityFor(n,limits))?null:{status:'unsupported_version',reason:n.version??'unknown',version:n.version??'unknown'};
   // A registered outside sender (`--as`): no process on this Mac to identify, so the signed envelope stands in for the caller
   // (src/external-inbound.ts). It never reaches the caller identification below, and MCP cannot produce this context.
@@ -117,6 +132,15 @@ export function createAutomatic(options:AutomaticOptions={}){
   }
   const observed=await caller(context);if(observed.status!=='ok')return observed;
   const c=observed.caller;
+  // The registration is the list. A provider with no manifest is not listed, and a provider claimed by more than one product
+  // is listed only when the scan itself named the product: the two are never merged into the first product's adapter.
+  const registry=await manifests().catch(()=>undefined),products=registry?.list()??[];
+  const attributed=(n:SessionIdentity):ProductSession|null=>{
+   const declared=(n as ProductSession).product;
+   if(!registry)return n as ProductSession;
+   const product=manifestProduct(products,n.provider,declared);
+   return product===undefined?null:{...n,product};
+  };
   if(options.compatTest&&!['sessions','read'].includes(method))return {status:'compat_check_read_only'};
   if(method==='limits'){
    const p=object(input,['action','value']);if(!['get','set','clear'].includes(p.action as string)||p.action!=='set'&&p.value!==undefined)throw new ContractError();
@@ -141,7 +165,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   };
   const callerVersion=rejectedVersion(c,l);if(callerVersion)return callerVersion;
   // Both sides of a request are read together, as the band already does; each read still re-observes the caller.
-  const status=createStatus({parallelReads:true,dir:options.reservationDir??join(home,'.seamless','reservations'),adapter,caller:{...c,id:idOf(c)},clock:options.clock,canRead:async n=>{if(!isLocalParty(n))return false;const current=await caller(context);if(current.status!=='ok'||idOf(current.caller)!==idOf(c)||current.caller.generation!==c.generation)return false;const limits=await readLimits(limitsPath);if(limits.status==='unusable')return false;const currentLimits=limits.status==='ok'?limits.value:unrestricted;return !rejectedVersion(current.caller,currentLimits)&&!await policy(n,c,currentLimits,'read','any')&&!await targetCompatibility(n,currentLimits);}});
+  const status=createStatus({parallelReads:true,heldAfterSec:heldAfterSec(l),dir:options.reservationDir??join(home,'.seamless','reservations'),adapter,caller:{...c,id:idOf(c)},clock:options.clock,canRead:async n=>{if(!isLocalParty(n))return false;const current=await caller(context);if(current.status!=='ok'||idOf(current.caller)!==idOf(c)||current.caller.generation!==c.generation)return false;const limits=await readLimits(limitsPath);if(limits.status==='unusable')return false;const currentLimits=limits.status==='ok'?limits.value:unrestricted;return !rejectedVersion(current.caller,currentLimits)&&!await policy(n,c,currentLimits,'read','any')&&!await targetCompatibility(n,currentLimits);}});
   if(method==='send'&&input&&typeof input==='object'&&'track' in input){const p=object(input,['track','waitSeconds','scope']);scope(p.scope);return status.track(p.track,p.waitSeconds);}
   const keys=method==='sessions'?['operation','scope','target','includeOffline','peek']:method==='select'?['operation','scope','target']:method==='read'?['target','scope','cursor','limit']:method==='send'?['ticket','id','text','replyTo','scope']:method==='revalidate'?['ticket','operation','scope']:[];
   if(!keys.length&&method!=='band')throw new ContractError('unknown_method');
@@ -156,7 +180,7 @@ export function createAutomatic(options:AutomaticOptions={}){
    const ticket=parseTicket(p.ticket);if(idOf(ticket)===idOf(c))return {status:'self_target'};
    // A registered Bot is reached by webhook, not through a conversation: none of the checks below apply to it (src/webhook-send.ts).
    if(ticket.provider==='grok-bot')return sendToBot({caller:c,observe:()=>caller(context),callerRegistration:registrations([c])[0],peersPath,limitsPath,reservationDir:options.reservationDir??join(home,'.seamless','reservations'),keyPath:join(home,'.seamless','key'),now:options.clock?.now,secret,git:scanOptions.git,adapter,rejectedVersion,markUnapproved,webhook:options.webhook},ticket,op,{revalidate:method==='revalidate',id:p.id,text:p.text,replyTo:p.replyTo});
-   const target:SessionIdentity={...ticket,socket:''};
+   const target:ProductSession={...ticket,socket:''};
    let unsupportedVersion:string|undefined;
    const validate=async()=>{
     const now=await caller(context);if(now.status!=='ok'||idOf(now.caller)!==idOf(c)||now.caller.generation!==c.generation||now.caller.cwd!==c.cwd)return 'caller_unobserved';
@@ -205,11 +229,17 @@ export function createAutomatic(options:AutomaticOptions={}){
    for(const [id,n] of identities)bandIdentities.set(id,n);
    return {sessions:[...bandIdentities.values()],codexWorkspace:'unknown' as const};
   };
-  const found=method==='band'?await related():options.compatTest&&!options.scan?await scanSessions(c.cwd,effective,{...scanOptions,expectedPairCaller:idOf(c),include:async n=>!await excluded(n,l)&&(!options.compatTarget||idOf(n)===options.compatTarget||idOf(n)===idOf(c))}):await scan(c.cwd,effective),visible:SessionIdentity[]=[];
+  const found=method==='band'?await related():options.compatTest&&!options.scan?await scanSessions(c.cwd,effective,{...scanOptions,expectedPairCaller:idOf(c),include:async n=>!await excluded(n,l)&&(!options.compatTarget||idOf(n)===options.compatTarget||idOf(n)===idOf(c))}):await scan(c.cwd,effective),visible:ProductSession[]=[];
   if(options.compatTest){if(found.codexWorkspace!=='observed'||found.codexTruncated)return {status:'compat_check_pair_required'};const pair=[];for(const n of found.sessions)if(!await policy(n,c,l,'read',s))pair.push(n);if(pair.length!==2||!pair.some(n=>idOf(n)===idOf(c)))return {status:'compat_check_pair_required'};}
-  for(const foundSession of found.sessions){const n:SessionIdentity=rejectedVersion(foundSession,l)?{...foundSession,status:'unknown',reason:'unsupported_version'}:foundSession;if(idOf(n)!==idOf(c)&&!await policy(n,c,l,op,s)&&(!p.target||idOf(n)===p.target))visible.push(n);}
+  for(const foundSession of found.sessions){
+   // A conversation the registration does not claim is not listed, even when the scan still reports it.
+   const session=attributed(foundSession);
+   if(!session)continue;
+   const n:ProductSession=rejectedVersion(session,l)?{...session,status:'unknown',reason:'unsupported_version'}:session;
+   if(idOf(n)!==idOf(c)&&!await policy(n,c,l,op,s)&&(!p.target||idOf(n)===p.target))visible.push(n);
+  }
   // A Codex conversation the caller names but Desktop has not loaded is opened, then observed again.
-  if(p.target&&method!=='band'&&visible.length===1&&visible[0].provider==='codex'&&visible[0].reason==='unreachable'&&await wake(visible[0].nativeId)){const current=await inspect(visible[0]);if(current)visible[0]={...current,provider:'codex'};}
+  if(p.target&&method!=='band'&&visible.length===1&&visible[0].provider==='codex'&&visible[0].reason==='unreachable'&&await wake(visible[0].nativeId)){const current=await inspect(visible[0]);if(current)visible[0]={...current,provider:'codex',...(visible[0].product?{product:visible[0].product}:{})};}
   if(method==='sessions'||method==='band'){
    const seen=options.compatTest||p.peek===true||method==='band'?{disappeared:[],changes:new Map()}:await observeSeen(join(home,'.seamless','seen.json'),found.sessions.filter(n=>!(n.provider==='grok'&&n.generation==='none')),options.clock?.now()??Date.now());
    const expired:string[]=[];
@@ -227,10 +257,16 @@ export function createAutomatic(options:AutomaticOptions={}){
    }
    return inbound;})();
    if(method!=='band')await inboundPromise;
-   const candidates=await Promise.all(visible.map(async n=>({id:idOf(n),provider:n.provider,host:'local',nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,version:n.version||null,versionStatus:versionStatus(productOf(n.provider),n.version,compatibilityFor(n,l)),...(p.peek===true||method==='band'?{change:'unknown'}:seen.changes.get(idOf(n))),status:n.status??(seen.changes.get(idOf(n))?.change==='generation_changed'?'unknown':'online'),reason:n.reason??(seen.changes.get(idOf(n))?.change==='generation_changed'?'generation_changed':null),requests:options.compatTest?[]:await status.recent({...n,id:idOf(n)}),operations:{read:l.operations?.read??true,send:l.operations?.send??true},ticket:method==='band'?null:n.status&&n.status!=='online'?null:await ticketFor(n)})));
+   // A Codex thread the scan could not reach is where a Desktop connection was actually attempted and failed. One probe
+   // decides this for the whole listing: a reachable Desktop only means the thread is not loaded yet.
+   if(method==='sessions'&&visible.some(n=>n.provider==='codex'&&n.reason==='unreachable')){
+    const probe=options.scanOptions?.reachable??(()=>codexReachable(home,version,scanOptions));
+    desktopConnection=(await probe())?'ok':'failed';
+   }
+   const candidates=await Promise.all(visible.map(async n=>({id:idOf(n),provider:n.provider,host:'local',nativeId:n.nativeId,generation:n.generation,cwd:n.cwd,...(n.product?{product:n.product}:{}),version:n.version||null,versionStatus:versionStatus(productOf(n.provider),n.version,compatibilityFor(n,l)),...(p.peek===true||method==='band'?{change:'unknown'}:seen.changes.get(idOf(n))),status:n.status??(seen.changes.get(idOf(n))?.change==='generation_changed'?'unknown':'online'),reason:n.reason??(seen.changes.get(idOf(n))?.change==='generation_changed'?'generation_changed':null),requests:options.compatTest?[]:await status.recent({...n,id:idOf(n)}),operations:{read:l.operations?.read??true,send:l.operations?.send??true},ticket:method==='band'?null:n.status&&n.status!=='online'?null:await ticketFor(n)})));
    const inbound=await inboundPromise;
    // Registered outside executors (the roster is read afresh each call) sit apart from candidates; the band never carries them.
-   const external=method==='sessions'&&!options.compatTest?await externalPeers(await readPeers(peersPath),c.cwd,p.target as string|undefined,l.operations?.send??true,async peer=>await inRange(scanOptions.git,peer,l,c.cwd)?issueTicket({provider:'grok-bot',nativeId:peer.name,generation:String(peer.keyVersion),cwd:'',branch:null}):null):{};
+   const external=method==='sessions'&&!options.compatTest&&(!registry||manifestProduct(products,'grok-bot')!==undefined)?await externalPeers(await readPeers(peersPath),c.cwd,p.target as string|undefined,l.operations?.send??true,async peer=>await inRange(scanOptions.git,peer,l,c.cwd)?issueTicket({provider:'grok-bot',nativeId:peer.name,generation:String(peer.keyVersion),cwd:'',branch:null}):null):{};
    // Hide only sessions the scan saw as not running; a changed generation is still reachable.
    const listed=method==='band'||p.includeOffline===true?candidates:candidates.filter((_,i)=>(visible[i].status??'online')==='online');
    return {status:'ok',inbound,caller:{provider:c.provider,nativeId:c.nativeId,generation:c.generation,cwd:c.cwd,source:c.source,version:c.version||null,versionStatus:versionStatus(productOf(c.provider),c.version,compatibilityFor(c,l))},codexWorkspace:found.codexWorkspace,...(found.codexTruncated?{codexTruncated:found.codexTruncated}:{}),excludeExpired,offlineHidden:candidates.length-listed.length,candidates:listed,...external};

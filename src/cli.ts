@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import {compatibilityCheck} from './compat-check.ts';
 import {compatibilityMarkdown} from './compat.ts';
 import {readFile,writeFile} from 'node:fs/promises';
@@ -5,10 +6,12 @@ import {pathToFileURL} from 'node:url';
 import {createAutomatic,migrateRegistry,type Automatic} from './automatic.ts';
 import { createNativeRuntime } from './native-runtime.ts';
 import { Registry, loadRegistry } from './registry.ts';
-import { Discovery } from './discovery.ts';
+import { Discovery, classifyPeers, type WhoOptions } from './discovery.ts';
 import { observeGit } from './git-context.ts';
 import { createServe } from './serve.ts';
 import { createMcp } from './mcp.ts';
+import { runSetup } from './setup.ts';
+import { runDoctor } from './doctor.ts';
 import { runLines } from './io.ts';
 import { ContractError, object } from './protocol.ts';
 import {securityKeychain} from './secrets.ts';
@@ -22,8 +25,33 @@ async function readStdin():Promise<string>{
  return new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks));
 }
 // The command line is the one entry that reads the real Keychain (src/secrets.ts); every other way of building an automatic is given a reader or none.
-export async function runCli(argv:string[],automatic:Automatic=createAutomatic({keychain:securityKeychain()}),limitsPath?:string,stdin:()=>Promise<string>=readStdin):Promise<void>{
+export async function runCli(argv:string[],automatic:Automatic=createAutomatic({keychain:securityKeychain()}),limitsPath?:string,stdin:()=>Promise<string>=readStdin,whoOptions:WhoOptions={}):Promise<void>{
  const [mode,...rawArgs]=argv;
+ // `seamless "<一言>"`: the one-word entry. Any other command keeps its name, so only a lone argument that is not a command,
+ // a `bot-` word or a flag is read as text. The destination is the peer in the caller's workspace when that leaves exactly
+ // one; two or more stop before any write and print the candidates, so the text is never sent to a guess (T05).
+ const commands=['status','compat-check','compat-md','migrate','bot-send','bot-sessions','sessions','read','send','select','revalidate','band','context','limits','serve','mcp','setup','who','doctor'];
+ if(mode!==undefined&&!commands.includes(mode)&&rawArgs.length===0){
+  if(mode.startsWith('-')||mode.startsWith('bot-')||!mode.trim())throw new ContractError('invalid_arguments');
+  const listing=await automatic('sessions',{operation:'send',scope:'current_work'});
+  if(listing?.status!=='ok'){console.log(JSON.stringify(listing));return;}
+  const sendable=(listing.candidates??[]).filter((candidate:any)=>typeof candidate?.ticket==='string'&&candidate.operations?.send!==false);
+  if(sendable.length===0){console.log(JSON.stringify({status:'target_unavailable'}));return;}
+  if(sendable.length>1){console.log(JSON.stringify({status:'ambiguous',candidates:sendable}));return;}
+  console.log(JSON.stringify({...await automatic('send',{ticket:sendable[0].ticket,text:mode}),target:sendable[0].id}));
+  return;
+ }
+ // `setup [--dry-run]`: detect the products on this Mac and register seamless's MCP server once. `--dry-run` reports the
+ // same list and the one change it would make, without writing. Neither reads the Keychain nor calls a product.
+ if(mode==='setup'){
+  if(rawArgs.length&&!(rawArgs.length===1&&rawArgs[0]==='--dry-run'))throw new ContractError('invalid_arguments');
+  console.log(JSON.stringify(await runSetup({home:whoOptions.home,dryRun:rawArgs.length===1})));return;
+ }
+ // `doctor [--json]`: the read-only diagnosis. It always prints JSON, so `--json` is accepted and nothing else is.
+ if(mode==='doctor'){
+  if(rawArgs.length&&!(rawArgs.length===1&&rawArgs[0]==='--json'))throw new ContractError('invalid_arguments');
+  console.log(JSON.stringify(await runDoctor({home:whoOptions.home})));return;
+ }
  if(mode==='status'){if(!(rawArgs.length===1||rawArgs.length===3&&rawArgs[1]==='--wait'))throw new ContractError('invalid_arguments');const waitSeconds=rawArgs.length===3?Number(rawArgs[2]):0;if(!Number.isFinite(waitSeconds)||waitSeconds<0||waitSeconds>600)throw new ContractError('invalid_arguments');console.log(JSON.stringify(await automatic('send',{track:rawArgs[0],waitSeconds})));return;}
  if(mode==='compat-check'){const ok=rawArgs[0]==='--limits'&&(rawArgs.length===2||rawArgs.length===4&&rawArgs[2]==='--target'&&/^(claude|codex):[A-Za-z0-9-]{1,128}$/.test(rawArgs[3]));if(!ok)throw new ContractError('invalid_arguments');console.log(JSON.stringify(await compatibilityCheck(rawArgs[1],{},{kind:'cli'},rawArgs[3])));return;}
  if(mode==='compat-md'){if(rawArgs.length)throw new ContractError('invalid_arguments');await writeFile(new URL('../specs/202610-everyday-use/compat.md',import.meta.url),compatibilityMarkdown());return;}
@@ -47,6 +75,31 @@ export async function runCli(argv:string[],automatic:Automatic=createAutomatic({
   try{if(mode!=='read')input=JSON.parse(await stdin());}catch{console.log(JSON.stringify({status:'envelope_invalid',reason:'json'}));return;}
   console.log(JSON.stringify(await automatic(mode,input,{kind:'cli',external:{name:rawArgs[1]}})));return;
  }
+ // `who --json`: how each peer can take a request now (Plans.md 3 章). It never writes and never issues a ticket.
+ // `--registry <path> --caller <id>` keeps the old registry path for tests and internal use; without it the peers come from
+ // the same scan as `sessions`.
+ if(mode==='who'){
+  if(rawArgs.filter(a=>a==='--json').length>1)throw new ContractError('invalid_arguments');
+  const args=rawArgs.filter(a=>a!=='--json');
+  if(!args.includes('--registry')){
+   if(args.length)throw new ContractError('invalid_arguments');
+   // includeOffline is true so a peer without an inbox socket is shown with its reason instead of disappearing.
+   const listing=await automatic('sessions',{operation:'send',scope:'any',includeOffline:true});
+   if(listing?.status!=='ok'){console.log(JSON.stringify(listing));return;}
+   const peers=await classifyPeers([
+    ...(listing.candidates??[]).map((p:any)=>({id:p.id,provider:p.provider,nativeId:p.nativeId,...(p.product?{product:p.product}:{}),...(p.displayName?{displayName:p.displayName}:{}),status:p.status??null,reason:p.reason??null,versionStatus:p.versionStatus??null})),
+    ...(listing.external??[]).map((p:any)=>({id:p.id,provider:'grok-bot' as const,nativeId:String(p.id).split(':').slice(1).join(':'),displayName:p.displayName,status:p.status??null,reason:null,versionStatus:null})),
+   ],whoOptions);
+   console.log(JSON.stringify({status:'ok',peers}));return;
+  }
+  if(args.length!==4)throw new ContractError('invalid_arguments');
+  const flags=new Map<string,string>();for(let i=0;i<args.length;i+=2){if(!['--registry','--caller'].includes(args[i])||flags.has(args[i]))throw new ContractError('invalid_arguments');flags.set(args[i],args[i+1]);}
+  const path=flags.get('--registry'),caller=flags.get('--caller');if(!path||!caller)throw new ContractError('invalid_arguments');
+  const registry=new Registry(await loadRegistry(path));
+  if(!registry.get(caller))throw new ContractError('caller_unavailable');
+  const refresh=async()=>{registry.replace(await loadRegistry(path));};
+  console.log(JSON.stringify(await new Discovery(registry,caller,{refresh,home:whoOptions.home,inbox:whoOptions.inbox}).who({operation:'send',scope:'any_registered'})));return;
+ }
  const native=rawArgs.includes('--native');const args=rawArgs.filter(a=>a!=='--native');
  if(rawArgs.filter(a=>a==='--native').length>1)throw new ContractError('invalid_arguments');
  if(mode==='context'&&!native&&args.length===1){console.log(JSON.stringify(await observeGit(args[0])));return;}
@@ -54,7 +107,7 @@ export async function runCli(argv:string[],automatic:Automatic=createAutomatic({
  if(includeOffline){if(args.filter(a=>a==='--include-offline').length!==1||args.includes('--registry'))throw new ContractError('invalid_arguments');args.splice(args.indexOf('--include-offline'),1);}
  if(!args.includes('--registry')){
   if(args.includes('--caller'))throw new ContractError('invalid_arguments');
-  if(mode==='mcp'&&(args.length===0||args.length===1&&args[0]==='--panel-only')){await runLines(createMcp({automatic,panelOnly:args.length===1}),()=>({jsonrpc:'2.0',id:null,error:{code:-32700,message:'parse_error'}}));return;}
+  if(mode==='mcp'&&args.length===0){await runLines(createMcp({automatic}),()=>({jsonrpc:'2.0',id:null,error:{code:-32700,message:'parse_error'}}));return;}
   if(mode==='serve'&&args.length===0){await runLines(createServe({automatic}));return;}
   if(mode==='limits'){const [action,file,...rest]=args;if(rest.length||!['get','set','clear'].includes(action)||(action==='set'?!file:!!file))throw new ContractError('invalid_arguments');const input=action==='set'?{action,value:JSON.parse(await readFile(file,'utf8'))}:{action};console.log(JSON.stringify(await automatic('limits',input)));return;}
   if(['band','sessions','read','send','select','revalidate'].includes(mode)&&args.length<=1){const input=args.length?JSON.parse(args[0]):{};console.log(JSON.stringify(await automatic(mode,includeOffline?{...object(input,['operation','scope','target','includeOffline','peek']),includeOffline:true}:input)));return;}

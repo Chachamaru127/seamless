@@ -1,0 +1,527 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import {
+  MANIFEST_DIR,
+  ManifestRegistry,
+  adapterModule,
+  loadManifest,
+  loadManifestRegistry,
+  loadManifests,
+  parseManifest,
+} from '../src/core/manifest.ts';
+import { ContractError } from '../src/protocol.ts';
+import { mcpRegistration, runSetup } from '../src/setup.ts';
+import { runCli } from '../src/cli.ts';
+import { createNativeRuntime } from '../src/native-runtime.ts';
+import { createAutomatic, issueTicket, type Automatic } from '../src/automatic.ts';
+import { createMcp } from '../src/mcp.ts';
+import type { Caller } from '../src/caller.ts';
+import type { SessionIdentity } from '../src/sessions-scan.ts';
+import type { WhoOptions } from '../src/discovery.ts';
+import type { Registration } from '../src/protocol.ts';
+
+const invalid = (error: unknown) => error instanceof ContractError && error.message === 'manifest_invalid';
+
+// A manifest that passes every rule. Each broken case changes exactly one rule, so a failure names its cause.
+function valid(): any {
+  return {
+    schemaVersion: 1,
+    product: 'sample',
+    provider: 'grok',
+    displayName: 'Sample',
+    adapter: '../adapters/grok.ts',
+    identity: { kind: 'pid_session', id: 'sessionId', generation: 'pid@startedAt', record: '~/.sample/sessions/<pid>.json' },
+    discovery: { kind: 'sessions_json', source: '~/.sample/sessions', fields: ['sessionId', 'cwd'] },
+    write: { channel: 'inbox_file', target: 'pending' },
+    evidence: { source: '~/.sample/log', stages: ['reached', 'replied'] },
+    states: { idle: 'ready', busy: 'next_turn' },
+    permissions: { operations: ['read', 'send'], approvalMark: 'limits.markUnapproved' },
+    install: { hook: null, steps: ['node src/cli.ts setup'] },
+  };
+}
+
+async function home(t: test.TestContext): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'seamless-manifest-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  return dir;
+}
+
+test('the v1 products are listed through their manifests alone', async () => {
+  const registry = await loadManifestRegistry();
+  const peers = registry.peers();
+
+  // The product manifests: the four that existed when #26 was written (Claude Code, Codex, Grok Bot, Grok CLI), opencode
+  // from T07 and Cursor from T08 (#27). An earlier count in #26 was short by Grok CLI; the list below is read from the
+  // directory, not counted by hand.
+  assert.deepEqual(peers.map((peer) => peer.id), ['claude-code', 'codex', 'cursor', 'grok-bot', 'grok-cli', 'opencode']);
+  assert.deepEqual(peers.map((peer) => peer.provider), ['claude', 'codex', 'cursor', 'grok-bot', 'grok', 'opencode']);
+  assert.deepEqual(peers.map((peer) => peer.displayName), ['Claude Code', 'Codex', 'Cursor CLI', 'Grok Bot', 'Grok CLI', 'opencode']);
+  assert.deepEqual(peers.map((peer) => peer.write), ['unix_socket', 'command', 'inbox_file', 'https_webhook', 'inbox_file', 'plugin_api']);
+  assert.deepEqual(peers.map((peer) => peer.discovery), ['sessions_json', 'rollout', 'hook', 'roster', 'sessions_json', 'plugin']);
+
+  // The adapter is named by the manifest and resolves to the product's own file under src/.
+  const source = dirname(MANIFEST_DIR);
+  for (const { product, module } of registry.adapters()) {
+    assert.ok(module.startsWith(source + '/'), `${product} adapter stays under src/`);
+    assert.equal((await stat(module)).isFile(), true, `${product} adapter exists`);
+  }
+  assert.deepEqual(registry.adapters().map(({ product, module }) => [product, module.split('/').at(-1)]), [
+    ['claude-code', 'claude.ts'],
+    ['codex', 'codex.ts'],
+    ['cursor', 'cursor.ts'],
+    ['grok-bot', 'webhook-send.ts'],
+    ['grok-cli', 'grok.ts'],
+    ['opencode', 'opencode.ts'],
+  ]);
+
+  // The listing keeps the stages the product's own records can prove, and the product's native states.
+  const claude = registry.get('claude-code')!;
+  assert.equal(claude.identity.id, 'sessionId');
+  assert.equal(claude.discovery.fields.includes('messagingSocketPath'), true);
+  assert.deepEqual(claude.evidence.stages, ['reached', 'processing', 'replied']);
+  assert.equal(claude.states.idle, 'ready');
+  const bot = registry.get('grok-bot')!;
+  assert.deepEqual(bot.evidence.stages, ['replied']);
+  assert.equal(bot.identity.generation, 'keyVersion');
+  // Grok CLI is the hooks product: one inbox file per request, the Stop hook at the next turn, a metadata-only receipt.
+  const grok = registry.get('grok-cli')!;
+  assert.equal(grok.identity.record, '~/.grok/active_sessions.json');
+  assert.equal(grok.write.channel, 'inbox_file');
+  assert.deepEqual(grok.evidence.stages, ['reached', 'processing', 'replied']);
+  assert.equal(grok.states.offline, 'wake_needed');
+  assert.equal(grok.limits?.maxText, 8000);
+  // The one hook file a Grok install names: hooks/grok-cli/seamless-hook.sh, not a path into src/.
+  assert.equal(grok.install.hook, 'hooks/grok-cli/seamless-hook.sh');
+  // opencode has no socket or command: the plugin writes the peers file, calls the official session.prompt, and its
+  // receipt in delivered/ is the only stage it can prove. The manifest names the plugin install, not a hook.
+  const opencode = registry.get('opencode')!;
+  assert.equal(opencode.identity.id, 'sessionId');
+  assert.equal(opencode.identity.record, '~/.seamless/peers/opencode-<sessionId>.json');
+  assert.equal(opencode.discovery.kind, 'plugin');
+  assert.equal(opencode.discovery.source, '~/.seamless/peers');
+  assert.equal(opencode.write.channel, 'plugin_api');
+  assert.equal(opencode.write.target, 'session.prompt');
+  assert.deepEqual(opencode.evidence.stages, ['reached']);
+  assert.equal(opencode.states.idle, 'ready');
+  assert.equal(opencode.states.busy, 'next_turn');
+  assert.deepEqual(opencode.permissions.operations, ['read', 'send']);
+  assert.equal(opencode.limits?.maxText, 8000);
+  assert.equal(opencode.install.hook, null);
+  assert.equal(opencode.install.steps.includes('add packages/opencode-plugin/index.ts to ~/.config/opencode/opencode.json'), true);
+  // Cursor is the hooks product: sessionStart/stop/afterAgentResponse write the peer file, and the request waits in the
+  // inbox until a stop hook hands it over. Both peer states are listed as next_turn, as cursorState() decides.
+  const cursor = registry.get('cursor')!;
+  assert.equal(cursor.identity.id, 'sessionId');
+  assert.equal(cursor.identity.generation, 'generation');
+  assert.equal(cursor.identity.record, '~/.seamless/peers/cursor-<sessionId>.json');
+  assert.equal(cursor.discovery.kind, 'hook');
+  assert.equal(cursor.discovery.source, '~/.seamless/peers');
+  assert.equal(cursor.write.channel, 'inbox_file');
+  assert.equal(cursor.write.target, 'pending');
+  assert.deepEqual(cursor.evidence.stages, ['reached']);
+  assert.equal(cursor.evidence.source, '~/.seamless/cursor-inbox/<sessionId>/delivered');
+  assert.deepEqual(cursor.states, { idle: 'next_turn', busy: 'next_turn' });
+  assert.equal(cursor.limits?.maxText, 8000);
+  assert.equal(cursor.install.hook, 'hooks/cursor/seamless-hook.sh');
+  assert.equal(cursor.install.steps.includes('add hooks/cursor/seamless-hook.sh to sessionStart, afterAgentResponse and stop in ~/.cursor/hooks.json'), true);
+  // The ports are the adapter's own exports; the core names no product.
+  assert.deepEqual(cursor.exports, { list: 'listCursorPeers', send: 'sendCursorEnvelope' });
+});
+
+test('a manifest installs one hook file that exists and can run', async () => {
+  const registry = await loadManifestRegistry();
+  const root = dirname(dirname(MANIFEST_DIR));
+  for (const manifest of registry.list()) {
+    if (manifest.install.hook === null) continue;
+    const hook = join(root, manifest.install.hook);
+    const info = await stat(hook);
+    assert.equal(info.isFile(), true, `${manifest.product} hook is a file`);
+    assert.equal((info.mode & 0o111) !== 0, true, `${manifest.product} hook is executable`);
+    // The product-facing hook is a file of its own; the work stays in the product's module under src/.
+    assert.equal(hook.startsWith(join(root, 'hooks') + '/'), true, `${manifest.product} hook lives under hooks/`);
+  }
+});
+
+test('one added manifest registers a new product without touching the core', () => {
+  const registry = new ManifestRegistry([valid()]);
+  registry.register({ ...valid(), product: 'cursor', provider: 'codex', displayName: 'Cursor', adapter: '../adapters/codex.ts' });
+  assert.deepEqual(registry.peers().map((peer) => peer.id), ['cursor', 'sample']);
+  assert.equal(registry.adapter('cursor')?.endsWith('/src/adapters/codex.ts'), true);
+  assert.equal(registry.adapter('missing'), undefined);
+});
+
+const broken: Array<[string, (manifest: any) => unknown]> = [
+  ['no object', () => null],
+  ['an array instead of an object', () => []],
+  ['another schema version', (m) => ({ ...m, schemaVersion: 2 })],
+  ['an unknown key', (m) => ({ ...m, extra: true })],
+  ['a missing key', (m) => {
+    const { write: _write, ...rest } = m;
+    return rest;
+  }],
+  ['a product id with a space', (m) => ({ ...m, product: 'Sample Product' })],
+  ['a provider the core does not know', (m) => ({ ...m, provider: 'gemini' })],
+  ['an absolute adapter path', (m) => ({ ...m, adapter: '/tmp/adapter.ts' })],
+  ['an adapter that climbs out of src', (m) => ({ ...m, adapter: '../../adapter.ts' })],
+  ['an adapter that is not a module', (m) => ({ ...m, adapter: '../adapters/grok.json' })],
+  ['an unknown identity kind', (m) => ({ ...m, identity: { ...m.identity, kind: 'pid' } })],
+  ['an identity with no record', (m) => {
+    const { record: _record, ...identity } = m.identity;
+    return { ...m, identity };
+  }],
+  ['an unknown discovery kind', (m) => ({ ...m, discovery: { ...m.discovery, kind: 'magic' } })],
+  ['an empty discovery field list', (m) => ({ ...m, discovery: { ...m.discovery, fields: [] } })],
+  ['duplicate discovery fields', (m) => ({ ...m, discovery: { ...m.discovery, fields: ['cwd', 'cwd'] } })],
+  ['an unknown write channel', (m) => ({ ...m, write: { ...m.write, channel: 'carrier_pigeon' } })],
+  ['an empty evidence stage list', (m) => ({ ...m, evidence: { ...m.evidence, stages: [] } })],
+  ['accepted treated as evidence', (m) => ({ ...m, evidence: { ...m.evidence, stages: ['accepted'] } })],
+  ['an unknown listing state', (m) => ({ ...m, states: { idle: 'idle' } })],
+  ['an invalid state condition', (m) => ({ ...m, states: { 'Idle!': 'ready' } })],
+  ['no operations', (m) => ({ ...m, permissions: { ...m.permissions, operations: [] } })],
+  ['an unknown operation', (m) => ({ ...m, permissions: { ...m.permissions, operations: ['write'] } })],
+  ['duplicate operations', (m) => ({ ...m, permissions: { ...m.permissions, operations: ['read', 'read'] } })],
+  ['an install with no steps', (m) => ({ ...m, install: { hook: null, steps: [] } })],
+  ['a non-string install hook', (m) => ({ ...m, install: { hook: 5, steps: ['node src/cli.ts setup'] } })],
+  ['limits without maxText', (m) => ({ ...m, limits: {} })],
+  ['a zero maxText', (m) => ({ ...m, limits: { maxText: 0 } })],
+];
+
+for (const [name, change] of broken) {
+  test(`a manifest with ${name} is rejected`, () => {
+    assert.throws(() => parseManifest(change(valid())), invalid);
+  });
+}
+
+test('two manifests for one product are refused', () => {
+  const registry = new ManifestRegistry([valid()]);
+  assert.throws(
+    () => registry.register({ ...valid(), displayName: 'Sample Again' }),
+    (error: unknown) => error instanceof ContractError && error.message === 'manifest_duplicate',
+  );
+});
+
+test('the loader refuses invalid JSON, an oversized file, a missing directory and duplicate products', async (t) => {
+  const dir = await home(t);
+
+  await writeFile(join(dir, 'broken.json'), '{not json');
+  await assert.rejects(loadManifest(join(dir, 'broken.json')), invalid);
+
+  const oversized = join(dir, 'oversized.json');
+  await writeFile(oversized, JSON.stringify({ ...valid(), displayName: 'x'.repeat(70_000) }));
+  await assert.rejects(loadManifest(oversized), invalid);
+
+  await assert.rejects(loadManifests(join(dir, 'absent')), invalid);
+  await assert.rejects(loadManifest(join(dir, 'absent.json')), invalid);
+
+  const duplicates = await home(t);
+  await writeFile(join(duplicates, 'a.json'), JSON.stringify(valid()));
+  await writeFile(join(duplicates, 'b.json'), JSON.stringify({ ...valid(), displayName: 'Sample Again' }));
+  await assert.rejects(
+    loadManifests(duplicates),
+    (error: unknown) => error instanceof ContractError && error.message === 'manifest_duplicate',
+  );
+});
+
+test('a directory of valid manifests loads as one registry', async (t) => {
+  const dir = await home(t);
+  await writeFile(join(dir, 'b.json'), JSON.stringify({ ...valid(), product: 'second', displayName: 'Second' }));
+  await writeFile(join(dir, 'a.json'), JSON.stringify(valid()));
+  await writeFile(join(dir, 'README.md'), 'manifests are read from the .json files only\n');
+  const registry = await loadManifestRegistry(dir);
+  assert.deepEqual(registry.peers().map((peer) => peer.id), ['sample', 'second']);
+  const loaded = await loadManifests(dir);
+  assert.deepEqual(loaded.map((manifest) => manifest.product), ['sample', 'second']);
+});
+
+test('the approval mark stays with limits.markUnapproved and is never fixed by a manifest', async () => {
+  for (const manifest of (await loadManifestRegistry()).list()) {
+    // The only accepted value: the send path still reads ~/.seamless/limits.json on every envelope.
+    assert.equal(manifest.permissions.approvalMark, 'limits.markUnapproved');
+  }
+  assert.equal(parseManifest(valid()).permissions.approvalMark, 'limits.markUnapproved');
+  for (const approvalMark of ['none', 'always', 'limits.markApproved']) {
+    assert.throws(() => parseManifest({ ...valid(), permissions: { ...valid().permissions, approvalMark } }), invalid);
+  }
+});
+
+// `who --json` through the command line, with no session in the fixture: every row below comes from the registration.
+async function whoListing(automatic: Automatic, options: WhoOptions): Promise<any> {
+  let output = '';
+  const log = console.log;
+  console.log = (value: unknown) => { output += String(value); };
+  try {
+    await runCli(['who', '--json'], automatic, undefined, async () => '', options);
+  } finally {
+    console.log = log;
+  }
+  return JSON.parse(output);
+}
+const emptySessions: Automatic = async () => ({ status: 'ok', candidates: [], external: [] });
+async function withPath<T>(path: string, run: () => Promise<T>): Promise<T> {
+  const old = process.env.PATH;
+  process.env.PATH = path;
+  try {
+    return await run();
+  } finally {
+    process.env.PATH = old;
+  }
+}
+
+test('a product removed from the registration leaves the who listing', async (t) => {
+  const manifests = await loadManifestRegistry();
+  const all = new ManifestRegistry(manifests.list(), MANIFEST_DIR);
+  const withoutCodex = new ManifestRegistry(manifests.list().filter((manifest) => manifest.product !== 'codex'), MANIFEST_DIR);
+  const listing = {
+    status: 'ok',
+    candidates: [
+      { id: 'claude:session', provider: 'claude', nativeId: 'session', status: 'online', reason: null, versionStatus: 'verified' },
+      { id: 'codex:thread', provider: 'codex', nativeId: 'thread', status: 'online', reason: null, versionStatus: 'verified' },
+    ],
+    external: [],
+  };
+  const automatic: Automatic = async (method) => method === 'sessions' ? structuredClone(listing) : { status: 'unexpected_method' };
+
+  const before = await whoListing(automatic, { home: await home(t), manifests: all });
+  assert.equal(before.peers.some((peer: any) => peer.id === 'codex:thread'), true, 'the full registration lists Codex');
+
+  // The scan still reports the Codex thread; only the registration changed, and that is what who follows.
+  const after = await whoListing(automatic, { home: await home(t), manifests: withoutCodex });
+  assert.equal(after.peers.some((peer: any) => peer.id === 'codex:thread'), false, 'a removed product is not listed');
+  assert.equal(after.peers.some((peer: any) => peer.id === 'claude:session'), true, 'the remaining products stay');
+});
+
+test('an added manifest is listed and its own adapter writes the request', async (t) => {
+  const dir = await home(t), runtimeHome = await home(t);
+  const fake = {
+    ...valid(),
+    product: 'fake',
+    provider: 'grok',
+    displayName: 'Fake',
+    adapter: './fake-adapter.js',
+    discovery: { kind: 'plugin', source: '~/.seamless/peers', fields: ['sessionId'] },
+    write: { channel: 'plugin_api', target: 'session.prompt' },
+    exports: { list: 'listPeers', send: 'send' },
+  };
+  await writeFile(join(dir, 'fake.json'), JSON.stringify(fake));
+  await writeFile(join(dir, 'fake-adapter.js'), [
+    "import { writeFile } from 'node:fs/promises';",
+    "import { join } from 'node:path';",
+    'export async function listPeers() {',
+    "  return [{ id: 'fake:session-1', provider: 'grok', sessionId: 'session-1', displayName: 'Fake session', state: 'idle' }];",
+    '}',
+    'export async function send(envelope) {',
+    "  await writeFile(join(process.env.SEAMLESS_FAKE_DIR, 'sent.json'), JSON.stringify(envelope));",
+    "  return { status: 'submitted', nativeMessageId: envelope.id };",
+    '}',
+    '',
+  ].join('\n'));
+  const manifests = await loadManifestRegistry(dir);
+  process.env.SEAMLESS_FAKE_DIR = runtimeHome;
+  t.after(() => { delete process.env.SEAMLESS_FAKE_DIR; });
+
+  const listing = await whoListing(emptySessions, { home: runtimeHome, manifests });
+  assert.deepEqual(
+    listing.peers.filter((peer: any) => peer.id === 'fake:session-1').map((peer: any) => [peer.state, peer.displayName]),
+    [['ready', 'Fake session']],
+  );
+
+  // The send port is the manifest's own module: nothing in the core names this product.
+  const { adapter } = createNativeRuntime({ home: runtimeHome, manifests });
+  const target: Registration = { id: 'fake:session-1', provider: 'grok', nativeId: 'session-1', generation: 'g1', host: 'local', displayName: 'Fake', workspace: runtimeHome, operations: ['read', 'send'], grants: [] };
+  const receipt = await adapter.send(target, {
+    id: 'm-1',
+    sender: { id: 'fake:session-2', nativeId: 'session-2', generation: 'g2' },
+    recipient: { id: target.id, nativeId: target.nativeId, generation: target.generation },
+    text: 'hello',
+  });
+  assert.deepEqual(receipt, { status: 'submitted', nativeMessageId: 'm-1' });
+  const sent = JSON.parse(await readFile(join(runtimeHome, 'sent.json'), 'utf8'));
+  assert.deepEqual([sent.schemaVersion, sent.id, sent.text, typeof sent.acceptedAt], [1, 'm-1', 'hello', 'number']);
+});
+
+test('a manifest discovery port puts its peers in who: opencode idle and busy', async (t) => {
+  const runtimeHome = await home(t);
+  await mkdir(join(runtimeHome, '.seamless', 'peers'), { recursive: true, mode: 0o700 });
+  const peer = (sessionId: string, state: 'idle' | 'busy', title: string) => ({
+    schemaVersion: 1, provider: 'opencode', sessionId, generation: `g-${sessionId}`, title, directory: '/', state, updatedAt: 1, pluginVersion: '1',
+  });
+  await writeFile(join(runtimeHome, '.seamless', 'peers', 'opencode-a.json'), JSON.stringify(peer('a', 'idle', 'Idle one')), { mode: 0o600 });
+  await writeFile(join(runtimeHome, '.seamless', 'peers', 'opencode-b.json'), JSON.stringify(peer('b', 'busy', 'Busy one')), { mode: 0o600 });
+
+  const listing = await whoListing(emptySessions, { home: runtimeHome });
+  assert.deepEqual(
+    listing.peers.filter((p: any) => String(p.id).startsWith('opencode:')).map((p: any) => [p.id, p.state, p.displayName]),
+    [['opencode:a', 'ready', 'Idle one'], ['opencode:b', 'next_turn', 'Busy one']],
+  );
+});
+
+test('a manifest discovery port puts its peers in who: cursor idle and busy', async (t) => {
+  const runtimeHome = await home(t);
+  await mkdir(join(runtimeHome, '.seamless', 'peers'), { recursive: true, mode: 0o700 });
+  const peer = (sessionId: string, state: 'idle' | 'busy', event: string) => ({
+    schemaVersion: 1, provider: 'cursor', sessionId, generation: sessionId, directory: '/', state, updatedAt: 1, lastEvent: event,
+  });
+  await writeFile(join(runtimeHome, '.seamless', 'peers', 'cursor-a.json'), JSON.stringify(peer('a', 'idle', 'sessionStart')), { mode: 0o600 });
+  await writeFile(join(runtimeHome, '.seamless', 'peers', 'cursor-b.json'), JSON.stringify(peer('b', 'busy', 'afterAgentResponse')), { mode: 0o600 });
+
+  // The inbox write lands at the next turn whether the session is idle or working, so both rows say next_turn.
+  const listing = await whoListing(emptySessions, { home: runtimeHome });
+  assert.deepEqual(
+    listing.peers.filter((p: any) => String(p.id).startsWith('cursor:')).map((p: any) => [p.id, p.state]),
+    [['cursor:a', 'next_turn'], ['cursor:b', 'next_turn']],
+  );
+});
+
+test('the phase 2 declaration is listed as unverified only when its executable exists', async (t) => {
+  const runtimeHome = await home(t);
+  const absent = await withPath('/nonexistent', () => whoListing(emptySessions, { home: runtimeHome }));
+  assert.equal(absent.peers.some((p: any) => p.id === 'antigravity'), false, 'no executable, no row');
+
+  const root = join(runtimeHome, '.t3-ja', 'tools', 'antigravity-acp', `darwin-${process.arch}`);
+  const release = 'abc12345', versionDir = join(root, 'versions', release);
+  await mkdir(versionDir, { recursive: true });
+  await writeFile(join(root, 'active.json'), JSON.stringify({ releaseId: release }));
+  const binary = join(versionDir, 'agy_acp_server.par');
+  await writeFile(binary, '#!/bin/sh\nexit 0\n');
+  await chmod(binary, 0o755);
+  await writeFile(join(versionDir, '.install-complete.json'), JSON.stringify({ releaseId: release, version: '1.1.1', executable: { name: 'agy_acp_server.par' } }));
+
+  const present = await withPath('/nonexistent', () => whoListing(emptySessions, { home: runtimeHome }));
+  const row = present.peers.find((p: any) => p.id === 'antigravity');
+  assert.deepEqual([row?.state, row?.versionStatus, row?.displayName], ['unreachable', 'unverified', 'Antigravity CLI']);
+});
+
+test('setup treats a registration with another or no type as a change', async (t) => {
+  const dir = await home(t);
+  const file = join(dir, '.claude.json');
+  const entry = mcpRegistration();
+  const write = (registration: unknown) => writeFile(file, JSON.stringify({ mcpServers: { seamless: registration } }) + '\n', { mode: 0o600 });
+
+  // Same command and args, a different type: the old comparison said unchanged, which #10 recorded as a leftover.
+  await write({ ...entry, type: 'http' });
+  const retyped = await runSetup({ home: dir, dryRun: true });
+  assert.equal(retyped.changes[0]?.action, 'would_update');
+
+  // A registration with no type cannot be proven to be the stdio entry, so it is written with one.
+  await write({ command: entry.command, args: entry.args });
+  const untyped = await runSetup({ home: dir, dryRun: true });
+  assert.equal(untyped.changes[0]?.action, 'would_update');
+
+  await write(entry);
+  const same = await runSetup({ home: dir, dryRun: true });
+  assert.equal(same.changes[0]?.action, 'unchanged');
+  assert.equal(JSON.parse(await readFile(file, 'utf8')).mcpServers.seamless.type, 'stdio');
+});
+
+// The public MCP surface, initialized the way a client does, reduced to the tool's own answer.
+async function mcpCall(automatic: Automatic, name: string, args: unknown): Promise<any> {
+  const handle = createMcp({ automatic });
+  await handle({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } });
+  await handle({ jsonrpc: '2.0', method: 'notifications/initialized' });
+  const response: any = await handle({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: args } });
+  return response.error ?? JSON.parse(response.result.content[0].text);
+}
+// The public CLI surface; the command line prints one JSON value.
+async function cliCall(automatic: Automatic, args: string[], limitsPath?: string): Promise<any> {
+  let output = '';
+  const log = console.log;
+  console.log = (value: unknown) => { output += String(value); };
+  try {
+    await runCli(args, automatic, limitsPath);
+  } finally {
+    console.log = log;
+  }
+  return JSON.parse(output);
+}
+
+test('a product removed from the registration leaves the MCP sessions listing', async (t) => {
+  const runtimeHome = await home(t);
+  const caller: Caller = { provider: 'claude', nativeId: 'caller', generation: 'g1', cwd: runtimeHome, socket: 'unused', source: 'claude-ancestor' };
+  const thread: SessionIdentity = { provider: 'codex', nativeId: 'thread', generation: 'owner', cwd: runtimeHome, socket: 'unused' };
+  const automatic = (manifests: ManifestRegistry): Automatic => createAutomatic({
+    home: runtimeHome,
+    limitsPath: join(runtimeHome, 'limits.json'),
+    manifests,
+    caller: async () => ({ status: 'ok', caller }),
+    scan: async () => ({ sessions: [caller, { ...thread }], codexWorkspace: 'observed' }),
+    inspect: async (session) => ({ ...session }),
+    scanOptions: { git: async (cwd) => ({ state: 'no_git', workspace: cwd }) },
+  });
+  const all = await loadManifestRegistry();
+  const withoutCodex = new ManifestRegistry(all.list().filter((manifest) => manifest.product !== 'codex'), MANIFEST_DIR);
+
+  // The listing is the registration: each candidate names the product its send would reach.
+  const before = await mcpCall(automatic(all), 'sessions', {});
+  assert.deepEqual(before.candidates.map((candidate: any) => [candidate.id, candidate.product]), [['codex:thread', 'codex']]);
+
+  // The scan still reports the Codex thread; only the registration changed, and the MCP listing follows it.
+  const after = await mcpCall(automatic(withoutCodex), 'sessions', {});
+  assert.deepEqual(after.candidates, []);
+});
+
+test('the public send reaches the manifest adapter, and two products on one provider are told apart', async (t) => {
+  const runtimeHome = await home(t), dir = await home(t);
+  // Two products sharing provider grok: only the product decides which adapter writes.
+  const fake = (product: string) => ({
+    ...valid(),
+    product,
+    provider: 'grok',
+    displayName: product,
+    adapter: `./${product}.js`,
+    discovery: { kind: 'plugin', source: '~/.seamless/peers', fields: ['sessionId'] },
+    write: { channel: 'plugin_api', target: 'session.prompt' },
+    exports: { list: 'listPeers', send: 'send' },
+  });
+  await writeFile(join(dir, 'one.json'), JSON.stringify(fake('fake-one')));
+  await writeFile(join(dir, 'two.json'), JSON.stringify(fake('fake-two')));
+  for (const product of ['fake-one', 'fake-two']) {
+    await writeFile(join(dir, `${product}.js`), [
+      "import { writeFile } from 'node:fs/promises';",
+      'export async function send(envelope) {',
+      `  await writeFile(new URL('./${product}.sent.json', import.meta.url), JSON.stringify(envelope));`,
+      "  return { status: 'submitted', nativeMessageId: envelope.id };",
+      '}',
+      '',
+    ].join('\n'));
+  }
+  const manifests = await loadManifestRegistry(dir);
+  const caller: Caller = { provider: 'grok', nativeId: 'caller', generation: 'g1', cwd: runtimeHome, socket: '', source: 'grok-ancestor' };
+  const one: SessionIdentity & { product: string } = { provider: 'grok', nativeId: 'one', generation: 'g1', cwd: runtimeHome, socket: '', product: 'fake-one' };
+  const two: SessionIdentity & { product: string } = { provider: 'grok', nativeId: 'two', generation: 'g1', cwd: runtimeHome, socket: '', product: 'fake-two' };
+  const limitsPath = join(runtimeHome, 'limits.json');
+  // No adapter option: the send must arrive through the manifest's own module, not through an injected double.
+  const automatic = createAutomatic({
+    home: runtimeHome,
+    limitsPath,
+    manifests,
+    caller: async () => ({ status: 'ok', caller }),
+    scan: async () => ({ sessions: [caller, { ...one }, { ...two }], codexWorkspace: 'observed' }),
+    inspect: async (session) => ({ ...session }),
+    scanOptions: { git: async (cwd) => ({ state: 'no_git', workspace: cwd }) },
+  });
+
+  const listing = await mcpCall(automatic, 'sessions', {});
+  const tickets = new Map<string, string>(listing.candidates.map((candidate: any) => [candidate.product, candidate.ticket]));
+  assert.deepEqual(listing.candidates.map((candidate: any) => [candidate.id, candidate.product]), [['grok:one', 'fake-one'], ['grok:two', 'fake-two']]);
+
+  // CLI send: the ticket's product, not its provider, picks the adapter.
+  assert.equal((await cliCall(automatic, ['send', JSON.stringify({ ticket: tickets.get('fake-one'), id: 'cli-1', text: 'from cli' })], limitsPath)).status, 'submitted');
+  // MCP send: the same route, through the other product's adapter.
+  assert.equal((await mcpCall(automatic, 'send', { ticket: tickets.get('fake-two'), id: 'mcp-1', text: 'from mcp' })).status, 'submitted');
+
+  const sentOne = JSON.parse(await readFile(join(dir, 'fake-one.sent.json'), 'utf8'));
+  const sentTwo = JSON.parse(await readFile(join(dir, 'fake-two.sent.json'), 'utf8'));
+  assert.deepEqual([sentOne.id, sentOne.text], ['cli-1', 'from cli']);
+  assert.deepEqual([sentTwo.id, sentTwo.text], ['mcp-1', 'from mcp']);
+  // The listing carries the product, and the ticket repeats it: a send never falls back to the provider.
+  for (const ticket of tickets.values()) {
+    const parsed = JSON.parse(Buffer.from(ticket, 'base64url').toString('utf8'));
+    assert.equal(typeof parsed.product, 'string');
+  }
+  // A ticket without a product cannot choose between the two: it is refused, never routed to the first of them.
+  const bare = issueTicket({ provider: 'grok', nativeId: 'one', generation: 'g1', cwd: runtimeHome, branch: null });
+  assert.equal((await mcpCall(automatic, 'send', { ticket: bare, id: 'bare-1', text: 'no product' })).status, 'rejected');
+});

@@ -80,7 +80,7 @@ export class Delivery {
    path=join(this.reservationDir,reservationFile(sender.provider,sender.host,sender.nativeId,p.id as string));
    let file;
    try{file=await open(path,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await file.writeFile(JSON.stringify({hash,status:'pending',at:Date.now(),...metadata,...kept}));await file.sync();}
-   catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST')return {status:'reservation_unavailable'};let existing;try{existing=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW);const stat=await existing.stat();if(!stat.isFile()||(stat.mode&0o777)!==0o600||stat.uid!==process.getuid?.()||stat.size>16384)return {status:'reservation_unavailable'};const record=JSON.parse(await existing.readFile('utf8'));if(record.hash!==hash)return {status:'id_conflict'};return {status:record.status==='submitted'?'submitted':record.status==='rejected'?'rejected':'unknown'};}catch{return {status:'unknown'};}finally{await existing?.close();}}
+   catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST')return {status:'reservation_unavailable'};let existing;try{existing=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW);const stat=await existing.stat();if(!stat.isFile()||(stat.mode&0o777)!==0o600||stat.uid!==process.getuid?.()||stat.size>16384)return {status:'reservation_unavailable'};const record=JSON.parse(await existing.readFile('utf8'));if(record.hash!==hash)return {status:'id_conflict'};return {status:record.status==='submitted'?'submitted':record.status==='rejected'?'rejected':'unknown',...(typeof record.reason==='string'?{reason:record.reason}:{})};}catch{return {status:'unknown'};}finally{await existing?.close();}}
    finally{await file?.close();}
   }catch{return {status:'reservation_unavailable'};}
   let denied:string|null=null,recheckRejected=false;
@@ -95,7 +95,7 @@ export class Delivery {
   }
   // A lost process leaves pending; another process never retries that reservation.
   const temporary=path+'.'+randomUUID();let state;
-  try{state=await open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await state.writeFile(JSON.stringify({hash,status:receipt.status,at:Date.now(),...metadata,...kept,...(payloadSha256?{payloadSha256}:{})}));await state.sync();await state.close();state=undefined;await rename(temporary,path);}catch{receipt={status:'unknown'};}finally{await state?.close();}
+  try{state=await open(temporary,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);await state.writeFile(JSON.stringify({hash,status:receipt.status,at:Date.now(),...metadata,...kept,...(receipt.reason?{reason:receipt.reason}:{}),...(payloadSha256?{payloadSha256}:{})}));await state.sync();await state.close();state=undefined;await rename(temporary,path);}catch{receipt={status:'unknown'};}finally{await state?.close();}
   if(receipt.status==='rejected'&&!denied)denied=await this.validate?.()??null;
   return denied&&receipt.status==='rejected'?{status:denied}:receipt;
  }

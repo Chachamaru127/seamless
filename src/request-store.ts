@@ -6,7 +6,7 @@ export type RequestParty={id:string;provider:'claude'|'codex'|'grok'|'grok-bot';
 // A request party is a local conversation, or a registered outside executor (grok-bot) that has no process on this Mac.
 export type LocalParty=RequestParty&{provider:'claude'|'codex'|'grok'};
 export const isLocalParty=(p:RequestParty):p is LocalParty=>p.provider!=='grok-bot';
-export type RequestRecord={id:string;sender:RequestParty;recipient:RequestParty;replyTo?:string;at:number;hash:string;payloadSha256?:string;replyTokenSha256?:string;status:string};
+export type RequestRecord={id:string;sender:RequestParty;recipient:RequestParty;replyTo?:string;at:number;hash:string;payloadSha256?:string;replyTokenSha256?:string;status:string;reason?:string};
 export const DAY=86400000;
 export async function privateJson(path:string):Promise<any>{
  let file;try{file=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);const s=await file.stat();if(!s.isFile()||s.uid!==process.getuid?.()||(s.mode&0o777)!==0o600||s.size>16384)return null;return JSON.parse(await file.readFile('utf8'));}catch{return null;}finally{await file?.close();}

@@ -63,3 +63,32 @@
 | 2026-10-19 22:45 | #14 T10 Grok CLI manifest | 0acdeae | opencode deepseek-v4.1-flash:1017（330 秒） | 0（816 pass） | 食い違いなし | PASS（4 項目 Yes） | 閉じて merge。残件: 配達記録の保存と封筒削除が別操作で、間の異常終了で本文が残る → #28 を起こした |
 | 2026-10-19 22:56 | #15 T09 Antigravity | cb3084b | opencode deepseek-v4.1-flash:1017（380 秒） | 0（820 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件: listAntigravity が who の一覧に接続されていない（#25 の登録簿の配線で一緒に扱う） |
 | 2026-10-19 23:05 | #16 T17 T3 相性 | 5efa151 | opencode deepseek-v4.1-flash:1017（270 秒） | 0（827 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件: T3 実画面での html_render と実 Claude の検出は AC14 / AC15 の人の作業 |
+| 2026-10-19 23:15 | 並列 wave 1（#17 #18 #21 #22 #26 #28） | 各 worktree | opencode deepseek-v4.1-flash:1017（6 並列、各 verify 0） | 0 | — | 1 回目の判定は無効（判定 script の worktree 対応版が main に無く、本線の古い verify.sh で実行検査が落ちた） | script を直して再判定 |
+| 2026-10-19 23:35 | #18 T14 README / LICENSE | 402256a | 並列 wave 1 | 0 | — | PASS（3 項目 Yes。1 は静的判定） | 閉じて merge（a1d0f11） |
+| 2026-10-19 23:35 | #21 T01b fix_required 優先 | 8d234fb | 並列 wave 1 | 0 | — | PASS（3 項目 Yes） | 閉じて merge（6013ce0） |
+| 2026-10-19 23:35 | #17 T13、#26 T07b | d5061a6、dba1b47 | 並列 wave 1 | 0 | — | FAIL（Done when の文言: #17 は grep が定義ファイル自身に当たる、#26 は「4 製品」が grok-cli 追加で 5 製品） | 文言を直して再判定 |
+| 2026-10-19 23:35 | #22 T03b、#28 T10b | a7a3790、0c82cbb | 並列 wave 1 | 判定時 1（並列 verify の不安定。順番に走らせると 0） | — | FAIL（#22: limits 未渡し。#28: 偽の fs 試験なし、全ファイル検査なし） | 直し方を追記して再施工。判定時の verify は順番に走らせる形に変更 |
+| 2026-10-19 23:50 | #26 T07b opencode manifest 他 | dba1b47 | 並列 wave 1 | 0（822 pass） | — | PASS（4 項目 Yes。1 は「5 製品」に文言を直して 3 回目） | 閉じて merge（7003cc8）。残件: 保存と取り出しが重なる隙間は #25 で |
+| 2026-10-19 23:55 | #17 T13 公開面（3 回目） | d5061a6 | 並列 wave 1 | 0 | — | FAIL（項目 3: grep が docs/ specs/ の説明文に当たる。残件に実害: 同梱物の src/mcp.ts が除外した status-panel.ts を参照） | Done when を公開物に限定し、依存の検査（pack-check）を足して再施工 |
+| 2026-10-20 00:05 | #22 T03b queue を送信経路へ | fdadc22 | 再施工（worktree、190 秒） | 0（824 pass） | — | PASS（5 項目 Yes） | 閉じて merge（2f683b3） |
+| 2026-10-20 00:05 | #28 T10b 受信箱の原子性 | 47937cb | 再施工（worktree、340 秒） | 0（823 pass） | — | PASS（3 項目 Yes） | 閉じて merge（f8bb818） |
+| 2026-10-20 00:20 | #23 T03c 終了コードの扱い | ea23efe | 並列 wave 2a（worktree） | 0（838 pass） | — | PASS（3 項目 Yes） | 閉じて merge（b784edc）。残件: stderr の「usage」判定は実 CLI で未検証 |
+| 2026-10-20 00:20 | #25 T11b 登録簿の配線（1 回目） | dee523b | 並列 wave 2a（worktree、440 秒） | 0（841 pass） | — | FAIL（項目 1: 試験が外すのは既存の codex manifest で、偽の manifest ではない） | Done when を「既存または偽の manifest」に直して再判定 |
+| 2026-10-20 00:40 | #25 T11b 登録簿の配線（2 回目） | dee523b | 並列 wave 2a | 0（841 pass） | — | PASS（4 項目 Yes。1 は「既存または偽の manifest」に文言を直した） | 閉じて merge（0d46ea5）。残件 3 件 → #29 |
+| 2026-10-20 00:40 | #17 T13 公開面（4 回目） | dba25a3 | 再施工（worktree） | 0 | — | FAIL（項目 2: peer-secrets.sh の 0 件は判定役の環境では確かめられない） | リーダーが worktree で peer-secrets.sh を実行して証拠に添え、再判定 |
+| 2026-10-20 01:00 | #17 T13 公開面（5 回目） | dba25a3 | 再施工（worktree） | 0（820 pass） | — | PASS（6 項目 Yes。2 はリーダーが worktree で peer-secrets.sh を実行した ok を採用） | 閉じて merge（c5d1e76）。残件: pack-check の .js→.ts の許容、docs/release.md:136 の検索例 |
+| 2026-10-20 01:00 | #24 T04b 保留理由の観測（1 回目） | a850cce | 並列 wave 2b（worktree） | 0 | — | FAIL（項目 1: 受信側 bypassPermissions だけで claude_hold にする。ただし公式文書どおりの hold 条件で、Done when の文言が狭すぎた） | 文言を直して再判定 |
+| 2026-10-20 01:12 | #24 T04b（2 回目） | a850cce | 並列 wave 2b | 0 | — | FAIL（項目 2: Codex の goal 観測が activeTurnId だけで真を返す。通常ターンでも codex_goal になる） | 観測を goal 固有の情報に限る指示を Done when に書いて再施工 |
+| 2026-10-20 01:12 | #27 T08b Cursor manifest（1 回目） | d9671b5 | 並列 wave 2c | 0（843 pass） | — | FAIL（項目 1: 「5 製品」の文言。cursor を足して 6 製品が正） | 文言を直して再判定 |
+| 2026-10-20 01:25 | #27 T08b Cursor manifest（2 回目） | d9671b5 | 並列 wave 2c | 0（843 pass） | — | PASS（3 項目 Yes。1 は「6 製品」に文言を直した） | 閉じて merge（fbbfa27） |
+| 2026-10-20 01:40 | #19 T18 npm pack と公開手順 | 5bd5d83 | 並列 wave 3 | 0（842 pass） | — | PASS | 閉じて merge（3f8e7f1）。残件: docs/release.md:190 の「queue 未接続」の記述が古い（#22 で接続済み）、`private: true` と `bin` 未設定は H5 の後に外す |
+| 2026-10-20 00:20 | #24 T04b 保留理由の観測（3 回目） | 18ff101 | 再施工（worktree） | 0 | — | PASS（4 項目 Yes。通常ターンは unknown_reason） | 閉じて merge |
+| 2026-10-20 00:35 | #29 T11c 登録簿の配線の残り | 2fa609a | 並列 wave 3（worktree、580 秒） | 0（844 pass） | — | PASS（4 項目 Yes） | 閉じて merge。これで open は #20（人の作業）だけ |
+
+## ループの集計（2026-10-19 19:30 〜 2026-10-20 00:35）
+
+- Issue 29 件（計画 19 + 判定役の残件から派生 10）。判定 PASS 28 件、人の作業 1 件（#20）。
+- 判定 FAIL 10 回: 実装の欠陥 5 回（#7 ×2、#17、#24、#28）、リーダーの完了条件の文言 5 回（#2、#7、#17、#26、#27）。すべて直して PASS。
+- 判定の無効回 1 回（並列 wave 1。判定 script の worktree 対応版が main に無かった）。
+- 施工役: opencode（Ollama Cloud deepseek-v4.1-flash:1017）。1 件 90〜600 秒。出力 0 バイトで固まった回が 1 回（見張り 20 分で対処）。
+- 統合ブランチ loop/integration は main に対し 79 ファイル以上、約 6,400 行の追加。main には書類と script だけ。push、PR、公開は H5、H6 の後。

@@ -50,11 +50,13 @@ fi
 
 # 判定役の環境は読み取り専用で実行検査ができないことがある。リーダーが同じ版で機械検査を走らせ、出力を証拠として渡す。
 ev="$ROOT_DIR/$LOG_DIR/$STAMP-issue-$num-evidence.log"
+if [ -n "${EVIDENCE_FILE:-}" ] && [ -s "$EVIDENCE_FILE" ]; then cp "$EVIDENCE_FILE" "$ev"; else
 {
   echo "== git rev-parse HEAD"; git rev-parse HEAD
   echo "== HOME=\$(mktemp -d) bash scripts/verify.sh (tail)"; HOME=$(mktemp -d) bash scripts/verify.sh 2>&1 | tail -12; echo "exit=${PIPESTATUS[0]}"
   echo "== node --test の件数行"; rg -n "^ℹ (tests|pass|fail)" "$ev" 2>/dev/null || true
 } > "$ev" 2>&1
+fi
 cat >> "$req" <<EOF2
 
 ## リーダーが同じ版（${sha}）で走らせた機械検査の出力（証拠。施工役の自己申告ではない）
@@ -81,6 +83,9 @@ summary="判定 ${STAMP}（版 ${sha}）: 図面検査 Haiku 5.5 → $(head -c 3
 判定役 Codex gpt-6-astra → ${verdict:-不明}
 $(head -c 1200 "$judge")"
 gh issue comment "$num" --body "$summary" >/dev/null
+if [ -n "${NO_MERGE:-}" ]; then
+  echo "NO_MERGE: 判定だけ（${verdict}）"; exit 0
+fi
 if [ "$verdict" = "PASS" ]; then
   git switch -q "$BASE" && git merge -q --no-ff "$branch" -m "merge loop/$num: ${title}（判定 PASS、${sha}）
 

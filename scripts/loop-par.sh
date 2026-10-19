@@ -46,18 +46,18 @@ EOF
   if [ "$v_exit" = 0 ] && [ "$changed" -gt 0 ]; then
     (cd "$wt" && git add -A && git commit -q -m "loop #$num: $title
 
-verify.sh exit=0（並列ループ $STAMP）。施工: opencode deepseek-v4.1-flash:1017。
+verify.sh exit=0（並列ループ ${STAMP}）。施工: opencode deepseek-v4.1-flash:1017。
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>")
     sha=$(cd "$wt" && git rev-parse --short HEAD)
-    gh issue comment "$num" --body "並列ループ $STAMP: 施工 exit=$oc_exit、verify.sh exit=0（一時 HOME）。commit $sha（ブランチ $branch、worktree、未 push）。判定待ち。" >/dev/null
+    gh issue comment "$num" --body "並列ループ $STAMP: 施工 exit=${oc_exit}、verify.sh exit=0（一時 HOME）。commit ${sha}（ブランチ ${branch}、worktree、未 push）。判定待ち。" >/dev/null
     gh issue edit "$num" --add-label "loop:review" --remove-label "loop:in-progress" >/dev/null
     echo "#$num: review ($sha, ${waited}s)"
   else
-    (cd "$wt" && [ "$changed" -gt 0 ] && git add -A && git commit -q -m "loop #$num wip: verify.sh exit=$v_exit（並列ループ $STAMP、未判定）
+    (cd "$wt" && [ "$changed" -gt 0 ] && git add -A && git commit -q -m "loop #$num wip: verify.sh exit=${v_exit}（並列ループ ${STAMP}、未判定）
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>")
-    gh issue comment "$num" --body "並列ループ $STAMP: 施工 exit=$oc_exit、verify.sh exit=$v_exit、変更 $changed 件。verify 末尾:
+    gh issue comment "$num" --body "並列ループ $STAMP: 施工 exit=${oc_exit}、verify.sh exit=${v_exit}、変更 $changed 件。verify 末尾:
 \`\`\`
 $(tail -30 "$vout")
 \`\`\`

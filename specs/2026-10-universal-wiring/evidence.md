@@ -60,3 +60,4 @@
 | 2026-10-19 22:10 | #11 T11 manifest 基盤 | bdd193c | opencode deepseek-v4.1-flash:1017（330 秒） | 0（798 pass） | 食い違いなし | PASS（4 項目 Yes） | 閉じて merge。残件: 登録簿が実際の一覧と送信から呼ばれていない → #25 を起こした |
 | 2026-10-19 22:22 | #12 T07 opencode plugin | f20ac2c | opencode deepseek-v4.1-flash:1017（600 秒、813 行） | 0（801 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件: `src/manifests/opencode.json` が無い（Done when 外）、エラー応答を成功扱い、並行保存の重複 → #26 を起こした。実 opencode との適合は AC10（人の作業） |
 | 2026-10-19 22:33 | #13 T08 Cursor CLI | 30e8ac4 | opencode deepseek-v4.1-flash:1017（420 秒、806 行） | 0（813 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件: `src/manifests/cursor.json` が無い → #27 を起こした。実 Cursor での取り込みは AC2 / AC3 の実相手の計測で |
+| 2026-10-19 22:45 | #14 T10 Grok CLI manifest | 0acdeae | opencode deepseek-v4.1-flash:1017（330 秒） | 0（816 pass） | 食い違いなし | PASS（4 項目 Yes） | 閉じて merge。残件: 配達記録の保存と封筒削除が別操作で、間の異常終了で本文が残る → #28 を起こした |

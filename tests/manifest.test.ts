@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
@@ -14,6 +14,11 @@ import {
 } from '../src/core/manifest.ts';
 import { ContractError } from '../src/protocol.ts';
 import { mcpRegistration, runSetup } from '../src/setup.ts';
+import { runCli } from '../src/cli.ts';
+import { createNativeRuntime } from '../src/native-runtime.ts';
+import type { Automatic } from '../src/automatic.ts';
+import type { WhoOptions } from '../src/discovery.ts';
+import type { Registration } from '../src/protocol.ts';
 
 const invalid = (error: unknown) => error instanceof ContractError && error.message === 'manifest_invalid';
 
@@ -218,6 +223,136 @@ test('the approval mark stays with limits.markUnapproved and is never fixed by a
   for (const approvalMark of ['none', 'always', 'limits.markApproved']) {
     assert.throws(() => parseManifest({ ...valid(), permissions: { ...valid().permissions, approvalMark } }), invalid);
   }
+});
+
+// `who --json` through the command line, with no session in the fixture: every row below comes from the registration.
+async function whoListing(automatic: Automatic, options: WhoOptions): Promise<any> {
+  let output = '';
+  const log = console.log;
+  console.log = (value: unknown) => { output += String(value); };
+  try {
+    await runCli(['who', '--json'], automatic, undefined, async () => '', options);
+  } finally {
+    console.log = log;
+  }
+  return JSON.parse(output);
+}
+const emptySessions: Automatic = async () => ({ status: 'ok', candidates: [], external: [] });
+async function withPath<T>(path: string, run: () => Promise<T>): Promise<T> {
+  const old = process.env.PATH;
+  process.env.PATH = path;
+  try {
+    return await run();
+  } finally {
+    process.env.PATH = old;
+  }
+}
+
+test('a product removed from the registration leaves the who listing', async (t) => {
+  const manifests = await loadManifestRegistry();
+  const all = new ManifestRegistry(manifests.list(), MANIFEST_DIR);
+  const withoutCodex = new ManifestRegistry(manifests.list().filter((manifest) => manifest.product !== 'codex'), MANIFEST_DIR);
+  const listing = {
+    status: 'ok',
+    candidates: [
+      { id: 'claude:session', provider: 'claude', nativeId: 'session', status: 'online', reason: null, versionStatus: 'verified' },
+      { id: 'codex:thread', provider: 'codex', nativeId: 'thread', status: 'online', reason: null, versionStatus: 'verified' },
+    ],
+    external: [],
+  };
+  const automatic: Automatic = async (method) => method === 'sessions' ? structuredClone(listing) : { status: 'unexpected_method' };
+
+  const before = await whoListing(automatic, { home: await home(t), manifests: all });
+  assert.equal(before.peers.some((peer: any) => peer.id === 'codex:thread'), true, 'the full registration lists Codex');
+
+  // The scan still reports the Codex thread; only the registration changed, and that is what who follows.
+  const after = await whoListing(automatic, { home: await home(t), manifests: withoutCodex });
+  assert.equal(after.peers.some((peer: any) => peer.id === 'codex:thread'), false, 'a removed product is not listed');
+  assert.equal(after.peers.some((peer: any) => peer.id === 'claude:session'), true, 'the remaining products stay');
+});
+
+test('an added manifest is listed and its own adapter writes the request', async (t) => {
+  const dir = await home(t), runtimeHome = await home(t);
+  const fake = {
+    ...valid(),
+    product: 'fake',
+    provider: 'grok',
+    displayName: 'Fake',
+    adapter: './fake-adapter.js',
+    discovery: { kind: 'plugin', source: '~/.seamless/peers', fields: ['sessionId'] },
+    write: { channel: 'plugin_api', target: 'session.prompt' },
+    exports: { list: 'listPeers', send: 'send' },
+  };
+  await writeFile(join(dir, 'fake.json'), JSON.stringify(fake));
+  await writeFile(join(dir, 'fake-adapter.js'), [
+    "import { writeFile } from 'node:fs/promises';",
+    "import { join } from 'node:path';",
+    'export async function listPeers() {',
+    "  return [{ id: 'fake:session-1', provider: 'grok', sessionId: 'session-1', displayName: 'Fake session', state: 'idle' }];",
+    '}',
+    'export async function send(envelope) {',
+    "  await writeFile(join(process.env.SEAMLESS_FAKE_DIR, 'sent.json'), JSON.stringify(envelope));",
+    "  return { status: 'submitted', nativeMessageId: envelope.id };",
+    '}',
+    '',
+  ].join('\n'));
+  const manifests = await loadManifestRegistry(dir);
+  process.env.SEAMLESS_FAKE_DIR = runtimeHome;
+  t.after(() => { delete process.env.SEAMLESS_FAKE_DIR; });
+
+  const listing = await whoListing(emptySessions, { home: runtimeHome, manifests });
+  assert.deepEqual(
+    listing.peers.filter((peer: any) => peer.id === 'fake:session-1').map((peer: any) => [peer.state, peer.displayName]),
+    [['ready', 'Fake session']],
+  );
+
+  // The send port is the manifest's own module: nothing in the core names this product.
+  const { adapter } = createNativeRuntime({ home: runtimeHome, manifests });
+  const target: Registration = { id: 'fake:session-1', provider: 'grok', nativeId: 'session-1', generation: 'g1', host: 'local', displayName: 'Fake', workspace: runtimeHome, operations: ['read', 'send'], grants: [] };
+  const receipt = await adapter.send(target, {
+    id: 'm-1',
+    sender: { id: 'fake:session-2', nativeId: 'session-2', generation: 'g2' },
+    recipient: { id: target.id, nativeId: target.nativeId, generation: target.generation },
+    text: 'hello',
+  });
+  assert.deepEqual(receipt, { status: 'submitted', nativeMessageId: 'm-1' });
+  const sent = JSON.parse(await readFile(join(runtimeHome, 'sent.json'), 'utf8'));
+  assert.deepEqual([sent.schemaVersion, sent.id, sent.text, typeof sent.acceptedAt], [1, 'm-1', 'hello', 'number']);
+});
+
+test('a manifest discovery port puts its peers in who: opencode idle and busy', async (t) => {
+  const runtimeHome = await home(t);
+  await mkdir(join(runtimeHome, '.seamless', 'peers'), { recursive: true, mode: 0o700 });
+  const peer = (sessionId: string, state: 'idle' | 'busy', title: string) => ({
+    schemaVersion: 1, provider: 'opencode', sessionId, generation: `g-${sessionId}`, title, directory: '/', state, updatedAt: 1, pluginVersion: '1',
+  });
+  await writeFile(join(runtimeHome, '.seamless', 'peers', 'opencode-a.json'), JSON.stringify(peer('a', 'idle', 'Idle one')), { mode: 0o600 });
+  await writeFile(join(runtimeHome, '.seamless', 'peers', 'opencode-b.json'), JSON.stringify(peer('b', 'busy', 'Busy one')), { mode: 0o600 });
+
+  const listing = await whoListing(emptySessions, { home: runtimeHome });
+  assert.deepEqual(
+    listing.peers.filter((p: any) => String(p.id).startsWith('opencode:')).map((p: any) => [p.id, p.state, p.displayName]),
+    [['opencode:a', 'ready', 'Idle one'], ['opencode:b', 'next_turn', 'Busy one']],
+  );
+});
+
+test('the phase 2 declaration is listed as unverified only when its executable exists', async (t) => {
+  const runtimeHome = await home(t);
+  const absent = await withPath('/nonexistent', () => whoListing(emptySessions, { home: runtimeHome }));
+  assert.equal(absent.peers.some((p: any) => p.id === 'antigravity'), false, 'no executable, no row');
+
+  const root = join(runtimeHome, '.t3-ja', 'tools', 'antigravity-acp', `darwin-${process.arch}`);
+  const release = 'abc12345', versionDir = join(root, 'versions', release);
+  await mkdir(versionDir, { recursive: true });
+  await writeFile(join(root, 'active.json'), JSON.stringify({ releaseId: release }));
+  const binary = join(versionDir, 'agy_acp_server.par');
+  await writeFile(binary, '#!/bin/sh\nexit 0\n');
+  await chmod(binary, 0o755);
+  await writeFile(join(versionDir, '.install-complete.json'), JSON.stringify({ releaseId: release, version: '1.1.1', executable: { name: 'agy_acp_server.par' } }));
+
+  const present = await withPath('/nonexistent', () => whoListing(emptySessions, { home: runtimeHome }));
+  const row = present.peers.find((p: any) => p.id === 'antigravity');
+  assert.deepEqual([row?.state, row?.versionStatus, row?.displayName], ['unreachable', 'unverified', 'Antigravity CLI']);
 });
 
 test('setup treats a registration with another or no type as a change', async (t) => {

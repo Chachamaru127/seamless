@@ -22,10 +22,11 @@ import {wasSigned} from './nonce-store.ts';
 import {secretReader,noKeychain,type KeychainReader} from './secrets.ts';
 import {signForBot} from './bot-sign.ts';
 import {createExecutorCheck,type ExecutorCheck} from './bot-executor.ts';
+import type {ManifestRegistry} from './core/manifest.ts';
 // external: set only by `--as <registration>` on the command line (src/cli.ts): the call comes from a registered outside sender.
 // sign: set only by `bot-send|bot-sessions <registration>` (src/cli.ts): the input is an unsigned request, signed here before it takes the same path (src/bot-sign.ts).
 export type CallContext={kind:'cli'|'mcp';meta?:unknown;external?:{name:string;sign?:boolean}};
-export type AutomaticOptions={clock?:StatusClock;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;wake?:(nativeId:string)=>Promise<string|null>;adapter?:NativeAdapter;limitsPath?:string;peersPath?:string;reservationDir?:string;env?:NodeJS.ProcessEnv;keychain?:KeychainReader;diagnose?:(line:string)=>void;webhook?:WebhookOptions;botExecutor?:ExecutorCheck};
+export type AutomaticOptions={clock?:StatusClock;manifests?:ManifestRegistry;compatTest?:boolean;compatTarget?:string;testLimitsHash?:string;home?:string;callerOptions?:CallerOptions;scanOptions?:ScanOptions;caller?:(context:CallContext)=>Promise<CallerResult>;scan?:(cwd:string,scope:AutoScope)=>ReturnType<typeof scanSessions>;inspect?:(session:SessionIdentity)=>Promise<NativeIdentity|null>;wake?:(nativeId:string)=>Promise<string|null>;adapter?:NativeAdapter;limitsPath?:string;peersPath?:string;reservationDir?:string;env?:NodeJS.ProcessEnv;keychain?:KeychainReader;diagnose?:(line:string)=>void;webhook?:WebhookOptions;botExecutor?:ExecutorCheck};
 export type Ticket={provider:'codex'|'claude'|'grok';nativeId:string;generation:string;cwd:string;branch?:string|null};
 // A registered Bot has no process or folder here: the registration's name and key version stand where a conversation's id and
 // generation do, and cwd and branch are empty.
@@ -82,7 +83,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   const secret=secretReader(options.env??process.env,options.keychain??noKeychain);
   // Unusable limits are rejected by the delivery's own re-check, which keeps the reservation retryable.
   const markUnapproved=async()=>{const current=await readLimits(limitsPath);return current.status==='ok'&&current.value.markUnapproved===true;};
-  const runtime=createNativeRuntime({...scanOptions,codexOwner:bandOwner,markUnapproved,desktopVersion:scanOptions.version,home,codexIdentity:id=>codexIdentity(id,scanOptions)});
+  const runtime=createNativeRuntime({...scanOptions,manifests:options.manifests,codexOwner:bandOwner,markUnapproved,desktopVersion:scanOptions.version,home,codexIdentity:id=>codexIdentity(id,scanOptions)});
   const baseAdapter=options.adapter??runtime.adapter;
   const structures=new Map<string,ReturnType<NonNullable<NativeAdapter['structure']>>>();
   const adapter:NativeAdapter=method==='band'&&baseAdapter.structure?{...baseAdapter,structure:target=>{

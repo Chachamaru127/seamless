@@ -59,3 +59,4 @@
 | 2026-10-19 22:00 | #10 T06 setup / doctor | 5a2ed2b | opencode deepseek-v4.1-flash:1017（300 秒） | 0（764 pass） | 食い違いなし | PASS（4 項目 Yes） | 閉じて merge。残件: socket パスの文字列だけで online と判定（接続は native-runtime が照合）、登録比較が type を見ない（軽微。T11 の manifest 移行で一緒に直す） |
 | 2026-10-19 22:10 | #11 T11 manifest 基盤 | bdd193c | opencode deepseek-v4.1-flash:1017（330 秒） | 0（798 pass） | 食い違いなし | PASS（4 項目 Yes） | 閉じて merge。残件: 登録簿が実際の一覧と送信から呼ばれていない → #25 を起こした |
 | 2026-10-19 22:22 | #12 T07 opencode plugin | f20ac2c | opencode deepseek-v4.1-flash:1017（600 秒、813 行） | 0（801 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件: `src/manifests/opencode.json` が無い（Done when 外）、エラー応答を成功扱い、並行保存の重複 → #26 を起こした。実 opencode との適合は AC10（人の作業） |
+| 2026-10-19 22:33 | #13 T08 Cursor CLI | 30e8ac4 | opencode deepseek-v4.1-flash:1017（420 秒、806 行） | 0（813 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件: `src/manifests/cursor.json` が無い → #27 を起こした。実 Cursor での取り込みは AC2 / AC3 の実相手の計測で |

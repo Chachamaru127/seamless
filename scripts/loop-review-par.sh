@@ -7,9 +7,17 @@ cd "$(dirname "$0")/.."
 ROOT=$(pwd); BASE="loop/integration"; LOG_DIR="$ROOT/.local/loop"
 [ $# -gt 0 ] || { echo "issue numbers required"; exit 1; }
 
-# 1. 判定だけ並列（loop-review.sh の merge 部分は WT モードでも本線で動くので、ここでは判定のみにするため NO_MERGE=1）
+# 0. 機械検査（verify）は並列だと不安定（2026-10-19 23:30 に setup の試験が落ちた）ので、worktree ごとに順番に走らせて証拠にする
 for n in "$@"; do
-  ( WT="$ROOT/.local/wt/$n" NO_MERGE=1 bash scripts/loop-review.sh "$n" > "$LOG_DIR/review-par-$n.out" 2>&1 ) &
+  wt="$ROOT/.local/wt/$n"; evf="$LOG_DIR/evidence-par-$n.log"
+  { echo "== git rev-parse HEAD"; (cd "$wt" && git rev-parse HEAD)
+    echo "== HOME=\$(mktemp -d) bash scripts/verify.sh (tail)"; (cd "$wt" && HOME=$(mktemp -d) bash scripts/verify.sh 2>&1 | tail -12; echo "exit=${PIPESTATUS[0]}")
+  } > "$evf" 2>&1
+  echo "#$n evidence: $(rg -o 'verify: exit=[0-9]+' "$evf" | tail -1)"
+done
+# 1. 判定だけ並列（merge は後で本線で 1 件ずつ）
+for n in "$@"; do
+  ( WT="$ROOT/.local/wt/$n" NO_MERGE=1 EVIDENCE_FILE="$LOG_DIR/evidence-par-$n.log" bash scripts/loop-review.sh "$n" > "$LOG_DIR/review-par-$n.out" 2>&1 ) &
 done
 wait
 

@@ -10,6 +10,8 @@ import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { observeGit } from '../git-context.ts';
 import type { Observation, Registration } from '../protocol.ts';
+import { codexMessageMaxChars, type Limits } from '../limits.ts';
+import type { Receipt } from '../delivery.ts';
 import type { ReadFailure, ReadItem, TranscriptReader } from './read.ts';
 import { parseEnvelope } from './read.ts';
 import { readdir } from 'node:fs/promises';
@@ -186,6 +188,25 @@ export function projectCodexStructure(state:Frame):StructureItem[]{
 export async function readCodexStructure(target:Registration,options:CodexOptions={}):Promise<StructureItem[]>{
  const result=await withState(target.nativeId,options,false,(state,meta)=>({generation:meta.generation,items:projectCodexStructure(state)}));
  return 'items' in result&&result.generation===target.generation?result.items:[];
+}
+
+// Codex writes go through the public CLI (`codex queue --thread <id> --message <text>`). Exit 0 means the reservation
+// reached `submitted`; Desktop IPC is only a fallback for a failure the queue returned before that point. A timed-out or
+// signalled run is `unknown`, because the queue may already hold the message and invariant 6 forbids a second write.
+export const CODEX_QUEUE_TIMEOUT_MS=30_000;
+export type CodexQueueRun=(command:string,args:string[],timeoutMs:number)=>Promise<unknown>;
+export type CodexWriteOptions={limits?:Pick<Limits,'codexMessageMaxChars'>;command?:string;timeoutMs?:number;run?:CodexQueueRun;ipc:()=>Promise<Receipt>};
+function failedBeforeSubmit(error:unknown):boolean{
+ const e=error as (NodeJS.ErrnoException&{killed?:boolean;signal?:string})|null|undefined;
+ if(!e||e.killed||e.signal)return false;
+ return typeof e.code==='number'||e.code==='ENOENT'||e.code==='EACCES'||e.code==='ENOTDIR';
+}
+export async function writeCodexMessage(nativeId:string,text:string,messageId:string,options:CodexWriteOptions):Promise<Receipt>{
+ if([...text].length>codexMessageMaxChars(options.limits??{}))return {status:'rejected',reason:'too_long'};
+ const queueRun=options.run??((command,args,timeoutMs)=>run(command,args,{encoding:'utf8',timeout:timeoutMs,maxBuffer:1024*1024}));
+ try{await queueRun(options.command??'codex',['queue','--thread',nativeId,'--message',text],options.timeoutMs??CODEX_QUEUE_TIMEOUT_MS);}
+ catch(error){if(!failedBeforeSubmit(error))return {status:'unknown'};try{return await options.ipc();}catch{return {status:'unknown'};}}
+ return {status:'submitted',nativeMessageId:messageId};
 }
 
 export function projectCodexSentIds(state:Frame,ids:string[],recipient:SendRecipient):string[]{

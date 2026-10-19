@@ -49,3 +49,4 @@
 | 2026-10-19 20:40 | #3 T02 Claude アダプタ | 97e921b | opencode deepseek-v4.1-flash:1017（110 秒） | 0（728 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge（d4fc8f7）。残件: reachable は JSON の欄の判定で、socket の実在と生存は native-runtime 側の照合（既存）に任せる |
 | 2026-10-19 20:48 | #4 T03 codex queue | a6c88b3 | opencode deepseek-v4.1-flash:1017（180 秒） | 0（734 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件 2 件を Issue に: writeCodexMessage が製品の送信経路に接続されていない（#22）、数値の終了コードを一律に送信前失敗として IPC へ退避する（#23） |
 | 2026-10-19 20:52 | #5 T19 不明と二重送信 | bbe7216 | opencode deepseek-v4.1-flash:1017（90 秒） | 0（736 pass） | 食い違いなし | PASS（5 項目 Yes） | 閉じて merge。残件: 実プロセスの強制終了で pending が残る場合は試験外（予約の仕組みは既存の挙動のまま） |
+| 2026-10-19 21:03 | #6 T04 段階と保留中 | 7d9d72f | opencode deepseek-v4.1-flash:1017（510 秒、10 ファイル） | 0（739 pass） | PASS（残件: 検索語の引用符、定数の重複） | PASS（3 項目 Yes） | 閉じて merge。残件: 保留理由を製品名だけで決めていて観測していない → #24 を起こした |

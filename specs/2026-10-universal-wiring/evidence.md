@@ -105,3 +105,4 @@ H5: seamless + @chachamaru127/seamless、MIT、repo を public に。H6: 公式�
 open は #20（Reason 比較、人）と #33（規約の目視、人）だけ。統合ブランチ loop/integration は一時ホームの verify 0。公開に残るのは、#33 → AC7 の実測（docs/measure-ac7.md）→ #20 → push（CI 実走）→ 公開 β。
 | 2026-10-20 02:05 | main の push と CI | 3a54de9 | — | 0 | — | GitHub Actions `verify`（hermetic checks, macOS）success（run 39281816687）。loop/integration も success（39281818170） | AC12 の CI 実走は通過。repo は PRIVATE のまま |
 | 2026-10-20 02:10 | #34 T02b CLAUDE_CONFIG_DIR（1 回目） | 1b939d7 | worktree（340 秒） | 0 | — | FAIL（項目 2: 製品の一覧 `src/sessions-scan.ts` が既定フォルダだけを列挙） | 直し方を Done when に書いて再施工 |
+| 2026-10-20 02:30 | #34 T02b CLAUDE_CONFIG_DIR（2 回目） | 9a59d74 | worktree | 0 | — | PASS（4 項目 Yes） | 閉じて loop/integration へ merge。main への取り込みは AC7 の記録と一緒に |

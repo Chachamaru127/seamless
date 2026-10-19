@@ -26,14 +26,14 @@ const USAGE=`seamless measure (T15)
 使い方:
   node scripts/measure.ts roundtrip (--target <id> | --fake | --target fake:codex) [--wait <秒>] [--text <本文>] [--log <file>]
   node scripts/measure.ts hold (--target <id> | --fake | --target fake:codex) [--wait <秒>] [--held-after-sec <秒>] [--text <本文>] [--log <file>]
-  node scripts/measure.ts batch --plan <名前:回数,...> [--out <file>] [--wait <秒>] [--text <本文>]
+  node scripts/measure.ts batch --plan <名前:回数,...> [--out <file>] [--wait <秒>] [--text <本文>] [--dry]
   node scripts/measure.ts footprint [--home <dir>]
   node scripts/measure.ts compare [--dry] [--file <記録ファイル>]
 
 副コマンド:
   roundtrip  1 往復の依頼 ID と返信 ID の一致を JSON で出す
   hold       保留中 (held) と理由を出す（判定に使う待ち秒は --held-after-sec か limits）
-  batch      計画に沿って複数回往復し、本文を含まない記録ファイルを作る
+  batch      計画に沿って複数回往復し、本文を含まない記録ファイルを作る（--dry は計画の検査だけで、送らず記録も作らない）
   footprint  seamless のプロセス数、保存先と受信箱のバイト数、seamless のプロセスに限った接続数を出す
   compare    5 指標の表を出す（--dry は空の表）
 
@@ -229,6 +229,10 @@ function providerMatches(name:string,candidate:Candidate):boolean{
  if(name==='grok-bot')return candidate.provider==='grok-bot';
  return false;
 }
+// The names a plan may carry. `--dry` reports an unknown one instead of failing, because a real run turns it into
+// no_candidates records: the person can see the whole plan (and the typo) before anything leaves the Mac.
+const PLAN_PROVIDERS=['claude','codex','grok','grok-bot'] as const;
+const planKnown=(name:string):boolean=>name==='fake'||PLAN_PROVIDERS.some(provider=>providerMatches(name,{id:'',provider,ticket:null}));
 
 // ---------- batch plan ----------
 type PlanEntry={name:string;count:number};
@@ -444,13 +448,19 @@ async function commandHold(args:string[]):Promise<number>{
  return record.error?1:0;
 }
 async function commandBatch(args:string[]):Promise<number>{
- const flags=parseFlags(args,['plan','out','wait','text'],[]);
+ const flags=parseFlags(args,['plan','out','wait','text'],['dry']);
  const plan=str(flags,'plan');
  if(!plan)throw new MeasureError('invalid_arguments','--plan');
  const waitRaw=str(flags,'wait');
  const wait=waitRaw===undefined?25:Number(waitRaw);
  if(!Number.isFinite(wait)||wait<0||wait>600)throw new MeasureError('invalid_arguments','--wait');
  const text=str(flags,'text')??'seamless measurement: batch check.';
+ if(flag(flags,'dry')){
+  // The dry run checks the plan and the flags only: it identifies no caller, sends nothing and writes no record file.
+  const entries=parsePlan(plan);
+  emit({status:'ok',command:'batch',dry:true,plan,entries:entries.reduce((sum,e)=>sum+e.count,0),planParts:entries.map(e=>({name:e.name,count:e.count,known:planKnown(e.name)})),recordFile:null});
+  return 0;
+ }
  const result=await runBatch(plan,str(flags,'out'),text,wait);
  emit({status:'ok',command:'batch',plan,recordFile:result.recordFile,entries:result.entries.length,falseReached:result.falseReached,records:result.entries});
  return 0;

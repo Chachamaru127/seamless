@@ -50,3 +50,5 @@
 | 2026-10-19 20:48 | #4 T03 codex queue | a6c88b3 | opencode deepseek-v4.1-flash:1017（180 秒） | 0（734 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件 2 件を Issue に: writeCodexMessage が製品の送信経路に接続されていない（#22）、数値の終了コードを一律に送信前失敗として IPC へ退避する（#23） |
 | 2026-10-19 20:52 | #5 T19 不明と二重送信 | bbe7216 | opencode deepseek-v4.1-flash:1017（90 秒） | 0（736 pass） | 食い違いなし | PASS（5 項目 Yes） | 閉じて merge。残件: 実プロセスの強制終了で pending が残る場合は試験外（予約の仕組みは既存の挙動のまま） |
 | 2026-10-19 21:03 | #6 T04 段階と保留中 | 7d9d72f | opencode deepseek-v4.1-flash:1017（510 秒、10 ファイル） | 0（739 pass） | PASS（残件: 検索語の引用符、定数の重複） | PASS（3 項目 Yes） | 閉じて merge。残件: 保留理由を製品名だけで決めていて観測していない → #24 を起こした |
+| 2026-10-19 21:14 | #7 T15 計測スクリプト（1 回目） | 687ddcf | opencode deepseek-v4.1-flash:1017（490 秒） | 0（739 pass） | （記録なし） | FAIL（項目 5 No: footprint の対象選別が部分一致） | 直し方を Issue に追記して再施工へ |
+| 2026-10-19 21:20 | #8 T05 1 コマンド | 909e1cc | opencode deepseek-v4.1-flash:1017（150 秒） | 0（744 pass） | 食い違いなし | PASS（3 項目 Yes） | 閉じて merge。残件: 実作業場所から候補抽出→短縮コマンドまでの一連は未検証（AC3 の実相手の計測で確かめる） |

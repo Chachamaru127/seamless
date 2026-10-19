@@ -19,12 +19,12 @@ for n in "$@"; do
   echo "#$n: ${v:-?}"
   if [ "$v" = "PASS" ]; then
     branch="loop/$n"; sha=$(git rev-parse --short "$branch"); title=$(gh issue view "$n" --json title --jq .title)
-    if git switch -q "$BASE" && git merge -q --no-ff "$branch" -m "merge loop/$n: $title（判定 PASS、$sha）
+    if git switch -q "$BASE" && git merge -q --no-ff "$branch" -m "merge loop/$n: ${title}（判定 PASS、${sha}）
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"; then
       git switch -q main
       gh issue edit "$n" --remove-label "loop:review" >/dev/null
-      gh issue close "$n" --comment "判定 PASS（Codex gpt-6-astra、版 $sha）。$BASE へ merge。" >/dev/null
+      gh issue close "$n" --comment "判定 PASS（Codex gpt-6-astra、版 ${sha}）。$BASE へ merge。" >/dev/null
       echo "#$n: merged"
     else
       git merge --abort 2>/dev/null; git switch -q main

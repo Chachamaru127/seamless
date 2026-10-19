@@ -92,3 +92,7 @@
 - 判定の無効回 1 回（並列 wave 1。判定 script の worktree 対応版が main に無かった）。
 - 施工役: opencode（Ollama Cloud deepseek-v4.1-flash:1017）。1 件 90〜600 秒。出力 0 バイトで固まった回が 1 回（見張り 20 分で対処）。
 - 統合ブランチ loop/integration は main に対し 79 ファイル以上、約 6,400 行の追加。main には書類と script だけ。push、PR、公開は H5、H6 の後。
+
+## 2026-10-20 00:50 本人判断（H5、H6、#20 の順序）
+
+H5: seamless + @chachamaru127/seamless、MIT、repo を public に。H6: 公式経路は文書引用、内部依存 2 件は本人が目視。#20: AC7 の 15 往復の後。判断記録 D7〜D9。

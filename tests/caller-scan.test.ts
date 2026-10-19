@@ -22,6 +22,24 @@ test('Claude caller binds ancestor PID start and cwd, ignoring content and envir
  const result=await identifyCaller({kind:'mcp',meta:{'x-codex-turn-metadata':{session_id:'attacker'}}},f.options);
  assert.equal(result.status,'ok');if(result.status==='ok'){assert.equal(result.caller.nativeId,'claude-a');assert.equal(result.caller.source,'claude-ancestor');}
 });
+test('a caller started under CLAUDE_CONFIG_DIR is identified from that folder',async t=>{
+ const f=await fixture(t);
+ const config=await realpath(await mkdtemp(join(tmpdir(),'cldx-config-')));t.after(()=>rm(config,{recursive:true,force:true}));
+ await mkdir(join(config,'sessions'),{recursive:true});
+ const path=join(config,'sessions','41.json');await writeFile(path,JSON.stringify(f.record),{mode:0o600});
+ const options:CallerOptions={...f.options,env:{CLAUDE_CONFIG_DIR:config},signature:async()=> 'Q6L2SF6YDW'};
+ const result=await identifyCaller({kind:'cli'},options);
+ assert.equal(result.status,'ok');if(result.status!=='ok')return;
+ assert.equal(result.caller.nativeId,'claude-a');assert.equal(result.caller.source,'claude-ancestor');
+ // The same caller is confirmed cheaply on the next call, which reads the same configured folder.
+ assert.deepEqual(await identifyCaller({kind:'cli'},{...options,previous:result.caller}),result);
+ // Without the configured folder the same ancestor has no Claude record, so it is not taken as the caller.
+ assert.notEqual((await identifyCaller({kind:'cli'},{...options,env:{}})).status,'ok');
+ // A record in the default folder wins over another record for the same pid in the configured folder.
+ await f.save({...f.record,sessionId:'claude-default'});
+ const preferred=await identifyCaller({kind:'cli'},options);
+ assert.equal(preferred.status,'ok');if(preferred.status==='ok')assert.equal(preferred.caller.nativeId,'claude-default');
+});
 test('a previously identified Claude caller is confirmed without the ancestor walk, and any change falls back to full identification',async t=>{
  const f=await fixture(t);await f.save();
  let walks=0,ps=0;const base=f.options.process!,cmd=f.options.claude!.command!;

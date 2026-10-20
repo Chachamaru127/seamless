@@ -176,3 +176,11 @@ Claude 5 + Codex Desktop 5 の 10 往復（Grok Bot は 1 回目の 1 件を流�
 - 14:03 GitHub `Chachamaru127/seamless` を public に切り替え（リーダーが `gh repo edit`）。main eeed362。
 - 14:10 `npm publish --access public`（立花さんの Terminal。二段階認証をブラウザで承認）。npm のログ `2026-10-20T05_10_43_457Z-debug-0.log` に `PUT 202`（受理）。14:12 時点で `npm view` は 404（registry の処理待ち）。`npm access list packages chachamaru127` には `@chachamaru127/seamless: read-write` が出る。
 - 公開前の検査（main eeed362）: 同梱物 58 ファイル 154 KB、peer-secrets ok、pack-check ok、CI success。
+
+## 2026-10-20 公開の第三者検証と 0.1.1（リーダー実測）
+
+- npm registry に 0.1.0 が出た後、空の HOME と空フォルダから `npx -y @chachamaru127/seamless@0.1.0 setup --dry-run` を実行: 起動前に `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`（Node 24.14.0）。bin が `src/cli.ts` のままで、Node は node_modules 配下の型剥がしを拒否する。0.1.0 は第三者が `npx` で動かせない。→ Issue #42。
+- #42（判定 PASS、c5854c5）: `tsc -p tsconfig.build.json` で `dist/` に JS 出力、bin は `dist/cli.js`、`files` から `src/` を外す、hooks 2 本は `dist/` があればそれを exec、`prepublishOnly` で build と pack-check、verify.sh に tarball 展開と空 HOME からの `setup --dry-run` を追加、version 0.1.1。リーダー追加検査: tarball を node_modules 配下に `npm install` し `node_modules/.bin/seamless setup --dry-run` が空 HOME で exit 0、型剥がしエラーなし。
+- #41（判定 PASS、443ce8c）: 帯の左端に mark.svg を 14px、wordmark と合わせて 22px 内。`claude plugin test .` 102 pass / 0 fail。
+- #43（判定 PASS、a48dd73）: README の Orca 節を比較レポートの「よくある反論」へ移動（リーダー判断。Reason 併用の節は残す）。
+- main 79cba21 に merge、push 済み。残り: `npm publish`（0.1.1、OTP が要るので立花さん）、公開後に 0.1.0 を `npm deprecate`、第三者手順の `npx` 再検証。

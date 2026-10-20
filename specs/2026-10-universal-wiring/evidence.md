@@ -160,3 +160,11 @@ Claude 5 + Codex Desktop 5 の 10 往復（Grok Bot は 1 回目の 1 件を流�
 - `doctor --json` の wired: claude-code true、opencode true、cursor true、antigravity true、grok true、codex false（queue は配線不要）、grok-bot false（名簿のみ）。
 - 書いた中身: `~/.config/opencode/opencode.json` の plugin に `packages/opencode-plugin/index.ts`、`~/.cursor/hooks.json` の 3 hook に `hooks/cursor/seamless-hook.sh`、`~/.grok/config.toml` に hook と `MCPTool(seamless__*)` の許可、`~/.gemini/antigravity-cli/settings.json` に hook。
 - 戻し方: `node src/cli.ts setup --remove`（seamless の項目だけを外す）。
+
+## 配線後の実機確認（2026-10-20 13:4x、リーダー）
+
+| 製品 | 試したこと | 結果 |
+|---|---|---|
+| Cursor CLI | `cursor-agent -p --trust --model auto` を一時フォルダで 1 回 | hooks が `~/.seamless/peers/cursor-97bb82fe….json` を書いた（state idle、lastEvent sessionStart）。seamless の読み手が peer として読み、3 状態は `next_turn`。**見える** |
+| opencode | `opencode run --agent plan` を 1 回 | peers 0 件。ログ `opencode.log:146164`「configured plugin path must be a directory」。setup が `index.ts` のパスを書いたため plugin が読み込まれない → #39 を起こして施工中 |
+| 登録簿 | `loadManifestRegistry().peers()` | claude-code、codex、cursor、grok-bot、grok-cli、opencode の 6 製品（antigravity は実行ファイルがあるときだけ phase2 manifest から載る） |

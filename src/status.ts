@@ -44,12 +44,14 @@ export function stages(record:RequestRecord,destination:StructureItem[],source:S
  if(peers.length){mark(REACHED_STAGE,peers.map(n=>n.id),peers[0].at);
   for(const peer of peers){
    let proof:StructureItem|undefined;
-   if(record.recipient.provider==='codex')proof=dest.find(n=>peer.turnId!==undefined&&n.turnId===peer.turnId&&peer.position!==undefined&&n.position!==undefined&&n.position>peer.position);
+   // A `codex queue` write is recorded as a user message of the turn it started, so that item itself is the record that
+   // the turn began. An IPC tool output is not a turn start: a later item in the same turn is the proof there.
+   if(record.recipient.provider==='codex')proof=peer.type==='userMessage'&&peer.turnId!==undefined?peer:dest.find(n=>peer.turnId!==undefined&&n.turnId===peer.turnId&&peer.position!==undefined&&n.position!==undefined&&n.position>peer.position);
    else{
     const byId=new Map(dest.map(n=>[n.id,n]));
     proof=dest.find(n=>{if(n.type!=='assistant')return false;const seen=new Set<string>();let parent=n.parentUuid;while(parent&&!seen.has(parent)){if(parent===peer.id)return true;seen.add(parent);parent=byId.get(parent)?.parentUuid;}return false;});
    }
-   if(proof){mark('processing',[peer.id,proof.id],proof.at);break;}
+   if(proof){mark('processing',proof===peer?[peer.id]:[peer.id,proof.id],proof.at);break;}
   }
  }
  if(!peers.length&&record.recipient.provider==='claude'&&record.payloadSha256){

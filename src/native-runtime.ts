@@ -15,7 +15,9 @@ import type {NativeAdapter,Envelope,Receipt} from './delivery.ts';
 import {loadAdapterPort,loadManifestRegistry,type ManifestRegistry,type ProductManifest} from './core/manifest.ts';
 import {claudeSessionDirs,claudeSessionFiles} from './adapters/claude.ts';
 const exec=promisify(execFile);
-const nativePeerNamespaces=PEER_NAMESPACES.filter(name=>!name.endsWith('_test'));
+// `codex-queue` comes from a queue write read out of the conversation's own user message (projectCodex), not from an IPC
+// tool output, so it is not one of PEER_NAMESPACES.
+const nativePeerNamespaces=[...PEER_NAMESPACES.filter(name=>!name.endsWith('_test')),'codex-queue'];
 export type NativeIdentity={version?:string|null;nativeId:string;generation:string;cwd:string;socket:string;owner?:string;pid?:number};
 export type RuntimeOptions=CompatibilityOptions&{home?:string;manifests?:ManifestRegistry;codexOwner?:(nativeId:string)=>Promise<string|null>;markUnapproved?:()=>Promise<boolean>;desktopVersion?:()=>Promise<string|null>;claudeVersion?:(nativeId:string)=>Promise<string>;claudeIdentity?:(nativeId:string)=>Promise<NativeIdentity|null>;codexIdentity?:(nativeId:string)=>Promise<NativeIdentity|null>;grokIdentity?:(nativeId:string,generation?:string)=>Promise<NativeIdentity|null>;grokVersion?:()=>Promise<string|null>;processStart?:(pid:number)=>Promise<number|null>;read? :NativeAdapter['read'];afterGrokPut?:()=>void;codexQueue?:CodexQueueRun;limits?:Pick<Limits,'codexMessageMaxChars'>};
 export async function command(file:string,args:string[]){return (await exec(file,args,{encoding:'utf8',timeout:5000,maxBuffer:1048576,env:{...process.env,TZ:'UTC',LC_ALL:'C',PATH:'/bin:/usr/sbin:/usr/bin'}})).stdout;}

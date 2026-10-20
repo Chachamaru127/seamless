@@ -1,12 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
+import {randomUUID} from 'node:crypto';
 import {mkdir,mkdtemp,readFile,readdir,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {basename,dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {promisify} from 'node:util';
-import {descendants,isSeamlessCli,parseProcessTable,seamlessProcesses} from '../scripts/measure.ts';
+import {descendants,isSeamlessCli,parseProcessTable,seamlessProcesses,DEFAULT_SCOPE,fakeRegistrations,listParams,runBatch,sendParams,uniqueBody} from '../scripts/measure.ts';
+import {createAutomatic} from '../src/automatic.ts';
+import type {Caller} from '../src/caller.ts';
+import {Delivery} from '../src/delivery.ts';
+import {SAME_CONTENT_HOLD_MS} from '../src/external-inbound.ts';
+import {Registry} from '../src/registry.ts';
 
 const exec=promisify(execFile);
 const REPO=resolve(dirname(fileURLToPath(import.meta.url)),'..');
@@ -59,8 +65,80 @@ test('batch --plan fake:2 writes a record file without the message body',async t
  const records=raw.trim().split('\n').map(line=>JSON.parse(line) as Record<string,unknown>);
  assert.equal(records.length,3);
  assert.deepEqual(records[0]!.mode,'fake');
+ assert.equal(records[0]!.entries,2);
+ assert.equal(records[0]!.submitted,2);
+ assert.deepEqual(records[0]!.notSent,{});
+ assert.equal(json.submitted,2);
+ assert.deepEqual(json.notSent,{});
  assert.equal(records.filter(r=>r.kind==='roundtrip').length,2);
  for(const record of records)assert.equal(JSON.stringify(record).includes('MEASURE-BODY'),false);
+});
+
+test('a peer in another folder is listed and sent to under one scope, and refused only without it',async t=>{
+ // AC7 stopped 10 of 15 here: the listing asked for any, the send fell back to current_work. Both now take one value.
+ const home=await mkdtemp(join(tmpdir(),'seamless-measure-scope-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ const caller:Caller={provider:'codex',nativeId:'a',generation:'g',cwd:join(home,'work-a'),socket:'unused',source:'codex-turn-metadata'};
+ const target={provider:'claude' as const,nativeId:'b',generation:'g',cwd:join(home,'work-b'),socket:'unused'};
+ const automatic=createAutomatic({home,caller:async()=>({status:'ok',caller}),scan:async()=>({sessions:[caller,target],codexWorkspace:'observed' as const}),inspect:async()=>target,scanOptions:{git:async cwd=>({state:'no_git' as const,workspace:cwd})},adapter:{read:async()=>({status:'ok'}),send:async()=>({status:'submitted'})}});
+ const narrowed=await automatic('sessions',listParams('current_work'));
+ assert.deepEqual(narrowed.candidates,[]);
+ const listed=await automatic('sessions',listParams(DEFAULT_SCOPE));
+ assert.equal(listed.status,'ok');
+ const candidate=(listed.candidates as Array<{id:string;ticket:string|null}>).find(c=>c.id==='claude:b');
+ assert.ok(candidate?.ticket);
+ const id=`measure-${randomUUID()}`;
+ const sent=await automatic('send',sendParams(candidate.ticket,id,uniqueBody('SCOPE-BODY',1,1,id),DEFAULT_SCOPE));
+ assert.equal(sent.status,'submitted',JSON.stringify(sent));
+ // Without the scope the same ticket is refused before any write: the product default is the caller's folder.
+ const refusedId=`measure-${randomUUID()}`;
+ const refused=await automatic('send',{ticket:candidate.ticket,id:refusedId,text:uniqueBody('SCOPE-BODY',2,2,refusedId)});
+ assert.equal(refused.status,'scope_conflict');
+});
+
+test('one body per send: the fixed body stops as duplicate, distinct bodies reach the same peer three times',async t=>{
+ // A Bot send keeps a submitted claim for a day (src/webhook-send.ts), so the fixed body of the old hand book stopped the
+ // 2nd send of a run as duplicate. The body of each send has to differ.
+ const home=await mkdtemp(join(tmpdir(),'seamless-measure-body-'));t.after(()=>rm(home,{recursive:true,force:true}));
+ const {sender,recipient}=fakeRegistrations('claude');
+ const sent:string[]=[];
+ const delivery=new Delivery(new Registry([sender,recipient]),sender.id,{read:async()=>({status:'ok'}),send:async(_target,envelope)=>{sent.push(envelope.text);return {status:'submitted'};}},{tracking:{keyPath:join(home,'key')},fixedTarget:recipient,reservationDir:join(home,'reservations'),holdSubmittedMs:SAME_CONTENT_HOLD_MS});
+ const statuses=async(texts:string[])=>{
+  const out:string[]=[];
+  for(const text of texts)out.push(((await delivery.send({target:recipient.id,id:`measure-${randomUUID()}`,text})) as {status:string}).status);
+  return out;
+ };
+ assert.deepEqual(await statuses(['PREFIX-BODY','PREFIX-BODY','PREFIX-BODY']),['submitted','duplicate','duplicate']);
+ const bodies=Array.from({length:3},(_,i)=>{const id=`measure-${randomUUID()}`;return uniqueBody('PREFIX-BODY',i+1,3,id);});
+ assert.equal(new Set(bodies).size,3);
+ bodies.forEach((body,i)=>assert.ok(body.includes(`#${i+1}/3 `),body));
+ assert.deepEqual(await statuses(bodies),['submitted','submitted','submitted']);
+ assert.deepEqual(sent.slice(1),bodies);
+});
+
+test('batch lists and sends under one scope, and its summary counts submitted and every reason not sent',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'seamless-measure-batch-scope-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const calls:string[][]=[],texts:string[]=[];
+ const call=async(args:string[])=>{calls.push(args);
+  if(args[0]==='sessions'){const p=JSON.parse(args[1]!) as {scope:string};return p.scope==='any'?{status:'ok',candidates:[{id:'claude:b',provider:'claude',ticket:'ticket-b'}]}:{status:'ok',candidates:[]};}
+  if(args[0]==='send'){const p=JSON.parse(args[1]!) as {text:string;scope:string};texts.push(p.text);
+   // The product refuses a send outside the caller's folder under the default scope; only `any` leaves.
+   if(p.scope!=='any')return {status:'scope_conflict'};
+   return p.text.includes('#3/3')?{status:'duplicate'}:{status:'submitted'};}
+  return {status:'ok',delivery:'submitted',stages:[]};
+ };
+ const file=join(dir,'batch.jsonl');
+ const result=await runBatch('claude:3',file,'PREFIX-BODY',0,'any',call);
+ const listed=calls.find(c=>c[0]==='sessions');
+ assert.ok(listed);
+ assert.equal((JSON.parse(listed[1]!) as {scope:string}).scope,'any');
+ assert.deepEqual(calls.filter(c=>c[0]==='send').map(c=>(JSON.parse(c[1]!) as {scope:string}).scope),['any','any','any']);
+ assert.equal(new Set(texts).size,3);
+ const lines=(await readFile(file,'utf8')).trim().split('\n').map(line=>JSON.parse(line) as Record<string,unknown>);
+ assert.equal(lines[0]!.entries,3);
+ assert.equal(lines[0]!.submitted,2);
+ assert.deepEqual(lines[0]!.notSent,{duplicate:1});
+ assert.equal(result.submitted,2);
+ assert.deepEqual(result.notSent,{duplicate:1});
 });
 
 test('batch --dry checks the plan and the product names without sending or writing a record',async t=>{

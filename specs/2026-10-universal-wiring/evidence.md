@@ -140,6 +140,6 @@ Claude 5 + Codex Desktop 5 の 10 往復（Grok Bot は 1 回目の 1 件を流�
 | 相手 | 送信 | 渡った（seamless の観測） | 相手の記録 | 判定 |
 |---|---|---|---|---|
 | Claude 5 会話（別フォルダ 5 件） | 5/5 submitted（各 3.3 秒で reached） | 5/5 observed | 封筒が届いている | 合格 |
-| Codex Desktop 2 スレッド（5 件） | 5/5 submitted | 0/5（20 秒後 `held` / `unknown_reason`） | rollout に 5 件とも封筒あり（届いている） | **不合格（偽の保留中）**。#36 は `read` と `inbound` を直したが、status の段階が読む `structure` 経路が queue 封筒を拾わない → #37 |
+| Codex Desktop 2 スレッド（5 件） | 5/5 submitted | 計測の 20 秒窓では 0/5（`held` / `unknown_reason`）。13:0x に structure を読み直すと peer 項目として 5 件とも観測（#36 の読み手は動いている） | rollout に 5 件とも封筒あり。配達は送信から 16〜22 秒後（Codex Desktop が queue をターン境界で取り込むため） | 合格（falseReached 0、全件届いた）。ただし既定の N = 20 秒が Codex の配達遅延と同じ長さで、「保留中」が出てから解消する。Open decision 1 の N を Codex だけ 45 秒にする提案 → #37 |
 
 1 回目（12:09、立花さん実行）の scope_conflict と duplicate は #35 で解消（10/10 送信）。

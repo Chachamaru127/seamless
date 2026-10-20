@@ -110,7 +110,7 @@ test('the v1 products are listed through their manifests alone', async () => {
   assert.deepEqual(opencode.permissions.operations, ['read', 'send']);
   assert.equal(opencode.limits?.maxText, 8000);
   assert.equal(opencode.install.hook, null);
-  assert.equal(opencode.install.steps.includes('add packages/opencode-plugin/index.ts to ~/.config/opencode/opencode.json'), true);
+  assert.equal(opencode.install.steps.includes('add packages/opencode-plugin to ~/.config/opencode/opencode.json'), true);
   // Cursor is the hooks product: sessionStart/stop/afterAgentResponse write the peer file, and the request waits in the
   // inbox until a stop hook hands it over. Both peer states are listed as next_turn, as cursorState() decides.
   const cursor = registry.get('cursor')!;

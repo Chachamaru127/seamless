@@ -1,7 +1,7 @@
 import {ContractError,type Registration} from './protocol.ts';
 import {requests,DAY,isLocalParty,type RequestRecord,type RequestParty,type LocalParty} from './request-store.ts';
 import {REACHED_STAGE,STAGE_ORDER,type StageName} from './adapters/read.ts';
-import {DEFAULT_HELD_AFTER_SEC} from './limits.ts';
+import {heldAfterSec as heldAfterSecOf,type HeldAfterSec} from './limits.ts';
 import type {NativeAdapter} from './delivery.ts';
 import {claudeInboundHolds} from './adapters/claude.ts';
 import {observeCodexGoal} from './adapters/codex.ts';
@@ -82,8 +82,8 @@ async function deliveryState(record:RequestRecord,read:ReadOutcome,result:Return
  if(now-record.at<holdMs)return {};
  return {state:'held',reason:await reason(record.recipient)};
 }
-export function createStatus(options:{parallelReads?:boolean;dir:string;adapter:NativeAdapter;caller:RequestParty;canRead:(p:RequestParty)=>Promise<boolean>;clock?:StatusClock;heldAfterSec?:number;home?:string;claudeHold?:HoldObservation;codexGoal?:HoldObservation}){
- const time=options.clock??clock,holdMs=(options.heldAfterSec??DEFAULT_HELD_AFTER_SEC)*1000;
+export function createStatus(options:{parallelReads?:boolean;dir:string;adapter:NativeAdapter;caller:RequestParty;canRead:(p:RequestParty)=>Promise<boolean>;clock?:StatusClock;heldAfterSec?:HeldAfterSec;home?:string;claudeHold?:HoldObservation;codexGoal?:HoldObservation}){
+ const time=options.clock??clock;
  const owned=(r:RequestRecord)=>r.sender.provider===options.caller.provider&&r.sender.nativeId===options.caller.nativeId&&r.sender.generation===options.caller.generation;
  // Only an observed hold names the product reason; a failed or absent observation is unknown_reason, never a guess from the name.
  const observedHold=async(target:Registration,observe:HoldObservation):Promise<boolean>=>{try{return await observe(target)===true;}catch{return false;}};
@@ -113,6 +113,9 @@ export function createStatus(options:{parallelReads?:boolean;dir:string;adapter:
   const [destination,source]:[ReadOutcome,StructureItem[]]=options.parallelReads?await Promise.all([destinationRead(),own()]):[await destinationRead(),await own()];
   const inbox=isLocalParty(record.recipient)&&record.recipient.provider==='grok'&&options.adapter.inboxState&&await options.canRead(record.recipient)?await options.adapter.inboxState(registration(record.recipient),record.id,{id:record.sender.id,nativeId:record.sender.nativeId}).catch(()=>null):undefined;
   const now=time.now(),result=statusResult(record,destination.items,source,now,inbox);
+  // The wait belongs to the product that receives the request (Issue #37): Codex turns over at a turn boundary, Claude
+  // hands over at once, Grok Bot waits for its next wake.
+  const holdMs=heldAfterSecOf({heldAfterSec:options.heldAfterSec},record.recipient.provider)*1000;
   return {...result,...await deliveryState(record,destination,result,now,holdMs,holdReason)};
  };
  return {

@@ -9,12 +9,12 @@ import {Registry} from '../src/registry.ts';
 import {createStatus,type HoldObservation,type StructureItem} from '../src/status.ts';
 import {claudeInboundHolds} from '../src/adapters/claude.ts';
 import {codexGoalRunning,observeCodexGoal} from '../src/adapters/codex.ts';
-import {DEFAULT_HELD_AFTER_SEC,heldAfterSec,unrestricted,validLimits} from '../src/limits.ts';
+import {DEFAULT_HELD_AFTER_SEC,PRODUCT_HELD_AFTER_SEC,heldAfterSec,unrestricted,validLimits,type HeldAfterSec} from '../src/limits.ts';
 import type {Registration} from '../src/protocol.ts';
 import type {RequestParty} from '../src/request-store.ts';
 
 const T=1_000_000;
-const AT_WAIT=T+DEFAULT_HELD_AFTER_SEC*1000;
+// The default wait is per product (Issue #37): Codex 45 seconds, Claude 20.
 type Provider='claude'|'codex';
 type Observation={home?:string;claudeHold?:HoldObservation;codexGoal?:HoldObservation};
 const registration=(provider:Provider,nativeId:string,peer:string,direction:'inbound'|'outbound'):Registration=>({id:`${provider}:${nativeId}`,provider,nativeId,generation:'g',host:'local',displayName:`${provider}:${nativeId}`,workspace:'/w',operations:['read','send'],
@@ -28,12 +28,21 @@ async function fixture(t:{after:(fn:()=>Promise<void>)=>void},recipientProvider:
  const registry=new Registry([sender,recipient]);
  const adapter:NativeAdapter={read:async()=>({status:'ok'}),structure,send};
  const delivery=new Delivery(registry,sender.id,adapter,{tracking:{keyPath:join(home,'key'),now:()=>T},fixedTarget:recipient,reservationDir:join(home,'reservations')});
- const statusAt=(now:number)=>createStatus({dir:join(home,'reservations'),adapter,caller:party(sender),canRead:async()=>true,clock:{now:()=>now,sleep:async()=>{}},...observation});
- return {delivery,status:statusAt(AT_WAIT),statusAt};
+ const statusAt=(now:number,held?:HeldAfterSec)=>createStatus({dir:join(home,'reservations'),adapter,caller:party(sender),canRead:async()=>true,clock:{now:()=>now,sleep:async()=>{}},heldAfterSec:held,...observation});
+ return {delivery,status:statusAt(T+heldAfterSec({},recipientProvider)*1000),statusAt};
 }
 test('a readable peer record that never names the request is held with an observed product reason',async t=>{
- assert.equal(DEFAULT_HELD_AFTER_SEC,20);assert.equal(heldAfterSec({}),20);assert.equal(heldAfterSec({heldAfterSec:5}),5);
+ assert.equal(DEFAULT_HELD_AFTER_SEC,20);assert.deepEqual(PRODUCT_HELD_AFTER_SEC,{claude:20,codex:45,grok:20,grokBot:60});
+ // A number is the old form and applies to every product; absent, each product keeps its own wait.
+ assert.equal(heldAfterSec({}),20);assert.equal(heldAfterSec({heldAfterSec:5}),5);assert.equal(heldAfterSec({heldAfterSec:5},'codex'),5);
+ assert.equal(heldAfterSec({},'claude'),20);assert.equal(heldAfterSec({},'codex'),45);assert.equal(heldAfterSec({},'grok'),20);assert.equal(heldAfterSec({},'grok-bot'),60);
+ // An object names one product and leaves the rest on their product defaults; `default` covers the unnamed ones.
+ assert.equal(heldAfterSec({heldAfterSec:{codex:45}},'codex'),45);assert.equal(heldAfterSec({heldAfterSec:{codex:45}},'claude'),20);
+ assert.equal(heldAfterSec({heldAfterSec:{default:30}},'grok-bot'),30);assert.equal(heldAfterSec({heldAfterSec:{grokBot:90}},'grok-bot'),90);
  assert.equal(validLimits({...unrestricted,heldAfterSec:5}),true);assert.equal(validLimits({...unrestricted,heldAfterSec:0}),false);
+ assert.equal(validLimits({...unrestricted,heldAfterSec:{}}),true);assert.equal(validLimits({...unrestricted,heldAfterSec:{codex:45}}),true);
+ assert.equal(validLimits({...unrestricted,heldAfterSec:{codex:0}}),false);assert.equal(validLimits({...unrestricted,heldAfterSec:{claude:'45'}}),false);
+ assert.equal(validLimits({...unrestricted,heldAfterSec:{opencode:45}}),false);
  const empty:NativeAdapter['structure']=async():Promise<StructureItem[]>=>[];
  // Send once, show accepted before the wait, then return the reason the held state carries.
  const reason=async(provider:Provider,observation:Observation={})=>{
@@ -68,6 +77,21 @@ test('a readable peer record that never names the request is held with an observ
  assert.equal(await reason('codex',{codexGoal:async()=>codexGoalRunning({turns:[{turnId:'T1',status:'inProgress'}],activeTurnId:'T1'})}),'unknown_reason');
  assert.equal(await reason('codex',{codexGoal:async()=>codexGoalRunning({turns:[],goal:{objective:'見本に合わせる',status:'inProgress'}})}),'codex_goal');
  assert.equal(await reason('codex',{codexGoal:async()=>codexGoalRunning({goal:{objective:'見本に合わせる',status:'completed'}})}),'unknown_reason');
+});
+test('a per-product heldAfterSec holds the Codex destination at 45 seconds and Claude at 20',async t=>{
+ // Issue #37: with `{codex:45}`, the Codex wait must not shorten to Claude's 20 seconds, and the old number form
+ // (`heldAfterSec: 20`) must still decide both products.
+ const empty:NativeAdapter['structure']=async():Promise<StructureItem[]>=>[];
+ const heldAt=async(provider:Provider,seconds:number,held?:HeldAfterSec)=>{
+  const f=await fixture(t,provider,async()=>({status:'submitted'}),empty,{claudeHold:async()=>false,codexGoal:async()=>false});
+  assert.deepEqual(await f.delivery.send({id:'request',text:'body'}),{status:'submitted'});
+  return (await f.statusAt(T+seconds*1000,held).track('request') as {state?:string}).state;
+ };
+ assert.equal(await heldAt('claude',20,{codex:45}),'held');
+ assert.equal(await heldAt('codex',20,{codex:45}),undefined);
+ assert.equal(await heldAt('codex',45,{codex:45}),'held');
+ assert.equal(await heldAt('codex',20,20),'held');
+ assert.equal(await heldAt('claude',20,20),'held');
 });
 test('only a goal-specific record in the IPC state counts as a goal',()=>{
  // No goal field in this version: an ordinary running turn proves nothing, so the answer is no observation.

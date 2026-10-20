@@ -11,7 +11,7 @@ import {homedir} from 'node:os';
 import {identifyCaller,type CallerOptions,type CallerResult,type Caller} from './caller.ts';
 import {scanSessions,codexIdentity,wakeCodexThread,inScope,type SessionIdentity, type ScanOptions} from './sessions-scan.ts';
 import {createNativeRuntime,createCodexOwnerLookup,findClaudeIdentity,codexReachable,type NativeIdentity} from './native-runtime.ts';
-import {readLimits,writeLimits,clearLimits,unrestricted,validLimits,heldAfterSec,type Limits,type AutoScope} from './limits.ts';
+import {readLimits,writeLimits,clearLimits,unrestricted,validLimits,type Limits,type AutoScope} from './limits.ts';
 import {ContractError,object,isLocalRegistration,type Registration,type Operation} from './protocol.ts';
 import {Registry,loadRegistry} from './registry.ts';
 import {Delivery,type NativeAdapter} from './delivery.ts';
@@ -165,7 +165,7 @@ export function createAutomatic(options:AutomaticOptions={}){
   };
   const callerVersion=rejectedVersion(c,l);if(callerVersion)return callerVersion;
   // Both sides of a request are read together, as the band already does; each read still re-observes the caller.
-  const status=createStatus({parallelReads:true,heldAfterSec:heldAfterSec(l),dir:options.reservationDir??join(home,'.seamless','reservations'),adapter,caller:{...c,id:idOf(c)},clock:options.clock,canRead:async n=>{if(!isLocalParty(n))return false;const current=await caller(context);if(current.status!=='ok'||idOf(current.caller)!==idOf(c)||current.caller.generation!==c.generation)return false;const limits=await readLimits(limitsPath);if(limits.status==='unusable')return false;const currentLimits=limits.status==='ok'?limits.value:unrestricted;return !rejectedVersion(current.caller,currentLimits)&&!await policy(n,c,currentLimits,'read','any')&&!await targetCompatibility(n,currentLimits);}});
+  const status=createStatus({parallelReads:true,heldAfterSec:l.heldAfterSec,dir:options.reservationDir??join(home,'.seamless','reservations'),adapter,caller:{...c,id:idOf(c)},clock:options.clock,canRead:async n=>{if(!isLocalParty(n))return false;const current=await caller(context);if(current.status!=='ok'||idOf(current.caller)!==idOf(c)||current.caller.generation!==c.generation)return false;const limits=await readLimits(limitsPath);if(limits.status==='unusable')return false;const currentLimits=limits.status==='ok'?limits.value:unrestricted;return !rejectedVersion(current.caller,currentLimits)&&!await policy(n,c,currentLimits,'read','any')&&!await targetCompatibility(n,currentLimits);}});
   if(method==='send'&&input&&typeof input==='object'&&'track' in input){const p=object(input,['track','waitSeconds','scope']);scope(p.scope);return status.track(p.track,p.waitSeconds);}
   const keys=method==='sessions'?['operation','scope','target','includeOffline','peek']:method==='select'?['operation','scope','target']:method==='read'?['target','scope','cursor','limit']:method==='send'?['ticket','id','text','replyTo','scope']:method==='revalidate'?['ticket','operation','scope']:[];
   if(!keys.length&&method!=='band')throw new ContractError('unknown_method');

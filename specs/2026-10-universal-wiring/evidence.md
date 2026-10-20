@@ -170,3 +170,9 @@ Claude 5 + Codex Desktop 5 の 10 往復（Grok Bot は 1 回目の 1 件を流�
 | 登録簿 | `loadManifestRegistry().peers()` | claude-code、codex、cursor、grok-bot、grok-cli、opencode の 6 製品（antigravity は実行ファイルがあるときだけ phase2 manifest から載る） |
 | 2026-10-20 14:05 | #39 T06c opencode plugin のパス | （loop/39） | worktree | 0 | — | PASS（3 項目 Yes） | 閉じて merge。この Mac で setup を再実行して opencode の peer が出るかを確かめる |
 | 2026-10-20 14:15 | opencode の配線（#39 入り main b0b4021） | — | setup 再実行（opencode のみ updated） | — | — | — | `opencode run` の後に `~/.seamless/peers/opencode-ses_….json` が書かれた（state idle、pluginVersion 2.0.32）。**opencode が見える**。1 回目の `opencode run` が 7 分終わらず停止したが、2 回目は 5 秒で終了し peer も 2 件目が登録された（1 回目は偶発。再現したら Issue） |
+
+## 公開（2026-10-20）
+
+- 14:03 GitHub `Chachamaru127/seamless` を public に切り替え（リーダーが `gh repo edit`）。main eeed362。
+- 14:10 `npm publish --access public`（立花さんの Terminal。二段階認証をブラウザで承認）。npm のログ `2026-10-20T05_10_43_457Z-debug-0.log` に `PUT 202`（受理）。14:12 時点で `npm view` は 404（registry の処理待ち）。`npm access list packages chachamaru127` には `@chachamaru127/seamless: read-write` が出る。
+- 公開前の検査（main eeed362）: 同梱物 58 ファイル 154 KB、peer-secrets ok、pack-check ok、CI success。

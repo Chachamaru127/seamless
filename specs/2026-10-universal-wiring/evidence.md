@@ -119,3 +119,14 @@ open は #20（Reason 比較、人）と #33（規約の目視、人）だけ。
 | Grok Bot 茶々丸 | 4 | `duplicate`（送信せず） | 同じ本文を同じ相手に送るため、内容ハッシュの重複抑止（`src/delivery.ts:59`）が働いた。手順書が本文を固定したことと矛盾 |
 
 読み: 「渡った」の誤表示は 0 件だが、それは 14 件が送信前に止まったため。AC7 の合否は判定できない。計測スクリプトの 2 つの欠陥（scope、固定本文）を直して再計測する。呼び出し元の同定（#34）は通った（`who --json` が候補を返した）。
+
+## リーダーの自己検査（2026-10-20 12:21〜12:25、T3 の会話から adapter を直接呼んで 1 件ずつ送信。呼び出し元の同定は経由せず）
+
+| 相手 | 送信 | 相手の記録 | seamless の読み手 | 返事 |
+|---|---|---|---|---|
+| Claude（対話セッション 6bd28549、cwd seamless） | `submitted` 228 ms（公式 socket） | 03:21:24Z に `queue-operation enqueue` → `type:user`「Another Claude session sent a message: {封筒}」→ ターン開始 | `read` が role peer（namespace claude-peer、messageId 一致）で返す。`inbound` が封筒 ID を返す。**渡った・処理中を観測できる** | 相手は Claude 純正の SendMessage で返そうとした（宛先 t3-leader は存在しないので届かない。想定どおり） |
+| Codex Desktop（スレッド 01a11bc0） | `submitted` 313 ms（`codex queue`） | 03:23:06Z に rollout へ user message（本文 = 封筒 JSON）→ 03:23:14Z に AgentMessage「seamless self-check …: received.」 | `read` は role user（peer なし）。`inbound` は空。**届いているのに「渡った」を観測できない（読み手が queue 経由の封筒を認識しない）** → #36 | 相手は本文で返した（replyTo 付きの seamless send ではないので「返事」段階は一致しない。Codex 側に seamless の MCP が無いため） |
+| opencode | — | — | peers 0 件（plugin が opencode に未登録。`opencode serve --service` は起動中） | — |
+| Cursor / Antigravity | — | — | peers 0 件（hooks 未導入）| — |
+
+`sentIds` は「相手が seamless の send で返信したか」を読むもので、「渡った」の読み手ではない（12:22 の自己検査で取り違えた。訂正）。

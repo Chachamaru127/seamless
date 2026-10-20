@@ -152,3 +152,11 @@ Claude 5 + Codex Desktop 5 の 10 往復（Grok Bot は 1 回目の 1 件を流�
 - AC1 の「導入が変える設定ファイルは MCP の登録 1 件だけ」を実機で確認。秒数と質問数は別途（質問は 0 だった）。
 - 残件: setup は opencode / Cursor / Antigravity / Grok CLI の plugin と hooks を書かない（#38 で対応中）。
 | 2026-10-20 13:50 | #38 T06b setup の配線（plugin / hooks） | e59630c | worktree（440 秒） | 0（865 pass） | — | PASS（5 項目 Yes） | 閉じて merge。次は立花さんの Mac で `setup --dry-run` → `setup` を再実行し、opencode / Cursor / Antigravity / Grok CLI が一覧に出るかを確かめる |
+
+## setup の再実行（2026-10-20 13:41、リーダーが実行。main 640dab3、#38 入り）
+
+- `setup --dry-run`: 変更予定 4 件（opencode の plugin、Cursor の hooks、Grok CLI の hooks、Antigravity の hooks。Claude の MCP は unchanged）。
+- `setup`: 4 件 updated。backup 4 件（`~/.seamless/backups/2026-10-20T04-41-25-*`）。
+- `doctor --json` の wired: claude-code true、opencode true、cursor true、antigravity true、grok true、codex false（queue は配線不要）、grok-bot false（名簿のみ）。
+- 書いた中身: `~/.config/opencode/opencode.json` の plugin に `packages/opencode-plugin/index.ts`、`~/.cursor/hooks.json` の 3 hook に `hooks/cursor/seamless-hook.sh`、`~/.grok/config.toml` に hook と `MCPTool(seamless__*)` の許可、`~/.gemini/antigravity-cli/settings.json` に hook。
+- 戻し方: `node src/cli.ts setup --remove`（seamless の項目だけを外す）。

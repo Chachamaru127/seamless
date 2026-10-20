@@ -3,6 +3,9 @@ node_modules/
 coverage/
 out/
 output/
+# Build output: it exists only in the published package (issue #42).
+dist/
+packages/opencode-plugin/index.js
 docs/reports/agmsg-comparison-evidence/
 experiments/*/results/
 .DS_Store

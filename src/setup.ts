@@ -36,8 +36,12 @@ function defaultCliPath():string{
  const here=fileURLToPath(import.meta.url);
  return join(dirname(here),here.endsWith('.ts')?'cli.ts':'cli.js');
 }
-// The repository root is where the hook scripts and the opencode plugin live. setup is `src/setup.ts`, so one level up.
+// The root is where the hook scripts and the opencode plugin live: the repository in a checkout (`dist/../` is the same
+// place), and the package root when setup runs as `dist/setup.js` from the tarball.
 function defaultRootPath():string{return fileURLToPath(new URL('..',import.meta.url));}
+// The manifests ride next to this module, as core/manifest.ts reads them: `src/manifests` in a checkout, and the copy the
+// build places at `dist/manifests` in the published package (issue #42).
+const MANIFEST_DIR=fileURLToPath(new URL('manifests/',import.meta.url));
 // The MCP server is this repository's own `mcp` entry, run by the same Node that ran setup. A path is used rather than a
 // package name because v1 is installed from a checkout (H5 decides the published name later).
 export function mcpRegistration(nodePath=process.execPath,cliPath=defaultCliPath()):McpRegistration{
@@ -258,7 +262,7 @@ async function loadWiringPlans(home:string,root:string):Promise<WiringPlan[]>{
  const plans:WiringPlan[]=[];
  for(const [product,name] of manifests){
   let manifest:unknown;
-  try{manifest=JSON.parse(await readFile(join(root,'src','manifests',name),'utf8'));}catch{continue;}
+  try{manifest=JSON.parse(await readFile(join(MANIFEST_DIR,name),'utf8'));}catch{continue;}
   const install=isRecord(manifest)?manifest.install:undefined;
   const steps=isRecord(install)&&Array.isArray(install.steps)?install.steps:[];
   const step=steps.find((item):item is string=>typeof item==='string'&&item.startsWith('add '));

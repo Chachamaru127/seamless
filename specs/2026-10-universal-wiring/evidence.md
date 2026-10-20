@@ -168,3 +168,4 @@ Claude 5 + Codex Desktop 5 の 10 往復（Grok Bot は 1 回目の 1 件を流�
 | Cursor CLI | `cursor-agent -p --trust --model auto` を一時フォルダで 1 回 | hooks が `~/.seamless/peers/cursor-97bb82fe….json` を書いた（state idle、lastEvent sessionStart）。seamless の読み手が peer として読み、3 状態は `next_turn`。**見える** |
 | opencode | `opencode run --agent plan` を 1 回 | peers 0 件。ログ `opencode.log:146164`「configured plugin path must be a directory」。setup が `index.ts` のパスを書いたため plugin が読み込まれない → #39 を起こして施工中 |
 | 登録簿 | `loadManifestRegistry().peers()` | claude-code、codex、cursor、grok-bot、grok-cli、opencode の 6 製品（antigravity は実行ファイルがあるときだけ phase2 manifest から載る） |
+| 2026-10-20 14:05 | #39 T06c opencode plugin のパス | （loop/39） | worktree | 0 | — | PASS（3 項目 Yes） | 閉じて merge。この Mac で setup を再実行して opencode の peer が出るかを確かめる |

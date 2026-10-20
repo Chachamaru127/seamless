@@ -130,3 +130,5 @@ open は #20（Reason 比較、人）と #33（規約の目視、人）だけ。
 | Cursor / Antigravity | — | — | peers 0 件（hooks 未導入）| — |
 
 `sentIds` は「相手が seamless の send で返信したか」を読むもので、「渡った」の読み手ではない（12:22 の自己検査で取り違えた。訂正）。
+| 2026-10-20 12:45 | #35 T15b 計測の scope と本文 | be90173 | worktree | 0 | PASS | 1 回目は判定役の出力が空（MCP の OAuth エラー）→ 2 回目 PASS（5 項目 Yes） | 閉じて merge（f5d70a9） |
+| 2026-10-20 12:45 | #36 T03d Codex 読み手（queue 封筒） | db1d9c5 | worktree（並列干渉で verify 143 → 単独で 0） | 0 | — | PASS（5 項目 Yes） | 閉じて merge（c3f962a） |

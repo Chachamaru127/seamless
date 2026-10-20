@@ -132,3 +132,14 @@ open は #20（Reason 比較、人）と #33（規約の目視、人）だけ。
 `sentIds` は「相手が seamless の send で返信したか」を読むもので、「渡った」の読み手ではない（12:22 の自己検査で取り違えた。訂正）。
 | 2026-10-20 12:45 | #35 T15b 計測の scope と本文 | be90173 | worktree | 0 | PASS | 1 回目は判定役の出力が空（MCP の OAuth エラー）→ 2 回目 PASS（5 項目 Yes） | 閉じて merge（f5d70a9） |
 | 2026-10-20 12:45 | #36 T03d Codex 読み手（queue 封筒） | db1d9c5 | worktree（並列干渉で verify 143 → 単独で 0） | 0 | — | PASS（5 項目 Yes） | 閉じて merge（c3f962a） |
+
+## AC7 の実測（リーダー実行、2026-10-20 12:48、main f1dfcba、adapter 直接呼び出し。記録 `~/.seamless/measurements/ac7-leader-2026-10-20T03-48-04-768Z.jsonl`）
+
+Claude 5 + Codex Desktop 5 の 10 往復（Grok Bot は 1 回目の 1 件を流用。本文は連番つきで一意）。falseReached 0、送信 10/10 submitted。
+
+| 相手 | 送信 | 渡った（seamless の観測） | 相手の記録 | 判定 |
+|---|---|---|---|---|
+| Claude 5 会話（別フォルダ 5 件） | 5/5 submitted（各 3.3 秒で reached） | 5/5 observed | 封筒が届いている | 合格 |
+| Codex Desktop 2 スレッド（5 件） | 5/5 submitted | 0/5（20 秒後 `held` / `unknown_reason`） | rollout に 5 件とも封筒あり（届いている） | **不合格（偽の保留中）**。#36 は `read` と `inbound` を直したが、status の段階が読む `structure` 経路が queue 封筒を拾わない → #37 |
+
+1 回目（12:09、立花さん実行）の scope_conflict と duplicate は #35 で解消（10/10 送信）。

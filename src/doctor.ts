@@ -4,14 +4,14 @@ import {homedir} from 'node:os';
 import {join} from 'node:path';
 import {promisify} from 'node:util';
 import {COMPATIBILITY, versionStatus, type CompatibilityProduct} from './compat.ts';
-import {findAntigravity, findOnPath, readClaudeSessionRecords, type SetupProduct} from './setup.ts';
+import {detectWiring, findAntigravity, findOnPath, readClaudeSessionRecords, type SetupProduct} from './setup.ts';
 
 // `doctor --json` explains what this Mac has, without reading the Keychain, writing anything, or going to the network. It
 // answers the questions the person needs before a first round trip: Node, each v1 product, Claude inbox sockets, the
 // compatibility table, whether Reason Network's hooks are wired into the same products, and where Antigravity lives.
 const run=promisify(execFile);
 export type DoctorProduct=SetupProduct;
-export type DoctorRow={product:DoctorProduct;installed:boolean;binary:string|null;version:string|null;versionStatus:string};
+export type DoctorRow={product:DoctorProduct;installed:boolean;binary:string|null;version:string|null;versionStatus:string;wired:boolean};
 export type DoctorResult={
  status:'ok';
  node:{version:string;required:string;ok:boolean};
@@ -84,11 +84,12 @@ function compatProduct(product:DoctorProduct):CompatibilityProduct|null{
 }
 export async function runDoctor(options:DoctorOptions={}):Promise<DoctorResult>{
  const home=options.home??homedir(),env=options.env??process.env,probe=options.versionCommand??probeVersion;
- const [sessions,antigravity,reasonHooks,antigravityHasHooks,claudeBin,codexBin,opencodeBin,cursorBin,grokBin,peers]=await Promise.all([
+ const [sessions,antigravity,reasonHooks,antigravityHasHooks,wiring,claudeBin,codexBin,opencodeBin,cursorBin,grokBin,peers]=await Promise.all([
   readClaudeSessionRecords(home),
   findAntigravity(home,env),
   reasonNetworkHooks(home),
   antigravityHooks(home),
+  detectWiring(home),
   findOnPath('claude',env),
   findOnPath('codex',env),
   findOnPath('opencode',env),
@@ -108,7 +109,13 @@ export async function runDoctor(options:DoctorOptions={}):Promise<DoctorResult>{
  ];
  const rows:DoctorRow[]=found.map(row=>{
   const product=compatProduct(row.product);
-  return {product:row.product,installed:!!row.binary||(row.product==='grok-bot'&&peers),binary:row.binary,version:row.version,versionStatus:product?versionStatus(product,row.version):'unverified'};
+  const wired=row.product==='opencode'?wiring.opencode
+   :row.product==='cursor'?wiring.cursor
+   :row.product==='antigravity'?wiring.antigravity
+   :row.product==='grok'?wiring.grok
+   :row.product==='claude-code'?wiring['claude-code']
+   :false;
+  return {product:row.product,installed:!!row.binary||(row.product==='grok-bot'&&peers),binary:row.binary,version:row.version,versionStatus:product?versionStatus(product,row.version):'unverified',wired};
  });
  const statuses={verified:0,checking:0,fix_required:0};
  for(const entry of COMPATIBILITY)statuses[entry.status]++;

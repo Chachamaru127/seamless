@@ -34,7 +34,7 @@
   },
   "install": {
     "hook": "hooks/grok-cli/seamless-hook.sh",
-    "steps": ["node src/cli.ts setup"]
+    "steps": ["node src/cli.ts setup", "add hooks/grok-cli/seamless-hook.sh to hooks.Stop in ~/.grok/config.toml"]
   },
   "limits": {
     "maxText": 8000

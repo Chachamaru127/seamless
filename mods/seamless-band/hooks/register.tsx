@@ -1,4 +1,4 @@
-import { avatarSvg, dots, marks, theme, tone, trackSvg } from './appearance'
+import { avatarSvg, BRAND_LOCKUP, brandLockup, dots, marks, theme, tone, trackSvg } from './appearance'
 import { peersOf, talliesOf, peerName, peerBadge, summaryOf, companyName, focusOf, noticesOf, settle, stepsOf, stateLineOf } from './exchanges'
 import type { Exchange, Peer, Step } from './exchanges'
 import { atom, read, update } from 'claude-code'
@@ -701,6 +701,10 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column">
         <Box key="band" flexDirection="column" width="100%">
           <Box key="activity" flexDirection="row" alignItems="center" columnGap={1}>
+            {/* The band's left end: the mark and the wordmark, one quiet tone, never a state's. */}
+            <Box key="brand" flexShrink={0}>
+              <Svg alt="seamless" width={BRAND_LOCKUP.width} height={BRAND_LOCKUP.height} source={brandLockup()} />
+            </Box>
             <Button key="toggle" label={isOpen ? '▾' : '▸'} onPress={() => update($, isExpanded, open => !open)} />
             {mark('state-mark', marks[line.mark])}
             <Box key="line" flexGrow={1} flexShrink={1} flexDirection="row">

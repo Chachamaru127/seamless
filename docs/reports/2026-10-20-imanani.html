@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>いまなにしてる: seamless（2026-10-20 11:36）</title>
+<style>
+  :root{--paper:#fbf7ef;--paper-2:#fffdf7;--ink:#1c1a16;--muted:#6f685c;--line:#ddd3c2;--soft:#f0e8d8;--acc:#b5451f;--green:#1f5c4d;--amber:#8a641c;--red:#8a2a1c}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;font-size:16px;line-height:1.9}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 32px 96px}
+  .topline{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--ink);padding-bottom:12px}
+  .kicker{margin-top:44px;color:var(--acc);font-size:12px;letter-spacing:.16em;text-transform:uppercase}
+  h1{font-size:30px;line-height:1.4;margin:8px 0 18px}
+  h2{font-size:21px;margin:48px 0 12px;padding-top:16px;border-top:1px solid var(--line)}
+  .box{background:var(--paper-2);border:1px solid var(--line);padding:18px 22px;margin:18px 0}
+  .box.hl{border-left:4px solid var(--acc)}
+  .box.warn{border-left:4px solid var(--amber)}
+  table{width:100%;border-collapse:collapse;margin:12px 0 20px;font-size:14px}
+  th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{font-size:12px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--ink)}
+  .ok{color:var(--green);font-weight:700}.mid{color:var(--amber);font-weight:700}.ng{color:var(--red);font-weight:700}
+  pre{background:var(--soft);padding:14px 16px;font-family:ui-monospace,monospace;font-size:13px;line-height:1.5;overflow-x:auto}
+  code{font-family:ui-monospace,monospace;font-size:.86em;background:var(--soft);padding:2px 6px;border-radius:2px}
+  ul,ol{padding-left:1.4em}li{margin:4px 0}
+  .dec{border:1px solid var(--ink);padding:16px 20px;margin:14px 0;background:var(--paper-2)}
+  .dec dl{display:grid;grid-template-columns:150px 1fr;gap:4px 12px;margin:0}
+  .dec dt{color:var(--muted);font-size:13px}.dec dd{margin:0}
+  small{color:var(--muted);font-size:12px}
+</style>
+</head>
+<body><div class="wrap">
+<div class="topline"><span>seamless / いまなにしてる</span><span>いま測った: 2026-10-20 11:36 JST</span></div>
+<div class="kicker">現在地</div>
+<h1>AI 側の実装は全部終わって、立花さんの手で「本物の相手に 15 往復」を測る番で止まっています。</h1>
+
+<div class="box hl">
+<b>ひとことで。</b> seamless v1 の実装（Issue 32 件）は別家系の判定 PASS で main に入り、非公開 repo に push 済み、CI も通っています。止まっているのは AC7 の実測です。seamless は「どの会話から呼ばれたか」を祖先プロセスで確かめる作りなので、素の Terminal や T3 の Claude からは動かず、Claude Desktop か普段の <code>claude</code> の対話セッションの中から 1 コマンドを打つ必要があります。昨夜はそれが <code>CLAUDE_CONFIG_DIR</code>（routecli のプロファイル）のせいで通らず、その対応（#34）も今朝 main に入りました。
+</div>
+
+<h2>1. 背景（日付つき）</h2>
+<ol>
+<li><b>10-19 午後</b>: 「Reason Network を超えるプロダクトにして」の依頼で調査（team-research）。公式経路（Claude の cross-session socket、Codex の <code>codex queue</code>）が増えていると判明。</li>
+<li><b>10-19 夕方</b>: 判断 3 件。オンライン機能は持たない、opencode / Cursor / Antigravity を v1 に入れる、Codex Desktop の内部接続は続ける。計画（spec、Plans、tasks）を書き、図面検査 2 回と敵対 1 回を通して承認。</li>
+<li><b>10-19 19:30〜10-20 01:35</b>: GitHub Issues + 施工 DeepSeek 1017 + 判定 Codex Astra のループ。途中から worktree で最大 6 並列。32 件 PASS。</li>
+<li><b>10-20 00:50</b>: 判断 3 件。名前は <code>@chachamaru127/seamless</code>、規約は目視（のちにスルー指定）、Reason 比較は AC7 の後。</li>
+<li><b>10-20 01:00〜01:35</b>: main に merge、非公開 push、CI success。AC7 の実測は立花さんが打ったが <code>caller_unobserved</code>（プロファイル起因）。#34 で対応して main へ。</li>
+<li><b>10-20 02:00 以降</b>: 定期起動は「取る Issue なし」を 30 分ごとに繰り返している。<code>/loop exit</code> の操作は途中で中断され、定期起動は有効のまま。</li>
+</ol>
+
+<h2>2. 登場するもの</h2>
+<table>
+<tr><th>実名</th><th>正体</th><th>役割</th></tr>
+<tr><td>seamless</td><td>同じ Mac の AI の会話に一言を届け、届いたかを相手の記録で確かめる配線アプリ（この repo）</td><td>製品</td></tr>
+<tr><td>Reason Network</td><td>チームのコーディングエージェントを P2P でつなぐ競合（reasonmachines.com）</td><td>比較対象。#20 で実測予定</td></tr>
+<tr><td>AC7</td><td>受け入れ条件 7。本物の相手に 15 往復して「渡った」の誤表示が 0 件</td><td>公開前の最難関（S1）</td></tr>
+<tr><td>caller_unobserved</td><td>seamless が「呼び出し元の会話」を同定できなかったときの停止理由</td><td>素の Terminal や T3 の Claude からは必ずこれになる（設計どおり）</td></tr>
+<tr><td>CLAUDE_CONFIG_DIR</td><td>Claude Code の設定フォルダを変える環境変数。routecli のプロファイル（claude-2 など）が使う</td><td>#34 で seamless が両方のフォルダを見るようにした</td></tr>
+<tr><td>loop/integration</td><td>施工の成果を判定後に集めるブランチ</td><td>main と同じ位置（1535d58）</td></tr>
+<tr><td>30 分の定期起動</td><td>T3 のスケジュール。<code>loop-step.sh</code> を走らせ、ready の Issue が無ければ 1 行で終わる</td><td>有効のまま。次回 11:46</td></tr>
+</table>
+
+<h2>3. 全体像（いま測った 11:36）</h2>
+<pre>
+[計画] spec / Plans / tasks ............ 承認済み（10-19）
+[実装] Issue #1〜#34 ................... 32 件 PASS → main 1535d58 = origin/main（push 済み）
+[検査] 一時ホームの verify ............. exit 0（試験 844 件）
+[CI]   GitHub Actions verify ........... main / loop/integration とも success（10-20 01:35）
+[公開] repo .............................. PRIVATE のまま。npm 未 publish
+[実測] AC7 の 15 往復 .................... 未（~/.seamless/measurements/ が無い）  ← ここで止まっている
+[人]   #33 規約の目視 .................... スルー指定（10-20）
+[人]   #20 Reason 比較 .................. AC7 の後
+[ループ] 定期起動 ........................ 有効。取る Issue なし（last run succeeded）
+</pre>
+<p>たとえると、工場の生産ラインは止まって検品まで終わり、出荷前の「実車での試走」だけが残っている状態です。実際には、試走にあたる AC7 は seamless の設計上、Claude の対話セッションの中からしか起動できないので、立花さんの手が要ります。</p>
+
+<h2>4. 5 項目</h2>
+<p><b>目的</b>: 今開いている AI に一言を届け、届いたかを正直に知ることができる seamless を OSS として出す。</p>
+<p><b>全体進捗</b>: 約 80%。100% は「v1 が公開され、第三者が説明どおりに動かし、issue を出せる状態」。内訳は、計画 100%、実装 100%（32 件 PASS）、CI 100%、実相手の実測 0%、公開 0%。</p>
+<p><b>今の作業</b>: 停止中。立花さんの AC7 の実測待ち。AI 側は定期起動が 30 分ごとに「取る Issue なし」を返しているだけ。</p>
+<p><b>何のため</b>: 実装の「できた」は試験と判定で確かめたが、本物の Claude Desktop、Codex Desktop、Grok Bot で往復が通るかは 1 件も測っていない。ここを通さないと「届いたの正確さ」という売りを言えない。</p>
+<p><b>次のタスク</b></p>
+<ul>
+<li>この回答までに進めた: #34（CLAUDE_CONFIG_DIR 対応）を main へ。CI success。</li>
+<li>次に AI が続ける: AC7 の記録ファイルを受け取ったら evidence.md へ転記 → Reason 比較（#20）。完了条件は「15 件の記録と falseReached 0」。</li>
+<li>本人の判断が必要: 下の 2 件。</li>
+<li>外部条件待ち: なし。</li>
+</ul>
+
+<h2>5. AC7 を今やるなら（1 コマンド）</h2>
+<p>普段の Terminal で、まず普段の <code>claude</code> を起動します（#34 で routecli のプロファイルでも通るようになったので、<code>env -u</code> は不要の見込み。通らなければ <code>env -u CLAUDE_CONFIG_DIR claude …</code>）。</p>
+<pre>cd ~/LocalWork/Code/seamless && git pull && claude --permission-mode acceptEdits --allowedTools "Bash(node:*)"</pre>
+<p>Claude の入力欄に貼る文:</p>
+<pre>次を順に実行して出力をそのまま貼って。
+1) node src/cli.ts who --json | head -c 2000
+2) node scripts/measure.ts batch --plan claude:5,codex-desktop:5,grok-bot:5 --out "$HOME/.seamless/measurements/ac7-$(date +%Y%m%d-%H%M%S).jsonl" --wait 25 --text 'seamless AC7 measurement: reply with one short line.'</pre>
+<p>1 で Claude の候補が 5 件、Codex Desktop が 5 件出ることを確かめてから 2 へ。2 は茶々丸に本物の送信が 5 件飛び、最長 7 分です。</p>
+
+<h2>6. 確かめたこと / 確かめていないこと</h2>
+<table>
+<tr><th>項目</th><th>結果</th><th>いつ</th></tr>
+<tr><td>main と origin/main</td><td class="ok">一致（1535d58）、作業ツリーは clean</td><td>いま測った 11:36</td></tr>
+<tr><td>GitHub Issues</td><td class="ok">open 2 件（#20、#33。どちらも人の作業）、closed 32 件</td><td>いま測った 11:36</td></tr>
+<tr><td>GitHub Actions</td><td class="ok">main、loop/integration とも success</td><td>いま測った 11:36（実行は 01:35）</td></tr>
+<tr><td>定期起動（T3 スケジュール）</td><td class="mid">enabled、last run succeeded、next 11:46</td><td>いま測った 11:36</td></tr>
+<tr><td>AC7 の記録</td><td class="ng">無い（<code>~/.seamless/measurements/</code> が存在しない）</td><td>いま測った 11:36</td></tr>
+<tr><td>ループの残り（lock、paused、worktree、施工プロセス）</td><td class="ok">すべて無し</td><td>いま測った 11:36</td></tr>
+<tr><td>repo の公開状態</td><td>PRIVATE</td><td>いま測った 11:36</td></tr>
+<tr><td>本物の相手での往復（Claude、Codex、Grok Bot）</td><td class="ng">未確認（1 件も測っていない）</td><td>—</td></tr>
+<tr><td>Codex Desktop にロード済みのスレッド数</td><td class="ng">未確認</td><td>—</td></tr>
+</table>
+
+<h2>7. 判断が要るもの（2 件）</h2>
+<div class="dec"><dl>
+<dt>何を決めるか</dt><dd>30 分の定期起動を止めるか。</dd>
+<dt>推奨</dt><dd>止める（無効化）。取る Issue が無く、30 分ごとに 1 行の報告が増えるだけ。新しい Issue を積むときに再開すれば足りる。</dd>
+<dt>許可すると何が起きるか</dt><dd>T3 のスケジュールを enabled: false にする。削除はしない。</dd>
+<dt>今回はしないこと</dt><dd>スケジュールの削除、script の削除。</dd>
+<dt>後から戻せるか</dt><dd>戻せる（enabled: true に戻すだけ）。</dd>
+</dl></div>
+<div class="dec"><dl>
+<dt>何を決めるか</dt><dd>AC7 の実測を、いつ、誰が打つか。</dd>
+<dt>推奨</dt><dd>立花さんが上の 1 コマンドを打つ。私からは設計上起動できない。</dd>
+<dt>許可すると何が起きるか</dt><dd>Claude Desktop の 5 会話、Codex Desktop の 5 スレッド、茶々丸に固定の 1 文が届く。記録に本文は残らない。</dd>
+<dt>今回はしないこと</dt><dd>Reason の導入（AC7 の後）、公開。</dd>
+<dt>後から戻せるか</dt><dd>送信は取り消せない。記録ファイルは消せる。</dd>
+</dl></div>
+
+<small>出典: git（main 1535d58）、GitHub Issues と Actions（Chachamaru127/seamless）、T3 のスケジュール一覧、specs/2026-10-universal-wiring/evidence.md、この会話（2026-10-19 午後〜10-20 02:46）。いま測った値は 2026-10-20 11:36 JST。</small>
+</div></body></html>

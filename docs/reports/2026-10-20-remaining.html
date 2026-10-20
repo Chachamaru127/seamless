@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>seamless: 残り作業と進捗（2026-10-20 13:01）</title>
+<style>
+  :root{--paper:#fbf7ef;--paper-2:#fffdf7;--ink:#1c1a16;--muted:#6f685c;--line:#ddd3c2;--soft:#f0e8d8;--acc:#b5451f;--green:#1f5c4d;--amber:#8a641c;--red:#8a2a1c}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;font-size:16px;line-height:1.9}
+  .wrap{max-width:980px;margin:0 auto;padding:40px 32px 96px}
+  .topline{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--ink);padding-bottom:12px}
+  .kicker{margin-top:44px;color:var(--acc);font-size:12px;letter-spacing:.16em;text-transform:uppercase}
+  h1{font-size:30px;line-height:1.4;margin:8px 0 18px}
+  h2{font-size:21px;margin:48px 0 12px;padding-top:16px;border-top:1px solid var(--line)}
+  .box{background:var(--paper-2);border:1px solid var(--line);padding:18px 22px;margin:18px 0}
+  .box.hl{border-left:4px solid var(--acc)}
+  table{width:100%;border-collapse:collapse;margin:12px 0 20px;font-size:14px}
+  th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{font-size:12px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--ink)}
+  .ok{color:var(--green);font-weight:700}.mid{color:var(--amber);font-weight:700}.ng{color:var(--red);font-weight:700}
+  .bar{display:grid;grid-template-columns:260px 1fr 70px;gap:12px;align-items:center;margin:6px 0;font-size:14px}
+  .bar .t{height:14px;background:var(--soft);position:relative}
+  .bar .f{position:absolute;left:0;top:0;bottom:0;background:var(--acc)}
+  .bar .f.g{background:var(--green)}.bar .f.m{background:#b9ae9a}
+  .bar .v{text-align:right;font-variant-numeric:tabular-nums}
+  pre{background:var(--soft);padding:14px 16px;font-family:ui-monospace,monospace;font-size:13px;line-height:1.5;overflow-x:auto;white-space:pre-wrap}
+  code{font-family:ui-monospace,monospace;font-size:.86em;background:var(--soft);padding:2px 6px;border-radius:2px}
+  ol,ul{padding-left:1.4em}li{margin:4px 0}
+  small{color:var(--muted);font-size:12px}
+  @media (max-width:720px){.bar{grid-template-columns:150px 1fr 56px}}
+</style>
+</head>
+<body><div class="wrap">
+<div class="topline"><span>seamless / 残り作業と進捗</span><span>いま測った: 2026-10-20 13:01 JST</span></div>
+<div class="kicker">進捗報告</div>
+<h1>実装は終わり、実機の往復も Claude と Codex は確認済み。<br>残りは Grok Bot の 5 往復、Reason 比較、公開の 3 段。</h1>
+
+<div class="box hl"><b>ひとことで。</b> Issue 37 件のうち 35 件が別家系の判定 PASS で main に入り、非公開 repo に push 済みです。私が直接送った 10 往復（Claude 5、Codex 5）はすべて届き、「渡った」の誤表示は 0 件でした。残りは、Grok Bot の 5 往復（立花さんの Claude セッションから 1 行）、Reason との比較実測、公開（public 化と npm publish）です。</div>
+
+<h2>1. 全体進捗</h2>
+<div class="bar"><span>計画（spec / Plans / tasks）</span><div class="t"><div class="f g" style="width:100%"></div></div><span class="v">100%</span></div>
+<div class="bar"><span>実装（Issue 37 件）</span><div class="t"><div class="f g" style="width:95%"></div></div><span class="v">35/37</span></div>
+<div class="bar"><span>CI（GitHub Actions）</span><div class="t"><div class="f g" style="width:100%"></div></div><span class="v">success</span></div>
+<div class="bar"><span>実相手の往復（AC7: 15 件）</span><div class="t"><div class="f" style="width:67%"></div></div><span class="v">10/15</span></div>
+<div class="bar"><span>Reason 比較（AC13）</span><div class="t"><div class="f m" style="width:0%"></div></div><span class="v">0%</span></div>
+<div class="bar"><span>公開（public 化、npm publish）</span><div class="t"><div class="f m" style="width:0%"></div></div><span class="v">0%</span></div>
+<p>全体では約 85%。100% は「v1 が公開され、第三者が説明どおりに動かし、issue を出せる状態」です。</p>
+
+<h2>2. 残り作業（順番つき）</h2>
+<table>
+<tr><th>#</th><th>何をするか</th><th>誰が</th><th>目安</th><th>完了条件</th></tr>
+<tr><td>1</td><td><b>Grok Bot の 5 往復</b>。立花さんの Claude セッションで <code>git pull</code> のあと、下の 1 行を実行</td><td>立花さん</td><td>約 7 分</td><td>記録の 1 行目が <code>submitted 5</code>、<code>falseReached 0</code></td></tr>
+<tr><td>2</td><td><b>AC7 を閉じる</b>。Claude 5 + Codex 5 + Grok Bot 5 の記録を evidence.md に転記</td><td>AI</td><td>10 分</td><td>evidence.md の AC7 の行が「合格」</td></tr>
+<tr><td>3</td><td><b>Reason 比較（#20）</b>。同じ OS ユーザーに Reason を入れ、backup を確認し、5 指標を順番に計測、終わったら <code>leave</code> → <code>setup --remove</code></td><td>立花さん + AI（手順と転記）</td><td>1〜2 時間</td><td>evidence.md に 5 指標の表、設定ファイルの diff が空</td></tr>
+<tr><td>4</td><td><b>公開</b>。repo を public に、<code>npm publish</code>（<code>@chachamaru127/seamless</code> 0.1.0）、公開 β の告知</td><td>立花さん（ボタン）+ AI（手順）</td><td>30 分</td><td>第三者が README どおりに <code>npx @chachamaru127/seamless setup</code> を実行できる</td></tr>
+<tr><td>—</td><td>#33 規約の目視（Grok Bot、Antigravity）</td><td>スルー指定（10-20）</td><td>—</td><td>docs/release.md の欄は「未」のまま公開</td></tr>
+</table>
+
+<h2>3. Grok Bot の 5 往復（残り作業 1 の 1 行）</h2>
+<p>さっき起動した Claude セッション（普段の <code>claude</code>）の入力欄に貼ってください。本文は連番つきで一意になるよう直したので（#35）、前回の <code>duplicate</code> は起きません。茶々丸に本物の送信が 5 件飛びます。</p>
+<pre>cd ~/LocalWork/Code/seamless && git pull を実行してから、
+node scripts/measure.ts batch --plan grok-bot:5 --out "$HOME/.seamless/measurements/ac7-grok-$(date +%Y%m%d-%H%M%S).jsonl" --wait 60 --text 'seamless AC7 measurement: reply with one short line.'
+を実行して出力をそのまま貼って。</pre>
+
+<h2>4. 今日分かったこと（実機）</h2>
+<table>
+<tr><th>相手</th><th>一覧</th><th>送信</th><th>届いた</th><th>seamless の表示</th></tr>
+<tr><td>Claude（Desktop / CLI の対話）</td><td class="ok">17 件</td><td class="ok">5/5</td><td class="ok">5/5（相手が読んで返事を試みた）</td><td class="ok">3 秒で「渡った」</td></tr>
+<tr><td>Codex Desktop</td><td class="ok">2 スレッド</td><td class="ok">5/5</td><td class="ok">5/5（相手が「received.」と返事）</td><td class="mid">配達が 16〜22 秒後。既定の待ち 20 秒だと「保留中」が先に出た → #37 で Codex は 45 秒に</td></tr>
+<tr><td>Grok Bot 茶々丸</td><td class="ok">1 件</td><td class="mid">1/5（残り 4 は本文重複で止まった → #35 で解消）</td><td class="ok">受理記録あり</td><td>「預かり」（返事待ち）</td></tr>
+<tr><td>opencode</td><td class="ng">0 件</td><td>—</td><td>—</td><td>plugin を opencode に未登録（<code>setup</code> 未実行）</td></tr>
+<tr><td>Cursor / Antigravity</td><td class="ng">0 件</td><td>—</td><td>—</td><td>hooks 未導入（<code>setup</code> 未実行）</td></tr>
+</table>
+<p>計測で見つけた欠陥 3 件（計測の scope と本文、Codex の読み手、製品ごとの待ち秒数）はすべて Issue → 施工 → 判定 PASS → main まで通しました。</p>
+
+<h2>5. 判断が要るもの</h2>
+<ul>
+<li><b>公開の時期</b>: Grok Bot の 5 往復と Reason 比較が終わってからか、Reason 比較は公開後でもよいか。推奨は「Grok Bot の 5 往復 → 公開 β → Reason 比較は公開後の記事に」。理由は、Reason 比較は売り文句の裏付けで、動くこと自体の条件ではないため。</li>
+<li><b>opencode / Cursor / Antigravity の導入</b>: <code>setup</code> を立花さんの Mac で実際に走らせて 3 製品を一覧に出すか（設定ファイルに hooks と plugin を書く。backup つき、dry-run あり）。推奨はやる。</li>
+</ul>
+
+<small>出典: git main 7dbd17b（origin と一致）、GitHub Issues（closed 35、open #20 #33）、GitHub Actions（main success、integration 実行中）、~/.seamless/measurements/ の 3 記録、specs/2026-10-universal-wiring/evidence.md。</small>
+</div></body></html>

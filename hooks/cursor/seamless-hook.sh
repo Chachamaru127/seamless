@@ -2,7 +2,8 @@
 # Cursor CLI hook for sessionStart, stop and afterAgentResponse.
 #
 # Cursor runs this command with the event's JSON on standard input and reads the JSON answer from standard output
-# (~/.cursor/hooks.json, measured on cursor-agent 2026.10.17). The work is in src/adapters/cursor.ts:
+# (~/.cursor/hooks.json, measured on cursor-agent 2026.10.17). The work is in src/adapters/cursor.ts, and in
+# dist/adapters/cursor.js when seamless is installed from the published package:
 #
 #   sessionStart        writes ~/.seamless/peers/cursor-<session>.json and may add pending inbox text as additional_context
 #   afterAgentResponse  writes the peers file only
@@ -30,4 +31,11 @@ fi
 [ -n "$node_bin" ] || exit 0
 
 # Node 24 prints an experimental warning for TypeScript on stderr; standard output must stay the hook's JSON only.
-exec "$node_bin" "$here/../../src/adapters/cursor.ts" 2>/dev/null
+# The published package carries no src/: there the compiled adapter is dist/adapters/cursor.js. A checkout without a build
+# runs the TypeScript directly (issue #42).
+if [ -f "$here/../../dist/adapters/cursor.js" ]; then
+  hook_work="$here/../../dist/adapters/cursor.js"
+else
+  hook_work="$here/../../src/adapters/cursor.ts"
+fi
+exec "$node_bin" "$hook_work" 2>/dev/null

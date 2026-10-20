@@ -41,11 +41,13 @@ export async function runCli(argv:string[],automatic:Automatic=createAutomatic({
   console.log(JSON.stringify({...await automatic('send',{ticket:sendable[0].ticket,text:mode}),target:sendable[0].id}));
   return;
  }
- // `setup [--dry-run]`: detect the products on this Mac and register seamless's MCP server once. `--dry-run` reports the
- // same list and the one change it would make, without writing. Neither reads the Keychain nor calls a product.
+ // `setup [--dry-run] [--remove]`: detect the products on this Mac and register seamless's MCP server and the product
+ // wiring. `--dry-run` reports the same list and the changes it would make, without writing. `--remove` takes back only
+ // the entries seamless added. Neither reads the Keychain nor calls a product.
  if(mode==='setup'){
-  if(rawArgs.length&&!(rawArgs.length===1&&rawArgs[0]==='--dry-run'))throw new ContractError('invalid_arguments');
-  console.log(JSON.stringify(await runSetup({home:whoOptions.home,dryRun:rawArgs.length===1})));return;
+  const known=['--dry-run','--remove'];
+  if(rawArgs.some(arg=>!known.includes(arg))||new Set(rawArgs).size!==rawArgs.length)throw new ContractError('invalid_arguments');
+  console.log(JSON.stringify(await runSetup({home:whoOptions.home,dryRun:rawArgs.includes('--dry-run'),remove:rawArgs.includes('--remove')})));return;
  }
  // `doctor [--json]`: the read-only diagnosis. It always prints JSON, so `--json` is accepted and nothing else is.
  if(mode==='doctor'){

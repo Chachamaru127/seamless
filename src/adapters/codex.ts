@@ -12,7 +12,7 @@ import { observeGit } from '../git-context.ts';
 import type { Observation, Registration } from '../protocol.ts';
 import { codexMessageMaxChars, type Limits } from '../limits.ts';
 import type { Receipt } from '../delivery.ts';
-import type { ReadFailure, ReadItem, TranscriptReader } from './read.ts';
+import type { Envelope, ReadFailure, ReadItem, TranscriptReader } from './read.ts';
 import { parseEnvelope } from './read.ts';
 import { readdir } from 'node:fs/promises';
 const run=promisify(execFile);
@@ -109,14 +109,23 @@ function* turns(state:Frame):Generator<Frame>{
  if(h?.kind==='canonical')for(const island of h.history?.islands??[])for(const e of island.entries??[]){const t=h.history.entitiesByKey?.[e.value];if(t&&typeof t==='object')yield t;}
  yield* state.turns??[];
 }
+// A `codex queue --thread` write reaches the conversation as an ordinary user message whose text is the envelope JSON.
+// The recipient in that envelope must name this conversation; a pasted envelope addressed elsewhere stays ordinary user text.
+function queuedEnvelope(text:string,threadId:string|undefined):Envelope|null{
+ if(!threadId)return null;
+ const envelope=parseEnvelope(text);
+ return envelope&&envelope.recipient.nativeId===threadId?envelope:null;
+}
 export function projectCodex(state:Frame):ReadItem[]{
- const items:ReadItem[]=[],seen=new Set<string>();
+ const items:ReadItem[]=[],seen=new Set<string>(),threadId=typeof state.id==='string'?state.id:undefined;
  for(const turn of turns(state)){
   const at=Number.isFinite(turn.turnStartedAtMs)?new Date(turn.turnStartedAtMs).toISOString():null;
   for(const item of turn.items??[]){
    if(typeof item?.id!=='string'||seen.has(item.id))continue;
    if(item.type==='userMessage'){
-    const t=(item.content??[]).filter((c:Frame)=>c?.type==='text').map((c:Frame)=>c.text).join('\n');if(t){seen.add(item.id);items.push({nativeItemId:item.id,role:'user',text:t,at});}
+    const t=(item.content??[]).filter((c:Frame)=>c?.type==='text'||c?.type==='input_text').map((c:Frame)=>c.text).join('\n'),envelope=queuedEnvelope(t,threadId);
+    if(envelope){seen.add(item.id);items.push({nativeItemId:item.id,role:'peer',text:envelope.text,at,peer:{namespace:'codex-queue',messageId:envelope.id,envelope}});}
+    else if(t){seen.add(item.id);items.push({nativeItemId:item.id,role:'user',text:t,at});}
    }else if(item.type==='agentMessage'&&typeof item.text==='string'&&item.text){seen.add(item.id);items.push({nativeItemId:item.id,role:'assistant',text:item.text,at});}
    else if(item.type==='functionCallOutput'&&PEER_NAMESPACES.includes(item.namespace)&&item.name==='external_message'&&typeof item.output==='string'){
     let e;try{e=JSON.parse(item.output);}catch{continue;}
@@ -211,7 +220,7 @@ export function projectCodexStructure(state:Frame):StructureItem[]{
  for(const turn of [...turns(state)].reverse()){for(let position=(turn.items??[]).length-1;position>=0&&recent.length<200;position--)recent.push({turn,item:turn.items[position],position});if(recent.length===200)break;}
  for(const {turn,item,position} of recent.reverse()){
   if(typeof item?.id!=='string')continue;
-  const peer=projectCodex({turns:[{...turn,items:[item]}]}).find(n=>n.role==='peer')?.peer?.envelope;
+  const peer=projectCodex({id:state.id,turns:[{...turn,items:[item]}]}).find(n=>n.role==='peer')?.peer?.envelope;
   result.push({id:item.id,type:item.type,turnId:typeof turn.turnId==='string'?turn.turnId:turn.id,position,at:Number.isFinite(turn.turnStartedAtMs)?new Date(turn.turnStartedAtMs).toISOString():null,...(peer?{peer:{id:peer.id,sender:{provider:peer.sender.id.split(':')[0],nativeId:peer.sender.nativeId},...(peer.replyTo?{replyTo:peer.replyTo}:{})}}:{})});
  }
  return result.slice(-200);

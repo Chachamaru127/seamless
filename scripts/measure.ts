@@ -24,9 +24,9 @@ const exec=promisify(execFile);
 const USAGE=`seamless measure (T15)
 
 使い方:
-  node scripts/measure.ts roundtrip (--target <id> | --fake | --target fake:codex) [--wait <秒>] [--text <本文>] [--log <file>]
-  node scripts/measure.ts hold (--target <id> | --fake | --target fake:codex) [--wait <秒>] [--held-after-sec <秒>] [--text <本文>] [--log <file>]
-  node scripts/measure.ts batch --plan <名前:回数,...> [--out <file>] [--wait <秒>] [--text <本文>] [--dry]
+  node scripts/measure.ts roundtrip (--target <id> | --fake | --target fake:codex) [--wait <秒>] [--text <本文>] [--scope <any|current_work|same_repository>] [--log <file>]
+  node scripts/measure.ts hold (--target <id> | --fake | --target fake:codex) [--wait <秒>] [--held-after-sec <秒>] [--text <本文>] [--scope <any|current_work|same_repository>] [--log <file>]
+  node scripts/measure.ts batch --plan <名前:回数,...> [--out <file>] [--wait <秒>] [--text <本文>] [--scope <any|current_work|same_repository>] [--dry]
   node scripts/measure.ts footprint [--home <dir>]
   node scripts/measure.ts compare [--dry] [--file <記録ファイル>]
 
@@ -39,6 +39,8 @@ const USAGE=`seamless measure (T15)
 
 偽の相手: --fake は一時ディレクトリで本物の予約と段階判定を通す。実ホームの設定は読まず、本物の製品にも送らない。
 本物の相手: src/cli.ts と同じ経路（作業中の会話から実行する）。--target は who --json の id。
+本文: --text は接頭辞。送信ごとに #<連番>/<総数> <依頼 ID の先頭 8 桁（measure- を除く）> を足すので、同じ相手へ続けて送っても内容が重ならない。
+scope: 一覧と送信で同じ値を使う。既定は any（別フォルダの相手にも送る）。current_work にすると実行元のフォルダの外は scope_conflict で止まる。
 `;
 
 type FlagValue=string|boolean;
@@ -63,6 +65,29 @@ function parseFlags(args:string[],values:readonly string[],booleans:readonly str
 const str=(flags:Flags,name:string):string|undefined=>typeof flags[name]==='string'?flags[name] as string:undefined;
 const flag=(flags:Flags,name:string):boolean=>flags[name]===true;
 const emit=(value:unknown)=>{console.log(JSON.stringify(value));};
+
+// ---------- scope ----------
+// One value drives both the listing and the send. On 2026-10-20 the listing asked for `any` while the send fell back to the
+// product default `current_work`, so a peer in another folder was listed and then refused with scope_conflict before any
+// write (AC7, 14 of 15 stopped). Keeping the two on one variable is what stops that from coming back.
+export type MeasureScope='current_work'|'same_repository'|'any';
+export const DEFAULT_SCOPE:MeasureScope='any';
+const SCOPES:readonly MeasureScope[]=['current_work','same_repository','any'];
+function measureScope(flags:Flags):MeasureScope{
+ const value=str(flags,'scope')??DEFAULT_SCOPE;
+ if(!SCOPES.includes(value as MeasureScope))throw new MeasureError('invalid_arguments','--scope');
+ return value as MeasureScope;
+}
+export function listParams(scope:MeasureScope):{operation:'send';scope:MeasureScope}{return {operation:'send',scope};}
+export function sendParams(ticket:string,id:string,text:string,scope:MeasureScope):{ticket:string;id:string;text:string;scope:MeasureScope}{return {ticket,id,text,scope};}
+
+// ---------- body ----------
+// The same bytes to the same peer are a duplicate (src/delivery.ts), so a fixed body stops the second send of a run before it
+// leaves. `--text` is the prefix the hand book searches for; the sequence and the id keep every body of a run different.
+export function uniqueBody(prefix:string,index:number,total:number,id:string):string{
+ return `${prefix} #${index}/${total} ${id.replace(/^measure-/,'').slice(0,8)}`;
+}
+type SendPosition={index:number;total:number};
 
 // ---------- records (never the body) ----------
 type StageRecord={stage:string;status:string;evidenceCount:number};
@@ -109,7 +134,7 @@ function fakeTarget(flags:Flags):FakeProvider|undefined{
  if(target.startsWith('fake:'))return fakeProvider(target);
  return undefined;
 }
-function fakeRegistrations(provider:FakeProvider):{sender:Registration;recipient:Registration}{
+export function fakeRegistrations(provider:FakeProvider):{sender:Registration;recipient:Registration}{
  const senderId='fake:caller',recipientId='fake:peer';
  const both=(peer:string):Registration['grants']=>[
   {peer,operation:'read',direction:'inbound'},{peer,operation:'send',direction:'inbound'},
@@ -123,11 +148,13 @@ function fakeRegistrations(provider:FakeProvider):{sender:Registration;recipient
 const party=(r:Registration):RequestParty=>({id:r.id,provider:r.provider,nativeId:r.nativeId,generation:r.generation,cwd:r.workspace});
 
 type FakeOutcome={requestId:string;provider:FakeProvider;tracked:Tracked;replyId:string|null;match:boolean;seconds:number;operations:number;falseReached:boolean;at:string};
-async function fakeRun(kind:'roundtrip'|'hold',provider:FakeProvider,text:string,limits:{heldAfterSec?:number}):Promise<FakeOutcome>{
+type FakeOptions={heldAfterSec?:number;index?:number;total?:number};
+async function fakeRun(kind:'roundtrip'|'hold',provider:FakeProvider,text:string,options:FakeOptions={}):Promise<FakeOutcome>{
  const home=await mkdtemp(join(tmpdir(),'seamless-measure-'));
  const started=Date.now(),at=new Date(started).toISOString(),requestId=`measure-${randomUUID()}`,replyId=`reply-${randomUUID()}`;
+ const body=uniqueBody(text,options.index??1,options.total??1,requestId);
  // One resolved value drives both the fake clock and the stage reader, so --held-after-sec cannot make the two disagree.
- const holdSec=heldAfterSec(limits);
+ const holdSec=heldAfterSec(options);
  const {sender,recipient}=fakeRegistrations(provider);
  try{
   const adapter:NativeAdapter={
@@ -143,7 +170,7 @@ async function fakeRun(kind:'roundtrip'|'hold',provider:FakeProvider,text:string
    send:async()=>({status:'submitted'}),
   };
   const delivery=new Delivery(new Registry([sender,recipient]),sender.id,adapter,{tracking:{keyPath:join(home,'key')},fixedTarget:recipient,reservationDir:join(home,'reservations')});
-  const sent=await delivery.send({target:recipient.id,id:requestId,text}) as {status?:string};
+  const sent=await delivery.send({target:recipient.id,id:requestId,text:body}) as {status?:string};
   const clock:StatusClock={now:()=>kind==='hold'?started+holdSec*1000+5000:Date.now(),sleep:async()=>{}};
   const status=createStatus({dir:join(home,'reservations'),adapter,caller:party(sender),canRead:async()=>true,clock,heldAfterSec:holdSec});
   const tracked=await status.track(requestId) as Tracked;
@@ -159,6 +186,7 @@ function fakeRecord(outcome:FakeOutcome,kind:'roundtrip'|'hold',target:string):M
 }
 
 // ---------- real peer through the CLI ----------
+export type CliCall=(args:string[])=>Promise<Record<string,unknown>>;
 async function cliJson(args:string[]):Promise<Record<string,unknown>>{
  const {stdout}=await exec(process.execPath,[join(REPO,'src','cli.ts'),...args],{maxBuffer:32*1024*1024,timeout:180000,env:process.env});
  const line=stdout.trim().split('\n').filter(Boolean).pop();
@@ -189,14 +217,14 @@ function stageRecords(value:unknown):StageRecord[]{
   return [{stage:v.stage,status:v.status,evidenceCount:Array.isArray(v.evidence)?v.evidence.length:0}];
  });
 }
-async function realSendAndTrack(candidate:Candidate,kind:'roundtrip'|'hold',text:string,waitSeconds:number):Promise<MeasureRecord>{
+async function realSendAndTrack(candidate:Candidate,kind:'roundtrip'|'hold',text:string,waitSeconds:number,scope:MeasureScope,position:SendPosition,call:CliCall=cliJson):Promise<MeasureRecord>{
  const started=Date.now(),requestId=`measure-${randomUUID()}`,target=candidate.id;
  const at=new Date(started).toISOString();
  if(!candidate.ticket)return {kind,id:requestId,target,at,mode:'real',match:false,error:'target_unavailable',operations:1};
- const sent=await cliJson(['send',JSON.stringify({ticket:candidate.ticket,id:requestId,text})]);
+ const sent=await call(['send',JSON.stringify(sendParams(candidate.ticket,requestId,uniqueBody(text,position.index,position.total,requestId),scope))]);
  const delivery=typeof sent.status==='string'?sent.status:'unknown';
  if(!['submitted','unknown'].includes(delivery))return {kind,id:requestId,target,at,mode:'real',delivery,match:false,error:delivery,operations:1};
- const status=await cliJson(['status',requestId,'--wait',String(waitSeconds)]);
+ const status=await call(['status',requestId,'--wait',String(waitSeconds)]);
  const rawStages=Array.isArray(status.stages)?status.stages:[];
  const repliedStage=rawStages.find(item=>isObject(item)&&item.stage==='replied'&&item.status==='observed');
  const replyId=isObject(repliedStage)&&Array.isArray(repliedStage.evidence)&&typeof repliedStage.evidence[0]==='string'?repliedStage.evidence[0]:null;
@@ -205,22 +233,22 @@ async function realSendAndTrack(candidate:Candidate,kind:'roundtrip'|'hold',text
  const reached=stages.some(s=>['reached','processing','replied'].includes(s.stage)&&s.status==='observed');
  return {kind,id:requestId,target,at,mode:'real',delivery:typeof status.delivery==='string'?status.delivery:delivery,stages,...(typeof status.state==='string'?{state:status.state}:{}),...(typeof status.reason==='string'?{reason:status.reason}:{}),...(kind==='roundtrip'?{replyId,match:replied}:{replyId:null}),seconds:Math.max(0,(Date.now()-started)/1000),operations:1,falseReached:reached&&delivery!=='submitted'};
 }
-async function listCandidates():Promise<Candidate[]>{
- const listed=await cliJson(['sessions',JSON.stringify({operation:'send',scope:'any'})]);
+async function listCandidates(scope:MeasureScope,call:CliCall=cliJson):Promise<Candidate[]>{
+ const listed=await call(['sessions',JSON.stringify(listParams(scope))]);
  if(listed.status!=='ok')throw new MeasureError(typeof listed.status==='string'?listed.status:'sessions_failed');
  return candidatesOf(listed);
 }
-async function realRoundtrip(target:string,text:string,waitSeconds:number):Promise<MeasureRecord>{
- const all=await listCandidates();
+async function realRoundtrip(target:string,text:string,waitSeconds:number,scope:MeasureScope,call:CliCall=cliJson):Promise<MeasureRecord>{
+ const all=await listCandidates(scope,call);
  const candidate=all.find(c=>c.id===target);
  if(!candidate)return {kind:'roundtrip',id:`measure-${randomUUID()}`,target,at:new Date().toISOString(),mode:'real',match:false,error:'target_unavailable',operations:1};
- return realSendAndTrack(candidate,'roundtrip',text,waitSeconds);
+ return realSendAndTrack(candidate,'roundtrip',text,waitSeconds,scope,{index:1,total:1},call);
 }
-async function realHold(target:string,text:string,holdSec:number):Promise<MeasureRecord>{
- const all=await listCandidates();
+async function realHold(target:string,text:string,holdSec:number,scope:MeasureScope,call:CliCall=cliJson):Promise<MeasureRecord>{
+ const all=await listCandidates(scope,call);
  const candidate=all.find(c=>c.id===target);
  if(!candidate)return {kind:'hold',id:`measure-${randomUUID()}`,target,at:new Date().toISOString(),mode:'real',error:'target_unavailable',operations:1};
- return realSendAndTrack(candidate,'hold',text,Math.min(600,holdSec+2));
+ return realSendAndTrack(candidate,'hold',text,Math.min(600,holdSec+2),scope,{index:1,total:1},call);
 }
 function providerMatches(name:string,candidate:Candidate):boolean{
  if(name==='claude')return candidate.provider==='claude';
@@ -249,26 +277,36 @@ function parsePlan(plan:string):PlanEntry[]{
  if(!out.length)throw new MeasureError('invalid_arguments','plan');
  return out;
 }
-async function runBatch(plan:string,outPath:string|undefined,text:string,waitSeconds:number):Promise<{recordFile:string;entries:MeasureRecord[];falseReached:number}>{
- const entries=parsePlan(plan),records:MeasureRecord[]=[];
+export async function runBatch(plan:string,outPath:string|undefined,text:string,waitSeconds:number,scope:MeasureScope=DEFAULT_SCOPE,call:CliCall=cliJson):Promise<{recordFile:string;entries:MeasureRecord[];falseReached:number;submitted:number;notSent:Record<string,number>}>{
+ const entries=parsePlan(plan),records:MeasureRecord[]=[],total=entries.reduce((sum,e)=>sum+e.count,0);
+ let index=0;
  const fakeOnly=entries.every(e=>e.name==='fake');
- const all=fakeOnly?[]:await listCandidates();
+ // The listing and every send below take this one scope, so a listed peer is always a sendable peer.
+ const all=fakeOnly?[]:await listCandidates(scope,call);
  for(const entry of entries){
   if(entry.name==='fake'){
-   for(let i=0;i<entry.count;i++)records.push(fakeRecord(await fakeRun('roundtrip','claude',text,{heldAfterSec:20}),'roundtrip','fake'));
+   for(let i=0;i<entry.count;i++){index++;records.push(fakeRecord(await fakeRun('roundtrip','claude',text,{heldAfterSec:20,index,total}),'roundtrip','fake'));}
    continue;
   }
   const pool=all.filter(c=>providerMatches(entry.name,c));
   if(!pool.length){
-   for(let i=0;i<entry.count;i++)records.push({kind:'roundtrip',id:`measure-${randomUUID()}`,target:entry.name,at:new Date().toISOString(),mode:'real',match:false,error:'no_candidates',operations:1});
+   for(let i=0;i<entry.count;i++){index++;records.push({kind:'roundtrip',id:`measure-${randomUUID()}`,target:entry.name,at:new Date().toISOString(),mode:'real',match:false,error:'no_candidates',operations:1});}
    continue;
   }
-  for(let i=0;i<entry.count;i++)records.push(await realSendAndTrack(pool[i%pool.length]!,'roundtrip',text,waitSeconds));
+  for(let i=0;i<entry.count;i++){index++;records.push(await realSendAndTrack(pool[i%pool.length]!,'roundtrip',text,waitSeconds,scope,{index,total},call));}
  }
  const path=outPath??await uniqueRecordFile('batch',fakeOnly);
- const summary={kind:'batch',plan,at:new Date().toISOString(),entries:records.length,falseReached:records.filter(r=>r.falseReached===true).length,mode:fakeOnly?'fake':'real'};
+ // `submitted` is what actually left; `notSent` names the reason for every record that did not, so entries always adds up.
+ const notSent:Record<string,number>={};
+ for(const record of records){
+  if(record.delivery==='submitted')continue;
+  const reason=record.error??record.delivery??'unknown';
+  notSent[reason]=(notSent[reason]??0)+1;
+ }
+ const submitted=records.filter(r=>r.delivery==='submitted').length;
+ const summary={kind:'batch',plan,at:new Date().toISOString(),entries:records.length,submitted,notSent,falseReached:records.filter(r=>r.falseReached===true).length,mode:fakeOnly?'fake':'real'};
  await writeRecords(path,[summary,...records]);
- return {recordFile:path,entries:records,falseReached:summary.falseReached};
+ return {recordFile:path,entries:records,submitted,notSent,falseReached:summary.falseReached};
 }
 
 // ---------- footprint ----------
@@ -399,8 +437,8 @@ function compareMetrics(records:Record<string,unknown>[]):Metric[]{
 
 // ---------- commands ----------
 async function commandRoundtrip(args:string[]):Promise<number>{
- const flags=parseFlags(args,['target','wait','text','log'],['fake']);
- const provider=fakeTarget(flags);
+ const flags=parseFlags(args,['target','wait','text','log','scope'],['fake']);
+ const provider=fakeTarget(flags),scope=measureScope(flags);
  const waitRaw=str(flags,'wait');
  const wait=waitRaw===undefined?30:Number(waitRaw);
  if(!Number.isFinite(wait)||wait<0||wait>600)throw new MeasureError('invalid_arguments','--wait');
@@ -413,7 +451,7 @@ async function commandRoundtrip(args:string[]):Promise<number>{
  }else{
   const target=str(flags,'target');
   if(!target)throw new MeasureError('invalid_arguments','--target or --fake');
-  record=await realRoundtrip(target,text,wait);
+  record=await realRoundtrip(target,text,wait,scope);
  }
  record.seconds=Math.max(0,(Date.now()-started)/1000);
  const log=str(flags,'log');
@@ -423,8 +461,8 @@ async function commandRoundtrip(args:string[]):Promise<number>{
  return record.error?1:0;
 }
 async function commandHold(args:string[]):Promise<number>{
- const flags=parseFlags(args,['target','wait','text','log','held-after-sec'],['fake']);
- const provider=fakeTarget(flags);
+ const flags=parseFlags(args,['target','wait','text','log','held-after-sec','scope'],['fake']);
+ const provider=fakeTarget(flags),scope=measureScope(flags);
  const text=str(flags,'text')??'seamless measurement: hold check.';
  const injected=str(flags,'held-after-sec');
  let holdSec=DEFAULT_HELD_AFTER_SEC;
@@ -439,7 +477,7 @@ async function commandHold(args:string[]):Promise<number>{
   if(!target)throw new MeasureError('invalid_arguments','--target or --fake');
   if(injected===undefined){const limits=await readLimits();holdSec=heldAfterSec(limits.status==='ok'?limits.value:{});}
   const waitRaw=str(flags,'wait');
-  record=await realHold(target,text,waitRaw===undefined?holdSec:Number(waitRaw));
+  record=await realHold(target,text,waitRaw===undefined?holdSec:Number(waitRaw),scope);
  }
  const log=str(flags,'log');
  if(log)await appendRecord(log,record);
@@ -448,9 +486,10 @@ async function commandHold(args:string[]):Promise<number>{
  return record.error?1:0;
 }
 async function commandBatch(args:string[]):Promise<number>{
- const flags=parseFlags(args,['plan','out','wait','text'],['dry']);
+ const flags=parseFlags(args,['plan','out','wait','text','scope'],['dry']);
  const plan=str(flags,'plan');
  if(!plan)throw new MeasureError('invalid_arguments','--plan');
+ const scope=measureScope(flags);
  const waitRaw=str(flags,'wait');
  const wait=waitRaw===undefined?25:Number(waitRaw);
  if(!Number.isFinite(wait)||wait<0||wait>600)throw new MeasureError('invalid_arguments','--wait');
@@ -458,11 +497,11 @@ async function commandBatch(args:string[]):Promise<number>{
  if(flag(flags,'dry')){
   // The dry run checks the plan and the flags only: it identifies no caller, sends nothing and writes no record file.
   const entries=parsePlan(plan);
-  emit({status:'ok',command:'batch',dry:true,plan,entries:entries.reduce((sum,e)=>sum+e.count,0),planParts:entries.map(e=>({name:e.name,count:e.count,known:planKnown(e.name)})),recordFile:null});
+  emit({status:'ok',command:'batch',dry:true,plan,scope,entries:entries.reduce((sum,e)=>sum+e.count,0),planParts:entries.map(e=>({name:e.name,count:e.count,known:planKnown(e.name)})),recordFile:null});
   return 0;
  }
- const result=await runBatch(plan,str(flags,'out'),text,wait);
- emit({status:'ok',command:'batch',plan,recordFile:result.recordFile,entries:result.entries.length,falseReached:result.falseReached,records:result.entries});
+ const result=await runBatch(plan,str(flags,'out'),text,wait,scope);
+ emit({status:'ok',command:'batch',plan,scope,recordFile:result.recordFile,entries:result.entries.length,submitted:result.submitted,notSent:result.notSent,falseReached:result.falseReached,records:result.entries});
  return 0;
 }
 async function commandFootprint(args:string[]):Promise<number>{

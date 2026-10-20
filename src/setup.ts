@@ -202,8 +202,11 @@ function sameRegistration(value:unknown,entry:McpRegistration):boolean{
 const CURSOR_HOOK_SUFFIX='/hooks/cursor/seamless-hook.sh';
 const ANTIGRAVITY_HOOK_SUFFIX='/hooks/antigravity/seamless-hook.sh';
 const GROK_HOOK_SUFFIX='/hooks/grok-cli/seamless-hook.sh';
-const OPENCODE_PLUGIN_SUFFIX='/packages/opencode-plugin/index.ts';
-const OPENCODE_DIR_SUFFIX='/packages/opencode-plugin';
+// opencode 2 resolves a configured plugin path as a directory and reads that directory's own index.ts (2.0.32 warns
+// "configured plugin path must be a directory" for a path that names the file, and then loads nothing). A home wired by
+// an older seamless still names index.ts, so that form is recognised and repaired instead of being left beside a new one.
+const OPENCODE_LEGACY_PLUGIN_SUFFIX='/packages/opencode-plugin/index.ts';
+const OPENCODE_PLUGIN_SUFFIX='/packages/opencode-plugin';
 
 type WiringKind='plugin_json'|'cursor_hooks_json'|'gemini_hooks_json'|'grok_toml';
 type WiringProduct='opencode'|'cursor'|'antigravity'|'grok';
@@ -273,10 +276,18 @@ function hookCommand(value:unknown):string|null{
  if(isRecord(value)&&typeof value.command==='string')return value.command;
  return null;
 }
-function matchesEntry(command:string,abs:string,suffix:string,dirSuffix?:string):boolean{
+function matchesEntry(command:string,abs:string,suffix:string):boolean{
  const relative=suffix.startsWith('/')?suffix.slice(1):suffix;
- const relativeDir=dirSuffix?.startsWith('/')?dirSuffix.slice(1):dirSuffix;
- return command===abs||command===relative||command.endsWith(suffix)||(relativeDir!==undefined&&(command===relativeDir||(dirSuffix!==undefined&&command.endsWith(dirSuffix))));
+ return command===abs||command===relative||command.endsWith(suffix);
+}
+// Which of seamless's opencode plugin spellings an entry is: the directory opencode 2 loads, or the single index.ts file
+// an older setup wrote. Anything else (another plugin's entry) is null.
+function opencodeEntryKind(value:unknown):'directory'|'legacy'|null{
+ if(typeof value!=='string')return null;
+ const path=value.endsWith('/')?value.slice(0,-1):value;
+ if(path===OPENCODE_LEGACY_PLUGIN_SUFFIX.slice(1)||path.endsWith(OPENCODE_LEGACY_PLUGIN_SUFFIX))return 'legacy';
+ if(path===OPENCODE_PLUGIN_SUFFIX.slice(1)||path.endsWith(OPENCODE_PLUGIN_SUFFIX))return 'directory';
+ return null;
 }
 function listAt(value:unknown):unknown[]{
  if(value===undefined)return [];
@@ -287,13 +298,20 @@ function editOpencode(current:Record<string,unknown>,abs:string,remove:boolean):
  const raw=current.plugin;
  if(raw!==undefined&&(!Array.isArray(raw)||raw.some(item=>typeof item!=='string')))throw new Error('config_unusable');
  const list=(raw??[]) as string[];
- const index=list.findIndex(item=>matchesEntry(item,abs,OPENCODE_PLUGIN_SUFFIX,OPENCODE_DIR_SUFFIX));
+ const index=list.findIndex(item=>opencodeEntryKind(item)!==null);
  if(remove){
   if(index<0)return {value:current,changed:false};
   const next=[...list];next.splice(index,1);
   return {value:{...current,plugin:next},changed:true};
  }
- if(index>=0)return {value:current,changed:false};
+ const kind=index<0?null:opencodeEntryKind(list[index]);
+ if(kind==='directory')return {value:current,changed:false};
+ // The file form is seamless's own earlier registration, so it is replaced in place: the position and every other
+ // plugin entry stay as the person left them.
+ if(kind==='legacy'){
+  const next=[...list];next[index]=abs;
+  return {value:{...current,plugin:next},changed:true};
+ }
  return {value:{...current,plugin:[...list,abs]},changed:true};
 }
 function editCursorHooks(current:Record<string,unknown>,abs:string,events:string[],remove:boolean):{value:Record<string,unknown>;changed:boolean}{
@@ -429,7 +447,9 @@ export async function detectWiring(home:string):Promise<WiringState>{
   readFile(join(home,'.grok','config.toml'),'utf8').catch(()=>null),
  ]);
  const claudeWired=isRecord(claude)&&isRecord(claude.mcpServers)&&isRecord(claude.mcpServers.seamless);
- const opencodeWired=isRecord(opencode)&&Array.isArray(opencode.plugin)&&opencode.plugin.some(item=>typeof item==='string'&&matchesEntry(item,'',OPENCODE_PLUGIN_SUFFIX,OPENCODE_DIR_SUFFIX));
+ // opencode only loads a directory entrypoint, so an entry that still names index.ts is not wired in the sense doctor
+ // reports (opencode refuses it and writes no peer file until setup repairs it).
+ const opencodeWired=isRecord(opencode)&&Array.isArray(opencode.plugin)&&opencode.plugin.some(item=>opencodeEntryKind(item)==='directory');
  const hookTableWired=(value:unknown,abs:string,suffix:string):boolean=>{
   if(!isRecord(value)||!isRecord(value.hooks))return false;
   for(const groups of Object.values(value.hooks)){

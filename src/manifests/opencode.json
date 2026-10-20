@@ -33,7 +33,7 @@
   },
   "install": {
     "hook": null,
-    "steps": ["node src/cli.ts setup", "add packages/opencode-plugin/index.ts to ~/.config/opencode/opencode.json"]
+    "steps": ["node src/cli.ts setup", "add packages/opencode-plugin to ~/.config/opencode/opencode.json"]
   },
   "limits": {
     "maxText": 8000

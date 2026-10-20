@@ -295,7 +295,9 @@ test('desktop band draws inside the app card with theme colors: purpose bold, ac
   expect((await ui.find({ type: 'Text', text: /指示を読んでいる/ }))?.props).toMatchObject({ color: 'inactive' })
   expect((await ui.find({ type: 'Text', text: /指示を読んでいる/ }))?.props.bold).not.toBe(true)
   expect((await ui.find({ type: 'Text', text: '0秒' }))?.props.color).toBe('subtle')
-  const stateMark = await ui.find({ type: 'Svg' })
+  // The band now opens with the brand lockup. The kit drops an Svg's own key, so the row is read by type:
+  // the brand's Svg sits inside its own Box, and the state mark is the row's first Svg child.
+  const stateMark = (await ui.find({ key: 'activity' }))?.children.find(child => (child as { type?: string }).type === 'Svg') as { props: { source: string; alt: string } } | undefined
   expect(stateMark?.props.source).toContain('#8070f0')
   // The Desktop app drops an Svg whose alt is empty (2026-10-05, on screen).
   expect(stateMark?.props.alt).toBe('作業中')

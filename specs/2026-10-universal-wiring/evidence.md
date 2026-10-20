@@ -106,3 +106,16 @@ open は #20（Reason 比較、人）と #33（規約の目視、人）だけ。
 | 2026-10-20 02:05 | main の push と CI | 3a54de9 | — | 0 | — | GitHub Actions `verify`（hermetic checks, macOS）success（run 39281816687）。loop/integration も success（39281818170） | AC12 の CI 実走は通過。repo は PRIVATE のまま |
 | 2026-10-20 02:10 | #34 T02b CLAUDE_CONFIG_DIR（1 回目） | 1b939d7 | worktree（340 秒） | 0 | — | FAIL（項目 2: 製品の一覧 `src/sessions-scan.ts` が既定フォルダだけを列挙） | 直し方を Done when に書いて再施工 |
 | 2026-10-20 02:30 | #34 T02b CLAUDE_CONFIG_DIR（2 回目） | 9a59d74 | worktree | 0 | — | PASS（4 項目 Yes） | 閉じて loop/integration へ merge。main への取り込みは AC7 の記録と一緒に |
+
+## AC7 の実測（1 回目、2026-10-20 12:09、立花さんが普段の claude から実行。#34 入り main）
+
+記録: `~/.seamless/measurements/ac7-20261020-120928.jsonl`。entries 15、falseReached 0。**不合格（実際の送信は 1 件だけ）**。
+
+| 宛先 | 件数 | 結果 | 原因 |
+|---|---|---|---|
+| Claude（5 会話） | 5 | 全件 `scope_conflict`（送信せず） | 計測の一覧は scope `any` で取るが、送信は既定の `current_work`（同じ作業場所）で判定するため、別フォルダの会話は拒否（`src/automatic.ts:110`） |
+| Codex Desktop（2 スレッド） | 5 | 全件 `scope_conflict`（送信せず） | 同上 |
+| Grok Bot 茶々丸 | 1 | `submitted`。26.5 秒で reached 未観測（返事待ち）。falseReached false | 正常 |
+| Grok Bot 茶々丸 | 4 | `duplicate`（送信せず） | 同じ本文を同じ相手に送るため、内容ハッシュの重複抑止（`src/delivery.ts:59`）が働いた。手順書が本文を固定したことと矛盾 |
+
+読み: 「渡った」の誤表示は 0 件だが、それは 14 件が送信前に止まったため。AC7 の合否は判定できない。計測スクリプトの 2 つの欠陥（scope、固定本文）を直して再計測する。呼び出し元の同定（#34）は通った（`who --json` が候補を返した）。

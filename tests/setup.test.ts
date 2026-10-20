@@ -33,7 +33,10 @@ const ROOT=fileURLToPath(new URL('..',import.meta.url));
 const CURSOR_HOOK=join(ROOT,'hooks','cursor','seamless-hook.sh');
 const GROK_HOOK=join(ROOT,'hooks','grok-cli','seamless-hook.sh');
 const ANTIGRAVITY_HOOK=join(ROOT,'hooks','antigravity','seamless-hook.sh');
-const OPENCODE_PLUGIN=join(ROOT,'packages','opencode-plugin','index.ts');
+const OPENCODE_PLUGIN_DIR=join(ROOT,'packages','opencode-plugin');
+// The registration older seamless versions wrote. opencode 2 refuses a plugin path that names a file, so setup has to
+// replace it with the directory rather than leave it beside a second entry.
+const OPENCODE_PLUGIN_FILE=join(OPENCODE_PLUGIN_DIR,'index.ts');
 // A home where all four hook/plugin products are present. Antigravity is only present through the executable T3 Code
 // manages (S5), so the fixture writes the same active.json/.install-complete.json pair the adapter reads.
 async function connectedHome(dir:string):Promise<void>{
@@ -207,7 +210,10 @@ test('setup backs up every product file and keeps the entries it did not write',
 
  const opencode=JSON.parse(await readFile(paths.opencode,'utf8'));
  assert.equal(opencode.theme,'x');
- assert.deepEqual(opencode.plugin,['other-plugin',OPENCODE_PLUGIN]);
+ assert.deepEqual(opencode.plugin,['other-plugin',OPENCODE_PLUGIN_DIR]);
+ // The registered path must be the directory opencode loads, not the index.ts file inside it.
+ assert.equal(opencode.plugin.at(-1).endsWith('index.ts'),false);
+ assert.equal((await stat(opencode.plugin.at(-1))).isDirectory(),true);
 
  const cursor=JSON.parse(await readFile(paths.cursor,'utf8'));
  assert.deepEqual(cursor.hooks.stop,[{command:'/bin/other'},{command:CURSOR_HOOK}]);
@@ -224,6 +230,51 @@ test('setup backs up every product file and keeps the entries it did not write',
  assert.equal(grok.includes('command = "/bin/other"'),true);
  assert.equal(grok.includes(GROK_HOOK),true);
  assert.equal((grok.match(/\[\[hooks\.Stop\]\]/g)??[]).length,2);
+});
+
+test('opencode is registered with the plugin directory, and a second setup leaves it alone',async t=>{
+ const dir=await home(t);
+ await connectedHome(dir);
+ const file=join(dir,'.config','opencode','opencode.json');
+ const out=await runSetup({home:dir,env:{PATH:'/nonexistent'}});
+ assert.equal(out.status,'ok');
+ assert.equal(out.changes.find(change=>change.product==='opencode')?.action,'added');
+ const config=JSON.parse(await readFile(file,'utf8'));
+ assert.deepEqual(config.plugin,[OPENCODE_PLUGIN_DIR]);
+ assert.equal(config.plugin[0].endsWith('index.ts'),false);
+ // opencode 2 reads the directory's own index.ts, so the directory itself is what has to exist.
+ assert.equal((await stat(config.plugin[0])).isDirectory(),true);
+ assert.equal((await stat(join(config.plugin[0],'index.ts'))).isFile(),true);
+
+ const second=await runSetup({home:dir,env:{PATH:'/nonexistent'}});
+ assert.equal(second.changes.find(change=>change.product==='opencode')?.action,'unchanged');
+ assert.deepEqual(JSON.parse(await readFile(file,'utf8')).plugin,[OPENCODE_PLUGIN_DIR]);
+});
+
+test('setup replaces an index.ts registration with the directory and keeps the other plugins',async t=>{
+ const dir=await home(t);
+ await connectedHome(dir);
+ const file=join(dir,'.config','opencode','opencode.json');
+ const before=JSON.stringify({theme:'x',plugin:['other-plugin',OPENCODE_PLUGIN_FILE,'third-plugin']})+'\n';
+ await writeFile(file,before,{mode:0o600});
+ // The file form is the one opencode 2 refuses, so it is not reported as a working wiring before setup repairs it.
+ const unwired=await runDoctor({home:dir,env:{PATH:'/nonexistent'},versionCommand:async()=>null});
+ assert.equal(wired(unwired).opencode,false);
+
+ const at=Date.parse('2026-10-20T05:06:07.800Z');
+ const out=await runSetup({home:dir,now:()=>at,env:{PATH:'/nonexistent'}});
+ assert.equal(out.status,'ok');
+ assert.equal(out.changes.find(change=>change.product==='opencode')?.action,'updated');
+ const config=JSON.parse(await readFile(file,'utf8'));
+ assert.equal(config.theme,'x');
+ assert.deepEqual(config.plugin,['other-plugin',OPENCODE_PLUGIN_DIR,'third-plugin']);
+ const backup=out.backups.find(path=>path.endsWith('-opencode.json'));
+ assert.ok(backup);
+ assert.equal(await readFile(backup,'utf8'),before);
+
+ const second=await runSetup({home:dir,now:()=>at,env:{PATH:'/nonexistent'}});
+ assert.equal(second.changes.find(change=>change.product==='opencode')?.action,'unchanged');
+ assert.deepEqual(JSON.parse(await readFile(file,'utf8')).plugin,['other-plugin',OPENCODE_PLUGIN_DIR,'third-plugin']);
 });
 
 test('setup --remove takes back only the entries seamless added',async t=>{

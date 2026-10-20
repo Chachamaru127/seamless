@@ -144,3 +144,10 @@ Claude 5 + Codex Desktop 5 の 10 往復（Grok Bot は 1 回目の 1 件を流�
 
 1 回目（12:09、立花さん実行）の scope_conflict と duplicate は #35 で解消（10/10 送信）。
 | 2026-10-20 13:25 | #37 T04c 製品ごとの N（codex 45 秒） | a40618b | worktree（250 秒） | 0 | — | PASS（4 項目 Yes） | 閉じて merge。Plans.md 7 章 Open decision 1 を「製品ごと。既定 claude 20、codex 45、grok-cli 20、grok-bot 60」に更新 |
+
+## setup の実行（2026-10-20 13:32、立花さんが Terminal で。main 7dbd17b）
+
+- `setup --dry-run`: 変更予定 1 件（`~/.claude.json` の `mcpServers.seamless`、would_update）。agents 7 製品すべて installed。destinations は Claude 13 件（online）。
+- `setup`: 変更 1 件（updated）。backup `~/.seamless/backups/2026-10-20T04-32-11-241Z-claude.json`。
+- AC1 の「導入が変える設定ファイルは MCP の登録 1 件だけ」を実機で確認。秒数と質問数は別途（質問は 0 だった）。
+- 残件: setup は opencode / Cursor / Antigravity / Grok CLI の plugin と hooks を書かない（#38 で対応中）。

@@ -16,7 +16,7 @@ import {Registry} from '../src/registry.ts';
 import {createStatus,type StatusClock,type StructureItem} from '../src/status.ts';
 import type {Registration} from '../src/protocol.ts';
 import type {RequestParty} from '../src/request-store.ts';
-import {DEFAULT_HELD_AFTER_SEC,heldAfterSec,readLimits} from '../src/limits.ts';
+import {heldAfterSec,readLimits,type HeldAfterSec} from '../src/limits.ts';
 
 const REPO=join(dirname(fileURLToPath(import.meta.url)),'..');
 const exec=promisify(execFile);
@@ -32,7 +32,7 @@ const USAGE=`seamless measure (T15)
 
 副コマンド:
   roundtrip  1 往復の依頼 ID と返信 ID の一致を JSON で出す
-  hold       保留中 (held) と理由を出す（判定に使う待ち秒は --held-after-sec か limits）
+  hold       保留中 (held) と理由を出す（判定に使う待ち秒は --held-after-sec か limits。製品ごとの既定は claude 20 / codex 45 / grok 20 / grok-bot 60 秒）
   batch      計画に沿って複数回往復し、本文を含まない記録ファイルを作る（--dry は計画の検査だけで、送らず記録も作らない）
   footprint  seamless のプロセス数、保存先と受信箱のバイト数、seamless のプロセスに限った接続数を出す
   compare    5 指標の表を出す（--dry は空の表）
@@ -154,7 +154,7 @@ async function fakeRun(kind:'roundtrip'|'hold',provider:FakeProvider,text:string
  const started=Date.now(),at=new Date(started).toISOString(),requestId=`measure-${randomUUID()}`,replyId=`reply-${randomUUID()}`;
  const body=uniqueBody(text,options.index??1,options.total??1,requestId);
  // One resolved value drives both the fake clock and the stage reader, so --held-after-sec cannot make the two disagree.
- const holdSec=heldAfterSec(options);
+ const holdSec=heldAfterSec({heldAfterSec:options.heldAfterSec},provider);
  const {sender,recipient}=fakeRegistrations(provider);
  try{
   const adapter:NativeAdapter={
@@ -244,18 +244,31 @@ async function realRoundtrip(target:string,text:string,waitSeconds:number,scope:
  if(!candidate)return {kind:'roundtrip',id:`measure-${randomUUID()}`,target,at:new Date().toISOString(),mode:'real',match:false,error:'target_unavailable',operations:1};
  return realSendAndTrack(candidate,'roundtrip',text,waitSeconds,scope,{index:1,total:1},call);
 }
-async function realHold(target:string,text:string,holdSec:number,scope:MeasureScope,call:CliCall=cliJson):Promise<MeasureRecord>{
+// The limits file decides N when the flag does not. A readable file that fails validation is not a setting, so the
+// product defaults apply; a missing file is the same.
+async function storedLimits():Promise<{heldAfterSec?:HeldAfterSec}>{
+ const limits=await readLimits();
+ return limits.status==='ok'?limits.value:{};
+}
+async function realHold(target:string,text:string,heldSec:number|undefined,waitRaw:string|undefined,scope:MeasureScope,call:CliCall=cliJson):Promise<MeasureRecord>{
  const all=await listCandidates(scope,call);
  const candidate=all.find(c=>c.id===target);
  if(!candidate)return {kind:'hold',id:`measure-${randomUUID()}`,target,at:new Date().toISOString(),mode:'real',error:'target_unavailable',operations:1};
- return realSendAndTrack(candidate,'hold',text,Math.min(600,holdSec+2),scope,{index:1,total:1},call);
+ const holdSec=heldSec??heldAfterSec(await storedLimits(),candidate.provider);
+ const wait=waitRaw===undefined?holdSec+5:Number(waitRaw);
+ return realSendAndTrack(candidate,'hold',text,Math.min(600,wait),scope,{index:1,total:1},call);
 }
 function providerMatches(name:string,candidate:Candidate):boolean{
- if(name==='claude')return candidate.provider==='claude';
- if(name==='codex'||name==='codex-cli'||name==='codex-desktop')return candidate.provider==='codex';
- if(name==='grok')return candidate.provider==='grok';
- if(name==='grok-bot')return candidate.provider==='grok-bot';
- return false;
+ const product=planProduct(name);
+ return product!==undefined&&candidate.provider===product;
+}
+// Names a plan may carry, and the product whose wait N applies to them (Issue #37).
+function planProduct(name:string):'claude'|'codex'|'grok'|'grok-bot'|undefined{
+ if(name==='claude')return 'claude';
+ if(name==='codex'||name==='codex-cli'||name==='codex-desktop')return 'codex';
+ if(name==='grok')return 'grok';
+ if(name==='grok-bot')return 'grok-bot';
+ return undefined;
 }
 // The names a plan may carry. `--dry` reports an unknown one instead of failing, because a real run turns it into
 // no_candidates records: the person can see the whole plan (and the typo) before anything leaves the Mac.
@@ -277,15 +290,17 @@ function parsePlan(plan:string):PlanEntry[]{
  if(!out.length)throw new MeasureError('invalid_arguments','plan');
  return out;
 }
-export async function runBatch(plan:string,outPath:string|undefined,text:string,waitSeconds:number,scope:MeasureScope=DEFAULT_SCOPE,call:CliCall=cliJson):Promise<{recordFile:string;entries:MeasureRecord[];falseReached:number;submitted:number;notSent:Record<string,number>}>{
+export async function runBatch(plan:string,outPath:string|undefined,text:string,waitSeconds:number|undefined,scope:MeasureScope=DEFAULT_SCOPE,call:CliCall=cliJson,limits?:{heldAfterSec?:HeldAfterSec}):Promise<{recordFile:string;entries:MeasureRecord[];falseReached:number;submitted:number;notSent:Record<string,number>}>{
  const entries=parsePlan(plan),records:MeasureRecord[]=[],total=entries.reduce((sum,e)=>sum+e.count,0);
  let index=0;
  const fakeOnly=entries.every(e=>e.name==='fake');
+ // Without `--wait`, each real send waits its product's N plus five seconds (Issue #37); fake entries resolve their own.
+ const heldLimits=waitSeconds===undefined&&!fakeOnly?limits??await storedLimits():undefined;
  // The listing and every send below take this one scope, so a listed peer is always a sendable peer.
  const all=fakeOnly?[]:await listCandidates(scope,call);
  for(const entry of entries){
   if(entry.name==='fake'){
-   for(let i=0;i<entry.count;i++){index++;records.push(fakeRecord(await fakeRun('roundtrip','claude',text,{heldAfterSec:20,index,total}),'roundtrip','fake'));}
+   for(let i=0;i<entry.count;i++){index++;records.push(fakeRecord(await fakeRun('roundtrip','claude',text,{index,total}),'roundtrip','fake'));}
    continue;
   }
   const pool=all.filter(c=>providerMatches(entry.name,c));
@@ -293,7 +308,8 @@ export async function runBatch(plan:string,outPath:string|undefined,text:string,
    for(let i=0;i<entry.count;i++){index++;records.push({kind:'roundtrip',id:`measure-${randomUUID()}`,target:entry.name,at:new Date().toISOString(),mode:'real',match:false,error:'no_candidates',operations:1});}
    continue;
   }
-  for(let i=0;i<entry.count;i++){index++;records.push(await realSendAndTrack(pool[i%pool.length]!,'roundtrip',text,waitSeconds,scope,{index,total},call));}
+  const wait=waitSeconds??heldAfterSec(heldLimits??{},planProduct(entry.name))+5;
+  for(let i=0;i<entry.count;i++){index++;records.push(await realSendAndTrack(pool[i%pool.length]!,'roundtrip',text,wait,scope,{index,total},call));}
  }
  const path=outPath??await uniqueRecordFile('batch',fakeOnly);
  // `submitted` is what actually left; `notSent` names the reason for every record that did not, so entries always adds up.
@@ -446,7 +462,7 @@ async function commandRoundtrip(args:string[]):Promise<number>{
  const started=Date.now();
  let record:MeasureRecord;
  if(provider){
-  const outcome=await fakeRun('roundtrip',provider,text,{heldAfterSec:20});
+  const outcome=await fakeRun('roundtrip',provider,text);
   record=fakeRecord(outcome,'roundtrip',flag(flags,'fake')?'fake':`fake:${provider}`);
  }else{
   const target=str(flags,'target');
@@ -465,19 +481,20 @@ async function commandHold(args:string[]):Promise<number>{
  const provider=fakeTarget(flags),scope=measureScope(flags);
  const text=str(flags,'text')??'seamless measurement: hold check.';
  const injected=str(flags,'held-after-sec');
- let holdSec=DEFAULT_HELD_AFTER_SEC;
- if(injected!==undefined){holdSec=Number(injected);if(!Number.isInteger(holdSec)||holdSec<1||holdSec>3600)throw new MeasureError('invalid_arguments','--held-after-sec');}
+ let injectedSec:number|undefined;
+ if(injected!==undefined){injectedSec=Number(injected);if(!Number.isInteger(injectedSec)||injectedSec<1||injectedSec>3600)throw new MeasureError('invalid_arguments','--held-after-sec');}
  let record:MeasureRecord;
  if(provider){
-  // A fake measurement never opens the real home: the wait used by the record is the wait used by the stage reader.
+  // A fake measurement never opens the real home: the product default applies, and the wait used by the record is the
+  // wait used by the stage reader.
+  const holdSec=injectedSec??heldAfterSec({},provider);
   const outcome=await fakeRun('hold',provider,text,{heldAfterSec:holdSec});
   record=fakeRecord(outcome,'hold',`fake:${provider}`);
  }else{
   const target=str(flags,'target');
   if(!target)throw new MeasureError('invalid_arguments','--target or --fake');
-  if(injected===undefined){const limits=await readLimits();holdSec=heldAfterSec(limits.status==='ok'?limits.value:{});}
-  const waitRaw=str(flags,'wait');
-  record=await realHold(target,text,waitRaw===undefined?holdSec:Number(waitRaw),scope);
+  // N comes from the flag, the product key or the product default, resolved against the peer that answers.
+  record=await realHold(target,text,injectedSec,str(flags,'wait'),scope);
  }
  const log=str(flags,'log');
  if(log)await appendRecord(log,record);
@@ -491,8 +508,8 @@ async function commandBatch(args:string[]):Promise<number>{
  if(!plan)throw new MeasureError('invalid_arguments','--plan');
  const scope=measureScope(flags);
  const waitRaw=str(flags,'wait');
- const wait=waitRaw===undefined?25:Number(waitRaw);
- if(!Number.isFinite(wait)||wait<0||wait>600)throw new MeasureError('invalid_arguments','--wait');
+ const wait=waitRaw===undefined?undefined:Number(waitRaw);
+ if(wait!==undefined&&(!Number.isFinite(wait)||wait<0||wait>600))throw new MeasureError('invalid_arguments','--wait');
  const text=str(flags,'text')??'seamless measurement: batch check.';
  if(flag(flags,'dry')){
   // The dry run checks the plan and the flags only: it identifies no caller, sends nothing and writes no record file.

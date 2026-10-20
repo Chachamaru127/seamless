@@ -32,7 +32,7 @@ Grok Bot には Claude の `crossSessionInbound` や Codex の目標に当たる
 3. Claude Desktop の対話セッションを 5 つ以上、Codex Desktop のスレッドを 5 つ以上用意する。どちらも「実行元の会話は宛先にならない」ので、実行元とは別に 5 つ要る（4 章）。
 4. Grok Bot 茶々丸が登録済みで起きている。`~/.seamless/peers.json` の登録と、webhook の宛先と鍵の環境変数が要る（`scripts/peer-setup.sh`）。起きているかは `grok-bot-power` で確かめる。
 5. 実行するシェルは、Claude の会話プロセスの子孫（Claude Code、または Claude Desktop の Code タブのシェル）か、Grok の TUI にする。理由は `src/caller.ts` が呼び出し元を祖先プロセスの署名と `~/.claude/sessions/<pid>.json` で同定するため。素の Terminal から直に走らせると `caller_unobserved`（終了コード 2）で止まり、送信は起きない。Codex CLI からは `codex_cli_unsupported` で止まる。
-6. 待ち秒 N は 20 秒（`~/.seamless/limits.json` の `heldAfterSec`。未設定なら 20）。`--wait` は N より 5 秒以上長くする。既定は 25 秒。
+6. 待ち秒 N は製品ごとに決まる（`~/.seamless/limits.json` の `heldAfterSec`。未設定なら claude 20、codex 45、grok 20、grok-bot 60 秒）。Codex Desktop は `codex queue` の封筒をターン境界で取り込むので、2026-10-20 の AC7 では送信の 16〜22 秒後に届いた。`--wait` の既定は N + 5 秒で、製品ごとに 25、50、25、65 秒。`heldAfterSec` に数値を書くと全製品がその値になる。製品ごとに変えるときは `{"codex": 45}` のような object を書く（`default` は名前の無い製品に効く）。
 7. `~/.seamless/limits.json` の `exclude` に入れた相手は候補から外れる。計測の前に、対象の会話が `exclude` に無いことを確かめる。
 
 ## 3. 送らない確認を 3 つ先に行う
@@ -91,7 +91,6 @@ node src/cli.ts who --json
 node scripts/measure.ts batch \
   --plan claude:5,codex-desktop:5,grok-bot:5 \
   --out "$HOME/.seamless/measurements/ac7-$(date +%Y%m%d-%H%M%S).jsonl" \
-  --wait 25 \
   --scope any \
   --text 'seamless AC7 measurement: reply with one short line.'
 ```
@@ -101,14 +100,15 @@ node scripts/measure.ts batch \
 - `--text` は接頭辞。各送信の本文は `<接頭辞> #<連番>/<総数> <依頼 ID の先頭 8 桁（measure- を除く）>` になる。たとえば 1 件目は `... #1/15 3f9a1c02`。同じ本文を同じ相手へ送ると内容ハッシュの重複抑止が働き、2 件目以降が `duplicate` で送信前に止まる。連番と依頼 ID が本文を 1 件ずつ変えるので、15 件が同じ相手に並んでも重ならない。
 - 6 章の「本文が残らない」確認は接頭辞を探す。本文の後半（連番と ID）は毎回変わるので、検索語にしない。
 - 送信順は製品ごとに、`who --json` の行順（休止中と受信不可を除く）を 1 件ずつ循環する。1 件目が 1 行目の相手、2 件目が 2 行目の相手という順。
-- 1 件あたり最大 `--wait` 秒待つ。15 件で最長 6 分 15 秒に、送信と読取りの時間が加わる。
+- `--wait` を省略すると、1 件あたり製品ごとの N + 5 秒待つ（Claude 25、Codex 50、Grok Bot 65 秒）。`--wait 25` を明示すると全製品が 25 秒になり、Codex は届く前に `held` と出る。15 往復では省略する。
+- 15 件で最長 11 分 40 秒（5 × 25 + 5 × 50 + 5 × 65）に、送信と読取りの時間が加わる。
 - 実行中に状態を変えない。変えると、どの送信がどの状態に当たったか記録から読めなくなる。
 - 終了コードは通常 0。記録には失敗も残る（`error: scope_conflict`、`error: duplicate`、`error: no_candidates` など）。送信そのものが例外で止まったときだけ 1 か 2 になる。
 
 `roundtrip` と `hold` は 1 件だけ確かめ直すときに使う。15 往復の記録には数えない。本文の扱いは `batch` と同じ（接頭辞 + 連番 + 依頼 ID）。
 
 ```sh
-node scripts/measure.ts roundtrip --target <id> --wait 25 --scope any --text 'seamless AC7 measurement: reply with one short line.' --log "$HOME/.seamless/measurements/ac7-single.jsonl"
+node scripts/measure.ts roundtrip --target <id> --scope any --text 'seamless AC7 measurement: reply with one short line.' --log "$HOME/.seamless/measurements/ac7-single.jsonl"
 node scripts/measure.ts hold --target <id> --scope any --log "$HOME/.seamless/measurements/ac7-single.jsonl"
 ```
 
@@ -179,7 +179,7 @@ rg -F -- 'seamless AC7 measurement' ~/.seamless/measurements ~/.seamless/reserva
 `specs/2026-10-universal-wiring/evidence.md` の「AC の証拠」表に 1 行足す。
 
 ```text
-| AC7 | 2026-10-20 | node scripts/measure.ts batch --plan claude:5,codex-desktop:5,grok-bot:5 --out <path> --wait 25 --scope any --text 'seamless AC7 measurement: reply with one short line.' | 0 | submitted 15 かつ falseReached 0。error 0 行。本文 0 件（rg 終了コード 1）。各製品 5 件 | <commit> |
+| AC7 | 2026-10-20 | node scripts/measure.ts batch --plan claude:5,codex-desktop:5,grok-bot:5 --out <path> --scope any --text 'seamless AC7 measurement: reply with one short line.' | 0 | submitted 15 かつ falseReached 0。error 0 行。本文 0 件（rg 終了コード 1）。各製品 5 件 | <commit> |
 ```
 
 その下に内訳の表を置く。依頼 ID は記録の `id` から取る。
@@ -210,5 +210,5 @@ rg -F -- 'seamless AC7 measurement' ~/.seamless/measurements ~/.seamless/reserva
 | `target_unavailable` の記録 | `who --json` の `state`、登録の `status` | 登録が revoked か scope_unset、または limits の send が false |
 | `delivery: unknown` | 記録の 1 行 | 成否不明。同じ依頼 ID で送り直さない（不変条件 6）。記録は `unknown` のまま残す |
 | `falseReached: true` が 1 件でも | 記録の該当行 | S2。その製品は「渡った」「処理中」を出さず受理止まりにする。Issue を起こす |
-| `held` が想定より多い | `limits.json` の `heldAfterSec` と製品の状態 | N と `--wait` の関係を確かめる。状態を作り直す |
+| `held` が想定より多い | `limits.json` の `heldAfterSec` と製品の状態、`--wait` | 製品ごとの N（Claude 20、Codex 45、Grok Bot 60 秒）より短く待っていないか確かめる。数値の `heldAfterSec` は全製品に効く。状態を作り直す |
 | 15 件そろわない | 集計行の `submitted` と `notSent`、`--plan` | 製品を増やさず原因へ戻る（S1） |

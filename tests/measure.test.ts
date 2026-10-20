@@ -52,6 +52,9 @@ test('a fake hold reports held, but a fake peer has no observed product reason',
  // A real home whose limits say 20s must not decide the fake stage: the injected value reaches the reader as well as the clock.
  const injected=await measure(['hold','--fake','--held-after-sec','1'],{...process.env,HOME:home});
  assert.equal(injected.json.state,'held');
+ // Without the flag and without a readable setting, the product default decides: Codex 45 seconds.
+ const defaulted=await measure(['hold','--target','fake:codex'],{...process.env,HOME:home});
+ assert.equal(defaulted.json.state,'held');
 });
 
 test('batch --plan fake:2 writes a record file without the message body',async t=>{
@@ -141,6 +144,30 @@ test('batch lists and sends under one scope, and its summary counts submitted an
  assert.deepEqual(result.notSent,{duplicate:1});
 });
 
+test('batch waits each product N plus five seconds unless --wait says otherwise',async t=>{
+ // Issue #37: Codex takes the envelope at a turn boundary, so --wait 25 would call it held before it is delivered.
+ const dir=await mkdtemp(join(tmpdir(),'seamless-measure-wait-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const waits:string[]=[];
+ const candidates=[
+  {id:'claude:b',provider:'claude',ticket:'ticket-claude'},
+  {id:'codex:d',provider:'codex',ticket:'ticket-codex'},
+  {id:'grok:e',provider:'grok',ticket:'ticket-grok'},
+  {id:'grok-bot:f',provider:'grok-bot',ticket:'ticket-bot'},
+ ];
+ const call=async(args:string[])=>{
+  if(args[0]==='sessions')return {status:'ok',candidates};
+  if(args[0]==='send')return {status:'submitted'};
+  if(args[0]==='status'){const at=args.indexOf('--wait');waits.push(args[at+1]!);return {status:'ok',delivery:'submitted',stages:[]};}
+  return {status:'ok'};
+ };
+ const limits={heldAfterSec:{codex:45}};
+ await runBatch('claude:1,codex-desktop:1,grok:1,grok-bot:1',join(dir,'batch.jsonl'),'BODY',undefined,'any',call,limits);
+ assert.deepEqual(waits,['25','50','25','65']);
+ waits.length=0;
+ // An explicit --wait still decides every entry.
+ await runBatch('claude:1,codex-desktop:1',join(dir,'explicit.jsonl'),'BODY',12,'any',call,limits);
+ assert.deepEqual(waits,['12','12']);
+});
 test('batch --dry checks the plan and the product names without sending or writing a record',async t=>{
  // The AC7 line must pass the parser and report its three product names as known, before anything is sent to a real peer.
  const dir=await mkdtemp(join(tmpdir(),'seamless-measure-dry-'));t.after(()=>rm(dir,{recursive:true,force:true}));

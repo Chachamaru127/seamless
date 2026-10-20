@@ -6,14 +6,40 @@ import {dirname,join,basename} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 
 export type AutoScope='current_work'|'same_repository'|'any';
-export type Limits={version:1;markUnapproved?:boolean;strictVersions?:boolean;codexMessageMaxChars?:number;heldAfterSec?:number;exclude:Array<{provider?:'codex'|'claude'|'grok';nativeId?:string;workspace?:string}>;scope:AutoScope|null;operations:{read:boolean;send:boolean}|null};
+// Open decision 1 (Plans.md 7 章, Issue #37): the wait before a silent peer record is `held`. A number applies to every
+// product; an object names one product (or `default`) and leaves the rest on the product defaults below.
+export type HeldAfterSec=number|{default?:number;claude?:number;codex?:number;grok?:number;grokBot?:number};
+export type Limits={version:1;markUnapproved?:boolean;strictVersions?:boolean;codexMessageMaxChars?:number;heldAfterSec?:HeldAfterSec;exclude:Array<{provider?:'codex'|'claude'|'grok';nativeId?:string;workspace?:string}>;scope:AutoScope|null;operations:{read:boolean;send:boolean}|null};
 export const unrestricted:Limits={version:1,exclude:[],scope:null,operations:null};
 // Open decision 2 (Plans.md 7 章): the message body is refused, not shortened, above this many code points.
 export const DEFAULT_CODEX_MESSAGE_MAX_CHARS=4000;
 export function codexMessageMaxChars(limits:{codexMessageMaxChars?:number}):number{return limits.codexMessageMaxChars??DEFAULT_CODEX_MESSAGE_MAX_CHARS;}
-// Open decision 1 (Plans.md 7 章): after this long, a request whose peer record is readable but never names it is `held`.
+// After this long, a request whose peer record is readable but never names it is `held`.
 export const DEFAULT_HELD_AFTER_SEC=20;
-export function heldAfterSec(limits:{heldAfterSec?:number}):number{return limits.heldAfterSec??DEFAULT_HELD_AFTER_SEC;}
+// Codex Desktop takes `codex queue` at a turn boundary: the envelope showed up 16-22 seconds after the write on
+// 2026-10-20 (AC7), so the 20-second wait called it held first and said "delivered" a few seconds later. Claude handed
+// over in 3 seconds. Grok Bot answers only after its next wake.
+export type HeldAfterSecProduct='claude'|'codex'|'grok'|'grokBot';
+export const PRODUCT_HELD_AFTER_SEC:Record<HeldAfterSecProduct,number>={claude:20,codex:45,grok:20,grokBot:60};
+export function heldAfterSecProduct(provider:string|undefined):HeldAfterSecProduct|undefined{
+ return provider==='claude'||provider==='codex'||provider==='grok'?provider:provider==='grok-bot'||provider==='grokBot'?'grokBot':undefined;
+}
+// The product key wins, then the object's own `default`, then the product default. A number ignores the product.
+export function heldAfterSec(limits:{heldAfterSec?:HeldAfterSec},provider?:string):number{
+ const setting=limits.heldAfterSec,key=heldAfterSecProduct(provider);
+ if(typeof setting==='number')return setting;
+ if(setting&&typeof setting==='object'){
+  if(key&&setting[key]!==undefined)return setting[key];
+  if(setting.default!==undefined)return setting.default;
+ }
+ return key?PRODUCT_HELD_AFTER_SEC[key]:DEFAULT_HELD_AFTER_SEC;
+}
+function validHeldAfterSec(value:unknown):boolean{
+ if(typeof value==='number')return Number.isSafeInteger(value)&&value>=1;
+ if(!value||typeof value!=='object'||Array.isArray(value))return false;
+ const v=value as Record<string,unknown>;
+ return Object.keys(v).every(k=>['default','claude','codex','grok','grokBot'].includes(k))&&Object.values(v).every(n=>Number.isSafeInteger(n)&&(n as number)>=1);
+}
 export type LimitsRead=
  | {status:'absent';hash:null}
  | {status:'ok';value:Limits;hash:string}
@@ -24,7 +50,7 @@ export function defaultLimitsPath():string{return join(homedir(),'.seamless','li
 export function validLimits(value:unknown):value is Limits{
  if(!value||typeof value!=='object'||Array.isArray(value))return false;
  const v=value as Record<string,unknown>;
- if(!['version','exclude','scope','operations'].every(k=>Object.hasOwn(v,k))||Object.keys(v).some(k=>!['version','exclude','scope','operations','markUnapproved','strictVersions','codexMessageMaxChars','heldAfterSec'].includes(k))||Object.hasOwn(v,'markUnapproved')&&typeof v.markUnapproved!=='boolean'||Object.hasOwn(v,'strictVersions')&&typeof v.strictVersions!=='boolean'||Object.hasOwn(v,'codexMessageMaxChars')&&(!Number.isSafeInteger(v.codexMessageMaxChars)||(v.codexMessageMaxChars as number)<1)||Object.hasOwn(v,'heldAfterSec')&&(!Number.isSafeInteger(v.heldAfterSec)||(v.heldAfterSec as number)<1)||v.version!==1||!Array.isArray(v.exclude)||v.scope!==null&&!['current_work','same_repository','any'].includes(v.scope as string))return false;
+ if(!['version','exclude','scope','operations'].every(k=>Object.hasOwn(v,k))||Object.keys(v).some(k=>!['version','exclude','scope','operations','markUnapproved','strictVersions','codexMessageMaxChars','heldAfterSec'].includes(k))||Object.hasOwn(v,'markUnapproved')&&typeof v.markUnapproved!=='boolean'||Object.hasOwn(v,'strictVersions')&&typeof v.strictVersions!=='boolean'||Object.hasOwn(v,'codexMessageMaxChars')&&(!Number.isSafeInteger(v.codexMessageMaxChars)||(v.codexMessageMaxChars as number)<1)||Object.hasOwn(v,'heldAfterSec')&&!validHeldAfterSec(v.heldAfterSec)||v.version!==1||!Array.isArray(v.exclude)||v.scope!==null&&!['current_work','same_repository','any'].includes(v.scope as string))return false;
  if(!v.exclude.every(e=>e&&typeof e==='object'&&!Array.isArray(e)&&Object.keys(e).length>0&&Object.keys(e).every(k=>['provider','nativeId','workspace'].includes(k))&&(e.provider===undefined||['claude','codex','grok'].includes(e.provider))&&['nativeId','workspace'].every(k=>e[k]===undefined||typeof e[k]==='string'&&e[k].length>0)&&(e.workspace===undefined||e.workspace.startsWith('/'))))return false;
  const o=v.operations;
  return o===null||!!o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===2&&Object.keys(o).every(k=>['read','send'].includes(k))&&typeof (o as Record<string,unknown>).read==='boolean'&&typeof (o as Record<string,unknown>).send==='boolean';

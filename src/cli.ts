@@ -2,7 +2,8 @@
 import {compatibilityCheck} from './compat-check.ts';
 import {compatibilityMarkdown} from './compat.ts';
 import {readFile,writeFile} from 'node:fs/promises';
-import {pathToFileURL} from 'node:url';
+import {fileURLToPath} from 'node:url';
+import {realpathSync} from 'node:fs';
 import {createAutomatic,migrateRegistry,type Automatic} from './automatic.ts';
 import { createNativeRuntime } from './native-runtime.ts';
 import { Registry, loadRegistry } from './registry.ts';
@@ -126,4 +127,8 @@ export async function runCli(argv:string[],automatic:Automatic=createAutomatic({
  if(mode==='serve')await runLines(createServe({registry,caller,refresh,adapter:runtime?.adapter}));
  else await runLines(createMcp({registry,caller,refresh,adapter:runtime?.adapter}),()=>({jsonrpc:'2.0',id:null,error:{code:-32700,message:'parse_error'}}));
 }
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)runCli(process.argv.slice(2)).catch(e=>{process.stderr.write(JSON.stringify({error:{code:e instanceof ContractError?e.message:'startup_failed'}})+'\n');process.exitCode=1;});
+// `node <path>` keeps the path as typed in argv[1] (a symlink, or /var where macOS spells /private/var), while
+// import.meta.url names the resolved file. Both sides are resolved before comparing, so the published bin runs when it is
+// started through a link (issue #42).
+function isEntry():boolean{const argv=process.argv[1];if(!argv)return false;try{return realpathSync(argv)===realpathSync(fileURLToPath(import.meta.url));}catch{return false;}}
+if(isEntry())runCli(process.argv.slice(2)).catch(e=>{process.stderr.write(JSON.stringify({error:{code:e instanceof ContractError?e.message:'startup_failed'}})+'\n');process.exitCode=1;});

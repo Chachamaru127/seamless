@@ -59,7 +59,8 @@ export function parseAntigravityManifest(value: unknown): AntigravityManifest {
   if (value.schemaVersion !== 1 || value.phase !== 2) invalid();
   if (value.product !== 'antigravity' || value.provider !== 'antigravity') invalid();
   if (value.status !== ANTIGRAVITY_STATUS) invalid();
-  if (value.adapter !== '../adapters/antigravity.ts') invalid();
+  // The declaration names the compiled adapter as well, because the published package carries dist/, not src/ (issue #42).
+  if (value.adapter !== '../adapters/antigravity.ts' && value.adapter !== '../adapters/antigravity.js') invalid();
   const displayName = text(value.displayName, 80);
   if (!displayName) invalid();
   const discovery = value.discovery, write = value.write, permissions = value.permissions, install = value.install;

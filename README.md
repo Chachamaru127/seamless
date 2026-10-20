@@ -144,11 +144,6 @@ CLI, Antigravity CLI, Grok CLI) also use hooks and inbox files. Two layers can c
 - Keep the backup that `setup` writes and your own copy of every hook file you edit. seamless has no
   uninstaller that restores Reason.
 
-## Orca's role (Orca との役割)
-
-Orca manages worktrees and terminals; seamless wires conversations, and Orca does not send or receive these
-messages for you.
-
 ## What it stores
 
 | Path | Content | Mode |

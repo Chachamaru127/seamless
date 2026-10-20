@@ -2,6 +2,10 @@
 // T13: every file in the published set must be runnable from the tarball alone. A relative import that points at a file
 // `npm pack` leaves out makes the package break only after publishing, so this check fails on it here.
 // The published set is what `npm pack --dry-run --json` lists (package.json "files"), not the repository.
+//
+// Issue #42 moved the published entry to the build: when the set carries `dist/`, its `.js` files and the modules the
+// manifests name are the ones that must close inside the tarball. Without a build (a source-only copy of the repository)
+// the earlier check on the shipped `.ts` files still applies.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { posix } from 'node:path';
@@ -47,32 +51,59 @@ function specifiers(source: string): string[] {
 /** The file a relative specifier names: the path as written, or with the extensions and index files Node's loader tries. */
 function resolveInside(file: string, specifier: string, packed: Set<string>): string | null {
   const base = posix.normalize(posix.join(posix.dirname(file), specifier));
-  const candidates = [base, `${base}.ts`, `${base}.tsx`, `${base}.js`, `${base}.json`, `${base}/index.ts`, `${base}/index.tsx`];
+  const candidates = [base, `${base}.ts`, `${base}.tsx`, `${base}.js`, `${base}.json`, `${base}/index.ts`, `${base}/index.tsx`, `${base}/index.js`];
   if (base.endsWith('.js')) candidates.push(base.slice(0, -3) + '.ts');
   return candidates.find(candidate => packed.has(candidate)) ?? null;
 }
 
-const files = packedFiles();
-const packed = new Set(files);
-let imports = 0;
-const missing: string[] = [];
-for (const file of files.filter(path => path.endsWith('.ts'))) {
-  let source: string;
+function read(file: string): string {
   try {
-    source = readFileSync(posix.join(root, file), 'utf8');
+    return readFileSync(posix.join(root, file), 'utf8');
   } catch {
     console.error(`pack-check: 失敗（同梱物を読めない: ${file}）`);
     process.exit(1);
   }
-  for (const specifier of specifiers(source)) {
-    if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue;
-    imports++;
-    if (resolveInside(file, specifier, packed) === null) missing.push(`${file} -> ${specifier}`);
+}
+
+const files = packedFiles();
+const packed = new Set(files);
+const missing: string[] = [];
+let checked = 0;
+
+if (files.some(path => path.startsWith('dist/'))) {
+  // The bin target and the two hook scripts the tarball ships; a hook whose compiled file is absent would exit silently.
+  for (const entry of ['dist/cli.js', 'dist/adapters/cursor.js', 'dist/grok-hook.js']) {
+    if (!packed.has(entry)) missing.push(`${entry}（同梱物に無い）`);
+  }
+  for (const file of files.filter(path => path.startsWith('dist/') && path.endsWith('.js'))) {
+    for (const specifier of specifiers(read(file))) {
+      if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue;
+      checked++;
+      if (resolveInside(file, specifier, packed) === null) missing.push(`${file} -> ${specifier}`);
+    }
+  }
+  // A manifest is a path as data: its adapter module must also be in the same tarball (src/ is no longer shipped). The
+  // phase2/ declaration is read by the antigravity adapter and is not registered as a module (its `adapter` field is not
+  // loaded), so only the registered manifests are resolved here.
+  for (const file of files.filter(path => /^dist\/manifests\/[^/]+\.json$/.test(path))) {
+    const adapter = (JSON.parse(read(file)) as { adapter?: unknown }).adapter;
+    if (typeof adapter !== 'string' || (!adapter.startsWith('./') && !adapter.startsWith('../'))) continue;
+    checked++;
+    if (resolveInside(file, adapter, packed) === null) missing.push(`${file} -> ${adapter}`);
+  }
+} else {
+  for (const file of files.filter(path => path.endsWith('.ts'))) {
+    for (const specifier of specifiers(read(file))) {
+      if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue;
+      checked++;
+      if (resolveInside(file, specifier, packed) === null) missing.push(`${file} -> ${specifier}`);
+    }
   }
 }
+
 if (missing.length > 0) {
-  for (const line of missing) console.error(`pack-check: 同梱物の外を import: ${line}`);
+  for (const line of missing) console.error(`pack-check: 同梱物の外を指す: ${line}`);
   console.error(`pack-check: 失敗（${missing.length} 件）`);
   process.exit(1);
 }
-console.log(`pack-check: ok（${files.length} ファイル、相対 import ${imports} 件が同梱物の中）`);
+console.log(`pack-check: ok（${files.length} ファイル、相対参照 ${checked} 件が同梱物の中）`);

@@ -1,17 +1,19 @@
 {
   "name": "@chachamaru127/seamless",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "engines": { "node": ">=22.22.0" },
-  "bin": { "seamless": "src/cli.ts" },
+  "bin": { "seamless": "dist/cli.js" },
   "publishConfig": { "access": "public" },
   "files": [
-    "src/",
-    "!src/status-panel.ts",
-    "!src/status-panel.html",
+    "dist/",
     "hooks/",
     "packages/opencode-plugin/",
     "README.md"
   ],
-  "scripts": { "test": "bash scripts/verify.sh" }
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/build-assets.ts",
+    "prepublishOnly": "npm run build && node scripts/pack-check.ts",
+    "test": "bash scripts/verify.sh"
+  }
 }

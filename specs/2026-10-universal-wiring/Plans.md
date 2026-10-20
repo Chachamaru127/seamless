@@ -80,7 +80,7 @@ Nestra V2（T3 Code 日本語版 + Nestra 層）は、routecli と seamless（bo
 
 ## 7. Open decisions（2026-10-19 の Plans.md 承認で、下の「案」を既定値として採用。コードでは limits の設定値にし、本人が変えられる）
 
-1. 「保留中」と判定するまでの秒数 N。案: 20 秒。
+1. 「保留中」と判定するまでの秒数 N。案: 20 秒。→ 2026-10-20 の実測（Codex Desktop は queue をターン境界で取り込み、配達が 16〜22 秒後）を受け、製品ごとに持つ（#37）。既定: claude 20、codex 45、grok-cli 20、grok-bot 60。limits の `heldAfterSec` で変更可（数値 1 つの旧形式も可）。
 2. `codex queue --message` の本文の長さ上限。案: 4,000 文字。超える本文は要約せず拒否する。
 3. ループの作業ブランチ。案: Issue ごと（`loop/<番号>`）。
 

@@ -1,6 +1,12 @@
 {
   "name": "@chachamaru127/seamless",
   "version": "0.1.1",
+  "description": "One message from the AI conversation you are in to the one next to it. Claude Code, Codex, opencode, Cursor CLI, Grok CLI, Grok Bot. Delivered through each product's own path, verified from the other side.",
+  "keywords": ["claude-code", "codex", "opencode", "cursor", "grok", "mcp", "agents", "cross-session"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/Chachamaru127/seamless.git" },
+  "homepage": "https://github.com/Chachamaru127/seamless#readme",
+  "bugs": "https://github.com/Chachamaru127/seamless/issues",
   "type": "module",
   "engines": { "node": ">=22.22.0" },
   "bin": { "seamless": "dist/cli.js" },

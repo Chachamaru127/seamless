@@ -184,3 +184,10 @@ Claude 5 + Codex Desktop 5 の 10 往復（Grok Bot は 1 回目の 1 件を流�
 - #41（判定 PASS、443ce8c）: 帯の左端に mark.svg を 14px、wordmark と合わせて 22px 内。`claude plugin test .` 102 pass / 0 fail。
 - #43（判定 PASS、a48dd73）: README の Orca 節を比較レポートの「よくある反論」へ移動（リーダー判断。Reason 併用の節は残す）。
 - main 79cba21 に merge、push 済み。残り: `npm publish`（0.1.1、OTP が要るので立花さん）、公開後に 0.1.0 を `npm deprecate`、第三者手順の `npx` 再検証。
+
+## 2026-10-21 0.1.1 の公開確認と README の作り直し（リーダー実測）
+
+- 立花さんが `npm publish` を実行（最初の 1 回は未ログインで E404。`npm login` 後に成功）。registry の latest は 10:18:07 JST に 0.1.1 へ。
+- 空 HOME からの `npx -y @chachamaru127/seamless@0.1.1 setup --dry-run`: exit 0、`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING` は 0 件（node 24.19.0、mise の実体 binary）。0.1.0 の deprecate は未（立花さんの OTP）。
+- Issue #44（README を競合並みに）: `docs/brand/{hero,terminal,mark-light,mark-dark}.svg` を `scripts/build-brand.ts` で生成。README.md は英語のみ、README.ja.md は同構成。判定 PASS（Codex gpt-6-astra、`.local/loop/20261021T102614-issue-44-judge.md`、証拠 `/tmp/ev44.log`: verify exit 0、867 pass）。残件 2 点を修正して main 40e27ec。PR #45 merged。
+- npm の README は tarball 同梱なので、新 README が npm ページに出るのは次の publish（0.1.2）から。

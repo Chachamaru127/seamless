@@ -33,7 +33,7 @@ npx @chachamaru127/seamless "run the failing test and tell me what you see"
 - **No more copy and paste between AI conversations.** The conversation you are in sends to the one next to it. Your AI can do it too, through the `seamless` MCP tool that `setup` registers.
 - **You know it arrived.** Delivery is reported in five stages, each one observed from the receiving product's own record, never from the sender's claim.
 - **Nothing runs in the background.** No daemon, no history database, no message bodies on disk. Each request leaves one small record of its id and status.
-- **One setup for seven products.** `setup` finds what is installed on this Mac and wires each product it finds. `setup --remove` undoes it.
+- **One setup for everything on this Mac.** `setup` finds the installed products and wires each one it can (Antigravity is detected, not wired yet). `setup --remove` undoes it.
 - **Replies come back to the right place.** A reply carries the id it answers, so a thread stays a thread across products.
 
 ## Quick start
@@ -197,7 +197,7 @@ place: a message that arrives through seamless never counts as a human approval.
 
 ```sh
 git clone https://github.com/Chachamaru127/seamless.git && cd seamless
-bash scripts/verify.sh          # hermetic checks, changes no file
+bash scripts/verify.sh          # hermetic checks: builds dist/, touches nothing under ~/
 node src/cli.ts setup --dry-run
 ```
 

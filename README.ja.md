@@ -32,7 +32,7 @@ npx @chachamaru127/seamless "失敗しているテストを走らせて、見え
 - **AI の会話どうしのコピー＆ペーストが消える。** 今いる会話から隣の会話へ送れます。`setup` が登録する `seamless` MCP ツールで、AI 自身が送ることもできます。
 - **届いたことが分かる。** 配送を 5 段階で報告します。各段階は受け手の製品が自分で持つ記録から観測したもので、送り手の自己申告ではありません。
 - **裏で何も動かない。** 常駐プロセスなし、履歴データベースなし、本文の保存なし。依頼ごとに id と状態だけの小さな記録を 1 つ残します。
-- **7 製品を 1 回の setup で。** `setup` がこの Mac に入っている製品を見つけ、見つけた製品ごとに配線します。`setup --remove` で元に戻せます。
+- **この Mac の製品を 1 回の setup で。** `setup` が入っている製品を見つけ、配線できるものを配線します（Antigravity は検出のみ）。`setup --remove` で元に戻せます。
 - **返事が正しい場所に戻る。** 返事は答える相手の id を持って運ばれるので、製品をまたいでも 1 本のやりとりのままです。
 
 ## すぐ試す
@@ -194,7 +194,7 @@ Desktop IPC、Grok の session ファイルです。製品の更新で予告な�
 
 ```sh
 git clone https://github.com/Chachamaru127/seamless.git && cd seamless
-bash scripts/verify.sh          # 外に触れない検査。ファイルを変更しない
+bash scripts/verify.sh          # 外に触れない検査。dist/ を作り、~/ には触れない
 node src/cli.ts setup --dry-run
 ```
 
